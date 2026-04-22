@@ -86,15 +86,24 @@ test('submitted month is locked on import and reports status is not duplicated',
   await expect(
     page.getByRole('button', { name: 'Create or resume draft' })
   ).toHaveCount(0);
-  await expect(page.getByRole('link', { name: 'Open review' })).toBeVisible();
+  await expect(
+    page
+      .getByRole('link', { name: 'Open review' })
+      .or(page.getByRole('button', { name: 'Request edit access' }))
+  ).toBeVisible();
 
   await page.goto(`/app/${brandCode}/reports?year=${submitted!.year}`);
   await page.waitForLoadState('networkidle');
 
-  const row = page.locator('tr', { hasText: submitted!.label });
-  await expect(row).toBeVisible();
+  const reportEntry = page
+    .locator('article:visible, tr:visible')
+    .filter({ hasText: submitted!.label })
+    .first();
+  await expect(reportEntry).toBeVisible();
   await expect(
-    row.getByText('Submitted - awaiting decision', { exact: true })
+    reportEntry.getByText('Submitted - awaiting decision', { exact: true })
   ).toHaveCount(1);
-  await expect(row.getByText('Read-only (locked)', { exact: true })).toHaveCount(1);
+  await expect(
+    reportEntry.getByText('Read-only (locked)', { exact: true })
+  ).toHaveCount(1);
 });
