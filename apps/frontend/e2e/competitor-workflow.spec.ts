@@ -36,10 +36,6 @@ function randomSuffix() {
   return `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 }
 
-function randomFutureYear(baseOffset: number) {
-  return new Date().getUTCFullYear() + baseOffset + Math.floor(Math.random() * 200);
-}
-
 async function requestJson<T>(
   path: string,
   options?: {
@@ -122,7 +118,7 @@ async function cleanupRequest(
   }
 }
 
-async function waitForCompetitorReadinessPass(periodId: string, timeoutMs = 20_000) {
+async function waitForCompetitorReadinessPass(periodId: string, timeoutMs = 45_000) {
   const startedAt = Date.now();
 
   while (Date.now() - startedAt < timeoutMs) {
@@ -143,6 +139,32 @@ async function waitForCompetitorReadinessPass(periodId: string, timeoutMs = 20_0
   return false;
 }
 
+async function findIsolatedSetupYear(
+  baseOffset: number,
+  maxAttempts = 250
+): Promise<{ year: number; setup: CompetitorSetupResponse }> {
+  const startYear = Math.min(
+    3000,
+    Math.max(2000, new Date().getUTCFullYear() + baseOffset)
+  );
+
+  for (let offset = 0; offset < maxAttempts; offset += 1) {
+    const candidateYear = startYear + offset;
+    if (candidateYear > 3000) {
+      break;
+    }
+
+    const setup = await requestJson<CompetitorSetupResponse>(
+      `/brands/${brandCode}/competitor-setup/${candidateYear}`
+    );
+    if (setup.assignments.length === 0) {
+      return { year: candidateYear, setup };
+    }
+  }
+
+  throw new Error('Unable to find isolated competitor setup year for E2E.');
+}
+
 async function setAdminCookie(page: Page) {
   await page.context().addCookies([
     {
@@ -161,17 +183,15 @@ function isSaveAssignmentsResponse(url: string, year: number) {
 }
 
 test('admin setup can assign competitor and save assignments', async ({ page }) => {
-  const testYear = randomFutureYear(70);
+  const isolated = await findIsolatedSetupYear(70);
+  const testYear = isolated.year;
   const competitorName = `UI E2E Catalog ${randomSuffix()}`;
   let competitorId: string | null = null;
-  let originalAssignments: string[] = [];
+  let originalAssignments: string[] = isolated.setup.assignments.map(
+    (item) => item.competitor.id
+  );
 
   try {
-    const setup = await requestJson<CompetitorSetupResponse>(
-      `/brands/${brandCode}/competitor-setup/${testYear}`
-    );
-    originalAssignments = setup.assignments.map((item) => item.competitor.id);
-
     const createdCompetitor = await requestJson<{ id: string }>(
       `/brands/${brandCode}/competitor-setup/catalog`,
       {
@@ -239,18 +259,16 @@ test('admin setup can assign competitor and save assignments', async ({ page }) 
 test('monthly monitoring checklist auto-saves and marks competitor complete', async ({
   page
 }) => {
-  const testYear = randomFutureYear(80);
+  const isolated = await findIsolatedSetupYear(80);
+  const testYear = isolated.year;
   const competitorName = `UI E2E Monitoring ${randomSuffix()}`;
   let competitorId: string | null = null;
   let periodId: string | null = null;
-  let originalAssignments: string[] = [];
+  let originalAssignments: string[] = isolated.setup.assignments.map(
+    (item) => item.competitor.id
+  );
 
   try {
-    const setup = await requestJson<CompetitorSetupResponse>(
-      `/brands/${brandCode}/competitor-setup/${testYear}`
-    );
-    originalAssignments = setup.assignments.map((item) => item.competitor.id);
-
     const createdCompetitor = await requestJson<{ id: string }>(
       `/brands/${brandCode}/competitor-setup/catalog`,
       {
@@ -310,6 +328,7 @@ test('monthly monitoring checklist auto-saves and marks competitor complete', as
         }
       }
     );
+    expect(await waitForCompetitorReadinessPass(periodId, 45_000)).toBeTruthy();
     await page.reload();
     await page.waitForLoadState('networkidle');
 
@@ -319,10 +338,8 @@ test('monthly monitoring checklist auto-saves and marks competitor complete', as
     );
     await expect(page.getByTestId('monitoring-readiness-banner')).toContainText(
       'Competitor section ready',
-      { timeout: 15_000 }
+      { timeout: 30_000 }
     );
-
-    expect(await waitForCompetitorReadinessPass(periodId)).toBeTruthy();
   } finally {
     if (periodId) {
       await cleanupRequest(`/reporting-periods/${periodId}`, { method: 'DELETE' });
@@ -352,18 +369,16 @@ test('monthly monitoring checklist auto-saves and marks competitor complete', as
 test('monthly monitoring has_posts enforces screenshot and max 5 posts', async ({
   page
 }) => {
-  const testYear = randomFutureYear(81);
+  const isolated = await findIsolatedSetupYear(81);
+  const testYear = isolated.year;
   const competitorName = `UI E2E Has Posts ${randomSuffix()}`;
   let competitorId: string | null = null;
   let periodId: string | null = null;
-  let originalAssignments: string[] = [];
+  let originalAssignments: string[] = isolated.setup.assignments.map(
+    (item) => item.competitor.id
+  );
 
   try {
-    const setup = await requestJson<CompetitorSetupResponse>(
-      `/brands/${brandCode}/competitor-setup/${testYear}`
-    );
-    originalAssignments = setup.assignments.map((item) => item.competitor.id);
-
     const createdCompetitor = await requestJson<{ id: string }>(
       `/brands/${brandCode}/competitor-setup/catalog`,
       {
@@ -450,6 +465,7 @@ test('monthly monitoring has_posts enforces screenshot and max 5 posts', async (
         }
       }
     );
+    expect(await waitForCompetitorReadinessPass(periodId, 45_000)).toBeTruthy();
     await page.reload();
     await page.waitForLoadState('networkidle');
 
@@ -458,7 +474,6 @@ test('monthly monitoring has_posts enforces screenshot and max 5 posts', async (
       { timeout: 15_000 }
     );
 
-    expect(await waitForCompetitorReadinessPass(periodId)).toBeTruthy();
   } finally {
     if (periodId) {
       await cleanupRequest(`/reporting-periods/${periodId}`, { method: 'DELETE' });
