@@ -153,6 +153,13 @@ async function setAdminCookie(page: Page) {
   ]);
 }
 
+function isSaveAssignmentsResponse(url: string, year: number) {
+  return (
+    url.includes(`/brands/${brandCode}/competitor-setup/${year}/assignments`) &&
+    !url.includes('/assignments/')
+  );
+}
+
 test('admin setup can assign competitor and save assignments', async ({ page }) => {
   const testYear = randomFutureYear(70);
   const competitorName = `UI E2E Catalog ${randomSuffix()}`;
@@ -185,14 +192,25 @@ test('admin setup can assign competitor and save assignments', async ({ page }) 
     await expect(page.getByTestId('competitor-setup-manager')).toBeVisible();
     await page.getByTestId('catalog-search-input').fill(competitorName);
     await expect(page.getByTestId(`add-assignment-${competitorId}`)).toBeVisible();
-    await page
-      .getByTestId(`add-assignment-${competitorId}`)
-      .evaluate((element: HTMLElement) => element.click());
+
+    const saveAssignmentsResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        isSaveAssignmentsResponse(response.url(), testYear) &&
+        response.ok(),
+      {
+        timeout: 20_000
+      }
+    );
+    await page.getByTestId(`add-assignment-${competitorId}`).click();
+    await saveAssignmentsResponse;
+
+    await expect(page.getByTestId('setup-status-message')).toContainText('Assigned', {
+      timeout: 20_000
+    });
     await expect(
       page.getByTestId(`assigned-competitor-${competitorId}`)
-    ).toBeVisible();
-
-    await expect(page.getByTestId('setup-status-message')).toContainText('Assigned');
+    ).toBeVisible({ timeout: 20_000 });
     await expect(
       page.getByTestId(`assigned-competitor-${competitorId}`)
     ).toContainText(competitorName);
