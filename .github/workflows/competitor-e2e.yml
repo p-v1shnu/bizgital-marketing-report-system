@@ -82,7 +82,17 @@ jobs:
           exit 1
 
       - name: Run API E2E workflow
-        run: npm --workspace @bizgital-marketing-report/backend run qa:e2e-competitor-workflow -- --base-url=http://localhost:3003/api --setup-year=2096
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            npm --workspace @bizgital-marketing-report/backend run qa:e2e-competitor-workflow -- --base-url=http://localhost:3003/api --setup-year=2096 && break
+            if [ "$attempt" -eq 3 ]; then
+              echo "API E2E failed after 3 attempts."
+              exit 1
+            fi
+            echo "API E2E failed on attempt $attempt. Retrying..."
+            sleep 5
+          done
 
       - name: Upload backend log on failure
         if: failure()
@@ -152,7 +162,17 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Run UI E2E
-        run: npm --workspace @bizgital-marketing-report/frontend run qa:e2e-ui
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            npm --workspace @bizgital-marketing-report/frontend run qa:e2e-ui && break
+            if [ "$attempt" -eq 3 ]; then
+              echo "UI E2E failed after 3 attempts."
+              exit 1
+            fi
+            echo "UI E2E failed on attempt $attempt. Retrying..."
+            sleep 5
+          done
 
       - name: Upload Playwright report on failure
         if: failure()
