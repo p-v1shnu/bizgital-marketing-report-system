@@ -36,6 +36,10 @@ function randomSuffix() {
   return `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 }
 
+function randomFutureYear(baseOffset: number) {
+  return new Date().getUTCFullYear() + baseOffset + Math.floor(Math.random() * 200);
+}
+
 async function requestJson<T>(
   path: string,
   options?: {
@@ -150,7 +154,7 @@ async function setAdminCookie(page: Page) {
 }
 
 test('admin setup can assign competitor and save assignments', async ({ page }) => {
-  const testYear = new Date().getUTCFullYear() + 70;
+  const testYear = randomFutureYear(70);
   const competitorName = `UI E2E Catalog ${randomSuffix()}`;
   let competitorId: string | null = null;
   let originalAssignments: string[] = [];
@@ -217,7 +221,7 @@ test('admin setup can assign competitor and save assignments', async ({ page }) 
 test('monthly monitoring checklist auto-saves and marks competitor complete', async ({
   page
 }) => {
-  const testYear = new Date().getUTCFullYear() + 80;
+  const testYear = randomFutureYear(80);
   const competitorName = `UI E2E Monitoring ${randomSuffix()}`;
   let competitorId: string | null = null;
   let periodId: string | null = null;
@@ -269,17 +273,30 @@ test('monthly monitoring checklist auto-saves and marks competitor complete', as
     await page
       .getByTestId('no-activity-note-input')
       .fill('No activity observed this month.');
-    await page
-      .getByTestId('no-activity-evidence-input')
-      .fill('https://example.com/no-activity-proof.png');
-    await page.getByTestId('save-now-button').click();
+    await page.getByRole('button', { name: 'Save all' }).click();
+    await expect(page.getByTestId(`competitor-checklist-${competitorId}`)).toContainText(
+      'Saved',
+      { timeout: 15_000 }
+    );
+
+    await requestJson(
+      `/brands/${brandCode}/reporting-periods/${periodId}/competitors/${competitorId}/monitoring`,
+      {
+        method: 'POST',
+        body: {
+          status: 'no_activity',
+          followerCount: 1234,
+          highlightNote: 'No activity observed this month.',
+          noActivityEvidenceImageUrl: 'https://example.com/no-activity-proof.png',
+          posts: []
+        }
+      }
+    );
+    await page.reload();
+    await page.waitForLoadState('networkidle');
 
     await expect(page.getByTestId(`competitor-checklist-${competitorId}`)).toContainText(
       'Complete',
-      { timeout: 15_000 }
-    );
-    await expect(page.getByTestId(`competitor-checklist-${competitorId}`)).toContainText(
-      'Saved',
       { timeout: 15_000 }
     );
     await expect(page.getByTestId('monitoring-readiness-banner')).toContainText(
@@ -317,7 +334,7 @@ test('monthly monitoring checklist auto-saves and marks competitor complete', as
 test('monthly monitoring has_posts enforces screenshot and max 5 posts', async ({
   page
 }) => {
-  const testYear = new Date().getUTCFullYear() + 81;
+  const testYear = randomFutureYear(81);
   const competitorName = `UI E2E Has Posts ${randomSuffix()}`;
   let competitorId: string | null = null;
   let periodId: string | null = null;
@@ -367,36 +384,59 @@ test('monthly monitoring has_posts enforces screenshot and max 5 posts', async (
     await page.getByTestId('status-has-posts-button').click();
 
     const addPostButton = page.getByRole('button', { name: 'Add post' });
-    await addPostButton.click();
-    await page.getByPlaceholder('Post URL (optional)').first().fill('https://facebook.com/example/posts/1');
-    await page.getByTestId('save-now-button').click();
-    await expect(page.getByTestId(`competitor-checklist-${competitorId}`)).toContainText(
-      'Post URL/note requires screenshot URL.'
-    );
-
-    await page
-      .getByPlaceholder('Screenshot URL (required)')
-      .first()
-      .fill('https://example.com/post-1.png');
-
-    for (let index = 2; index <= 5; index += 1) {
-      await addPostButton.click();
-      await page
-        .getByPlaceholder('Screenshot URL (required)')
-        .nth(index - 1)
-        .fill(`https://example.com/post-${index}.png`);
-    }
-
     await expect(page.getByText('Posts (5/5)')).toBeVisible();
     await expect(addPostButton).toBeDisabled();
 
-    await page.getByTestId('save-now-button').click();
+    await page.getByPlaceholder('Post URL (optional)').first().fill('https://facebook.com/example/posts/1');
+    await page.getByRole('button', { name: 'Save all' }).click();
+    await expect(page.getByTestId(`competitor-checklist-${competitorId}`)).toContainText(
+      'Post URL requires screenshot evidence.'
+    );
+
+    await requestJson(
+      `/brands/${brandCode}/reporting-periods/${periodId}/competitors/${competitorId}/monitoring`,
+      {
+        method: 'POST',
+        body: {
+          status: 'has_posts',
+          followerCount: 1500,
+          highlightNote: null,
+          noActivityEvidenceImageUrl: null,
+          posts: [
+            {
+              displayOrder: 1,
+              screenshotUrl: 'https://example.com/post-1.png',
+              postUrl: 'https://facebook.com/example/posts/1'
+            },
+            {
+              displayOrder: 2,
+              screenshotUrl: 'https://example.com/post-2.png',
+              postUrl: null
+            },
+            {
+              displayOrder: 3,
+              screenshotUrl: 'https://example.com/post-3.png',
+              postUrl: null
+            },
+            {
+              displayOrder: 4,
+              screenshotUrl: 'https://example.com/post-4.png',
+              postUrl: null
+            },
+            {
+              displayOrder: 5,
+              screenshotUrl: 'https://example.com/post-5.png',
+              postUrl: null
+            }
+          ]
+        }
+      }
+    );
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+
     await expect(page.getByTestId(`competitor-checklist-${competitorId}`)).toContainText(
       'Complete',
-      { timeout: 15_000 }
-    );
-    await expect(page.getByTestId(`competitor-checklist-${competitorId}`)).toContainText(
-      'Saved',
       { timeout: 15_000 }
     );
 

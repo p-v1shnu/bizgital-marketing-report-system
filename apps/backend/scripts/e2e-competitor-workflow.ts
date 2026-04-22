@@ -512,7 +512,7 @@ async function main() {
         method: 'POST',
         body: {
           status: 'no_activity',
-          noActivityNote: 'No posts detected this month.',
+          highlightNote: 'No posts detected this month.',
           noActivityEvidenceImageUrl: 'https://example.com/no-activity-evidence.png'
         }
       }
@@ -537,7 +537,7 @@ async function main() {
         body: {
           status: 'no_activity',
           followerCount: 1200,
-          noActivityNote: 'No posts found after checking all channels this month.'
+          highlightNote: 'No posts found after checking all channels this month.'
         }
       }
     );
@@ -567,7 +567,7 @@ async function main() {
         body: {
           status: 'no_activity',
           followerCount: 1200,
-          noActivityNote: 'No posts found after checking all channels this month.',
+          highlightNote: 'No posts found after checking all channels this month.',
           noActivityEvidenceImageUrl: 'https://example.com/no-activity-evidence.png'
         }
       }
