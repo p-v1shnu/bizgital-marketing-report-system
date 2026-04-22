@@ -1,0 +1,36 @@
+{
+  "name": "@bizgital-marketing-report/frontend",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "set INTERNAL_API_BASE_URL=http://localhost:3003/api&& set NEXT_PUBLIC_API_BASE_URL=http://localhost:3003/api&& next dev --webpack --hostname 0.0.0.0 --port 3200",
+    "dev:e2e": "next dev --webpack --hostname 0.0.0.0 --port 3200",
+    "build": "next build --webpack",
+    "start": "next start --hostname 0.0.0.0 --port 3000",
+    "qa:e2e-ui": "playwright test --config ./playwright.config.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@radix-ui/react-separator": "^1.1.8",
+    "@radix-ui/react-slot": "^1.2.4",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "html-to-image": "^1.11.13",
+    "lucide-react": "^1.8.0",
+    "next": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "recharts": "^3.8.1",
+    "tailwind-merge": "^3.5.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.54.2",
+    "@tailwindcss/postcss": "^4.2.2",
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "postcss": "^8.4.31",
+    "tailwindcss": "^4.2.2",
+    "typescript": "latest"
+  }
+}

@@ -1,0 +1,762 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum ReportCadence {
+  monthly
+  quarterly
+  yearly
+}
+
+enum ReportingPeriodState {
+  not_started
+  in_progress
+  submitted
+  approved
+  rejected
+}
+
+enum ReportWorkflowState {
+  draft
+  submitted
+  approved
+  rejected
+  superseded
+}
+
+enum ImportJobStatus {
+  uploaded
+  ready_for_mapping
+  failed
+}
+
+enum MappingTargetField {
+  post_name
+  published_at
+  platform
+  campaign_name
+  views
+  viewers
+  page_followers
+  engagement
+  video_views_3s
+  content_url
+}
+
+enum BrandStatus {
+  active
+  inactive
+}
+
+enum BrandDropdownFieldKey {
+  content_style
+  related_product
+  media_format
+  campaign_base
+  content_objective
+}
+
+enum BrandDropdownOptionStatus {
+  active
+  deprecated
+}
+
+enum ComputedColumnKey {
+  engagement
+}
+
+enum ComputedColumnOperation {
+  sum
+}
+
+enum KpiSourceType {
+  canonical_metric
+  formula_column
+}
+
+enum UserStatus {
+  active
+  invited
+  inactive
+}
+
+enum BrandRole {
+  admin
+  content
+  approver
+  viewer
+  auditor
+}
+
+enum BrandCompetitorStatus {
+  active
+  inactive
+}
+
+enum CompetitorStatus {
+  active
+  inactive
+}
+
+enum CompetitorMonitoringStatus {
+  has_posts
+  no_activity
+}
+
+enum QuestionStatus {
+  active
+  inactive
+}
+
+enum QuestionMonthlyMode {
+  has_questions
+  no_questions
+}
+
+model User {
+  id          String            @id @default(cuid())
+  email       String            @unique
+  displayName String            @map("display_name")
+  status      UserStatus        @default(active)
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+
+  brandMemberships BrandMembership[]
+
+  @@map("users")
+}
+
+model Brand {
+  id        String       @id @default(cuid())
+  code      String       @unique
+  name      String
+  timezone  String       @default("Asia/Vientiane")
+  status    BrandStatus  @default(active)
+  activatedAt DateTime?  @map("activated_at")
+  deactivatedAt DateTime? @map("deactivated_at")
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+
+  memberships      BrandMembership[]
+  reportingPeriods ReportingPeriod[]
+  brandCompetitors BrandCompetitor[]
+  brandCompetitorAssignments BrandCompetitorAssignment[]
+  questionActivations BrandQuestionActivation[]
+  dropdownOptions  BrandDropdownOption[]
+  kpiPlans         BrandKpiPlan[]
+
+  @@map("brands")
+}
+
+model BrandMembership {
+  id        String    @id @default(cuid())
+  brandId   String    @map("brand_id")
+  userId    String    @map("user_id")
+  role      BrandRole
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([brandId, userId, role], name: "brand_membership_brand_user_role_unique")
+  @@index([brandId])
+  @@index([userId])
+  @@map("brand_memberships")
+}
+
+model BrandDropdownOption {
+  id        String                    @id @default(cuid())
+  brandId   String                    @map("brand_id")
+  fieldKey  BrandDropdownFieldKey     @map("field_key")
+  valueKey  String                    @map("value_key")
+  label     String
+  sortOrder Int                       @default(0) @map("sort_order")
+  status    BrandDropdownOptionStatus @default(active)
+  createdAt DateTime                  @default(now()) @map("created_at")
+  updatedAt DateTime                  @updatedAt @map("updated_at")
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@unique([brandId, fieldKey, valueKey], name: "brand_dropdown_option_brand_field_value_key_unique")
+  @@index([brandId, fieldKey, status, sortOrder])
+  @@map("brand_dropdown_options")
+}
+
+model GlobalCompanyFormatOption {
+  id        String                    @id @default(cuid())
+  fieldKey  BrandDropdownFieldKey     @map("field_key")
+  valueKey  String                    @map("value_key")
+  label     String
+  sortOrder Int                       @default(0) @map("sort_order")
+  status    BrandDropdownOptionStatus @default(active)
+  createdAt DateTime                  @default(now()) @map("created_at")
+  updatedAt DateTime                  @updatedAt @map("updated_at")
+
+  @@unique([fieldKey, valueKey], name: "global_company_format_option_field_value_key_unique")
+  @@index([fieldKey, status, sortOrder])
+  @@map("global_company_format_options")
+}
+
+model GlobalComputedColumnSetting {
+  id           String                  @id @default(cuid())
+  key          ComputedColumnKey       @unique
+  label        String
+  operation    ComputedColumnOperation @default(sum)
+  sourceLabelA String                  @map("source_label_a")
+  sourceLabelB String                  @map("source_label_b")
+  createdAt    DateTime                @default(now()) @map("created_at")
+  updatedAt    DateTime                @updatedAt @map("updated_at")
+
+  @@map("global_computed_column_settings")
+}
+
+model GlobalComputedFormula {
+  id          String   @id @default(cuid())
+  columnLabel String   @db.VarChar(255) @map("column_label")
+  expression  String   @db.Text
+  isActive    Boolean  @default(false) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  kpiCatalogItems GlobalKpiCatalog[]
+
+  @@index([isActive, createdAt])
+  @@map("global_computed_formulas")
+}
+
+model GlobalUiSetting {
+  settingKey String   @id @map("setting_key")
+  valueJson  String   @db.LongText @map("value_json")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@map("global_ui_settings")
+}
+
+model GlobalKpiCatalog {
+  id                 String          @id @default(cuid())
+  key                String          @unique
+  label              String
+  description        String?         @db.Text
+  sourceType         KpiSourceType   @map("source_type")
+  canonicalMetricKey MappingTargetField? @map("canonical_metric_key")
+  formulaId          String?         @map("formula_id")
+  isActive           Boolean         @default(true) @map("is_active")
+  createdAt          DateTime        @default(now()) @map("created_at")
+  updatedAt          DateTime        @updatedAt @map("updated_at")
+
+  formula  GlobalComputedFormula? @relation(fields: [formulaId], references: [id], onDelete: SetNull)
+  planItems BrandKpiPlanItem[]
+
+  @@index([isActive, createdAt])
+  @@index([sourceType])
+  @@index([canonicalMetricKey])
+  @@index([formulaId])
+  @@map("global_kpi_catalog")
+}
+
+model BrandKpiPlan {
+  id        String   @id @default(cuid())
+  brandId   String   @map("brand_id")
+  year      Int
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  items BrandKpiPlanItem[]
+
+  @@unique([brandId, year], name: "brand_kpi_plan_brand_year_unique")
+  @@index([brandId, year])
+  @@map("brand_kpi_plans")
+}
+
+model BrandKpiPlanItem {
+  id             String   @id @default(cuid())
+  brandKpiPlanId String   @map("brand_kpi_plan_id")
+  kpiCatalogId   String   @map("kpi_catalog_id")
+  targetValue    Float?   @map("target_value")
+  sortOrder      Int      @default(0) @map("sort_order")
+  note           String?  @db.Text
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  brandKpiPlan BrandKpiPlan   @relation(fields: [brandKpiPlanId], references: [id], onDelete: Cascade)
+  kpiCatalog   GlobalKpiCatalog @relation(fields: [kpiCatalogId], references: [id], onDelete: Restrict)
+
+  @@unique([brandKpiPlanId, kpiCatalogId], name: "brand_kpi_plan_item_plan_kpi_unique")
+  @@index([brandKpiPlanId, sortOrder])
+  @@index([kpiCatalogId])
+  @@map("brand_kpi_plan_items")
+}
+
+model ReportingPeriod {
+  id           String               @id @default(cuid())
+  brandId      String               @map("brand_id")
+  cadence      ReportCadence        @default(monthly)
+  year         Int
+  month        Int
+  currentState ReportingPeriodState @default(not_started) @map("current_state")
+  questionSnapshotCapturedAt DateTime? @map("question_snapshot_captured_at")
+  deletedAt    DateTime?            @map("deleted_at")
+  deletedByName String?             @map("deleted_by_name")
+  deletedByEmail String?            @map("deleted_by_email")
+  purgeAt      DateTime?            @map("purge_at")
+  createdAt    DateTime             @default(now()) @map("created_at")
+  updatedAt    DateTime             @updatedAt @map("updated_at")
+
+  brand                       Brand                            @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  reportVersions              ReportVersion[]
+  questionPeriodAssignments   ReportingPeriodQuestionAssignment[]
+
+  @@unique([brandId, cadence, year, month], name: "reporting_period_brand_year_month_unique")
+  @@index([brandId, year, month])
+  @@index([deletedAt, purgeAt])
+  @@map("reporting_periods")
+}
+
+model ReportingPeriodQuestionAssignment {
+  id                      String   @id @default(cuid())
+  reportingPeriodId       String   @map("reporting_period_id")
+  brandQuestionActivationId String @map("brand_question_activation_id")
+  questionMasterId        String   @map("question_master_id")
+  questionTextSnapshot    String   @db.Text @map("question_text_snapshot")
+  displayOrder            Int      @default(0) @map("display_order")
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
+
+  reportingPeriod ReportingPeriod @relation(fields: [reportingPeriodId], references: [id], onDelete: Cascade)
+
+  @@unique([reportingPeriodId, brandQuestionActivationId], name: "reporting_period_question_assignment_period_activation_unique")
+  @@index([reportingPeriodId, displayOrder])
+  @@index([questionMasterId])
+  @@map("reporting_period_question_assignments")
+}
+
+model ReportVersion {
+  id                   String              @id @default(cuid())
+  reportingPeriodId    String              @map("reporting_period_id")
+  versionNo            Int                 @map("version_no")
+  cadence              ReportCadence       @default(monthly)
+  workflowState        ReportWorkflowState @default(draft) @map("workflow_state")
+  createdFromVersionId String?             @map("created_from_version_id")
+  rejectionReason      String?             @db.Text @map("rejection_reason")
+  changeSummary        String?             @db.Text @map("change_summary")
+  submittedAt          DateTime?           @map("submitted_at")
+  approvedAt           DateTime?           @map("approved_at")
+  rejectedAt           DateTime?           @map("rejected_at")
+  supersededAt         DateTime?           @map("superseded_at")
+  questionHighlightNote String?            @db.LongText @map("question_highlight_note")
+  createdAt            DateTime            @default(now()) @map("created_at")
+  updatedAt            DateTime            @updatedAt @map("updated_at")
+
+  reportingPeriod    ReportingPeriod @relation(fields: [reportingPeriodId], references: [id], onDelete: Cascade)
+  createdFromVersion ReportVersion?  @relation("ReportVersionRevisionChain", fields: [createdFromVersionId], references: [id], onDelete: SetNull)
+  revisions          ReportVersion[] @relation("ReportVersionRevisionChain")
+  importJobs         ImportJob[]
+  columnMappings     ColumnMapping[]
+  datasetRows        DatasetRow[]
+  metricSnapshot     MetricSnapshot?
+  topContentCards    TopContentCard[]
+  competitorEvidence CompetitorEvidence[]
+  competitorMonitoringRecords CompetitorMonitoring[]
+  questionEvidence   QuestionEvidence[]
+  questionHighlightScreenshots QuestionHighlightScreenshot[]
+
+  @@unique([reportingPeriodId, versionNo])
+  @@index([reportingPeriodId, workflowState])
+  @@map("report_versions")
+}
+
+model ImportJob {
+  id               String          @id @default(cuid())
+  reportVersionId  String          @map("report_version_id")
+  originalFilename String          @map("original_filename")
+  storedFilename   String          @map("stored_filename")
+  storagePath      String          @map("storage_path")
+  mimeType         String?         @map("mime_type")
+  fileSize         Int             @map("file_size")
+  snapshotSourceType String?       @map("snapshot_source_type")
+  snapshotSheetName  String?       @map("snapshot_sheet_name")
+  snapshotHeaderRow  Json?         @map("snapshot_header_row")
+  snapshotDataRows   Json?         @map("snapshot_data_rows")
+  snapshotCapturedAt DateTime?     @map("snapshot_captured_at")
+  status           ImportJobStatus @default(uploaded)
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+
+  reportVersion       ReportVersion       @relation(fields: [reportVersionId], references: [id], onDelete: Cascade)
+  columnProfiles      ImportColumnProfile[]
+  sourceColumnMappings ColumnMapping[]
+  datasetRows         DatasetRow[]
+
+  @@index([reportVersionId, status])
+  @@map("import_jobs")
+}
+
+model ImportColumnProfile {
+  id               String   @id @default(cuid())
+  importJobId      String   @map("import_job_id")
+  sourceColumnName String   @map("source_column_name")
+  sourcePosition   Int      @map("source_position")
+  sampleValue      String?  @db.Text @map("sample_value")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  importJob ImportJob @relation(fields: [importJobId], references: [id], onDelete: Cascade)
+  mappings  ColumnMapping[]
+
+  @@unique([importJobId, sourcePosition], name: "import_column_profile_job_position_unique")
+  @@index([importJobId])
+  @@map("import_column_profiles")
+}
+
+model ColumnMapping {
+  id                    String             @id @default(cuid())
+  reportVersionId       String             @map("report_version_id")
+  importJobId           String             @map("import_job_id")
+  importColumnProfileId String             @map("import_column_profile_id")
+  targetField           MappingTargetField @map("target_field")
+  createdAt             DateTime           @default(now()) @map("created_at")
+  updatedAt             DateTime           @updatedAt @map("updated_at")
+
+  reportVersion       ReportVersion       @relation(fields: [reportVersionId], references: [id], onDelete: Cascade)
+  importJob           ImportJob           @relation(fields: [importJobId], references: [id], onDelete: Cascade)
+  importColumnProfile ImportColumnProfile @relation(fields: [importColumnProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([reportVersionId, importColumnProfileId], name: "column_mapping_version_column_unique")
+  @@index([reportVersionId, targetField])
+  @@index([importJobId])
+  @@map("column_mappings")
+}
+
+model DatasetRow {
+  id              String   @id @default(cuid())
+  reportVersionId String   @map("report_version_id")
+  importJobId     String   @map("import_job_id")
+  sourceRowNumber Int      @map("source_row_number")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  reportVersion ReportVersion @relation(fields: [reportVersionId], references: [id], onDelete: Cascade)
+  importJob     ImportJob     @relation(fields: [importJobId], references: [id], onDelete: Cascade)
+  cells         DatasetCell[]
+  topContentCards TopContentCard[]
+
+  @@unique([reportVersionId, sourceRowNumber], name: "dataset_row_version_row_unique")
+  @@index([reportVersionId])
+  @@index([importJobId])
+  @@map("dataset_rows")
+}
+
+model DatasetCell {
+  id          String             @id @default(cuid())
+  datasetRowId String            @map("dataset_row_id")
+  targetField MappingTargetField @map("target_field")
+  value       String?            @db.Text
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+
+  datasetRow DatasetRow           @relation(fields: [datasetRowId], references: [id], onDelete: Cascade)
+  override   DatasetCellOverride?
+
+  @@unique([datasetRowId, targetField], name: "dataset_cell_row_target_unique")
+  @@index([targetField])
+  @@map("dataset_cells")
+}
+
+model DatasetCellOverride {
+  id            String   @id @default(cuid())
+  datasetCellId String   @unique @map("dataset_cell_id")
+  overrideValue String?  @db.Text @map("override_value")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  datasetCell DatasetCell @relation(fields: [datasetCellId], references: [id], onDelete: Cascade)
+
+  @@map("dataset_cell_overrides")
+}
+
+model MetricSnapshot {
+  id              String   @id @default(cuid())
+  reportVersionId String   @unique @map("report_version_id")
+  generatedAt     DateTime @map("generated_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  reportVersion ReportVersion       @relation(fields: [reportVersionId], references: [id], onDelete: Cascade)
+  items         MetricSnapshotItem[]
+
+  @@map("metric_snapshots")
+}
+
+model MetricSnapshotItem {
+  id               String             @id @default(cuid())
+  metricSnapshotId String             @map("metric_snapshot_id")
+  metricKey        MappingTargetField @map("metric_key")
+  value            Float
+  rowCoverage      Int                @map("row_coverage")
+  overrideCount    Int                @map("override_count")
+  sourceColumnName String?            @map("source_column_name")
+  sourceAliasLabel String?            @map("source_alias_label")
+  createdAt        DateTime           @default(now()) @map("created_at")
+  updatedAt        DateTime           @updatedAt @map("updated_at")
+
+  metricSnapshot MetricSnapshot @relation(fields: [metricSnapshotId], references: [id], onDelete: Cascade)
+
+  @@unique([metricSnapshotId, metricKey], name: "metric_snapshot_item_snapshot_key_unique")
+  @@index([metricSnapshotId])
+  @@map("metric_snapshot_items")
+}
+
+model TopContentCard {
+  id             String             @id @default(cuid())
+  reportVersionId String            @map("report_version_id")
+  datasetRowId   String             @map("dataset_row_id")
+  slotKey        String             @map("slot_key")
+  metricKey      MappingTargetField @map("metric_key")
+  title          String?            @db.Text
+  headlineValue  Float              @map("headline_value")
+  caption        String?            @db.Text
+  externalUrl    String?            @db.Text @map("external_url")
+  screenshotUrl  String?            @db.Text @map("screenshot_url")
+  selectionBasis String             @map("selection_basis")
+  rankPosition   Int                @map("rank_position")
+  displayOrder   Int                @map("display_order")
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+
+  reportVersion ReportVersion @relation(fields: [reportVersionId], references: [id], onDelete: Cascade)
+  datasetRow    DatasetRow    @relation(fields: [datasetRowId], references: [id], onDelete: Cascade)
+
+  @@unique([reportVersionId, slotKey, rankPosition], name: "top_content_card_version_slot_rank_unique")
+  @@index([reportVersionId, displayOrder])
+  @@index([datasetRowId])
+  @@map("top_content_cards")
+}
+
+model Competitor {
+  id              String   @id @default(cuid())
+  name            String   @unique
+  primaryPlatform String   @map("primary_platform")
+  status          CompetitorStatus @default(active)
+  websiteUrl      String?  @db.Text @map("website_url")
+  facebookUrl     String?  @db.Text @map("facebook_url")
+  instagramUrl    String?  @db.Text @map("instagram_url")
+  tiktokUrl       String?  @db.Text @map("tiktok_url")
+  youtubeUrl      String?  @db.Text @map("youtube_url")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  brandCompetitors   BrandCompetitor[]
+  brandCompetitorAssignments BrandCompetitorAssignment[]
+  competitorEvidence CompetitorEvidence[]
+  monitoringRecords  CompetitorMonitoring[]
+
+  @@map("competitors")
+}
+
+model BrandCompetitorAssignment {
+  id           String   @id @default(cuid())
+  brandId      String   @map("brand_id")
+  competitorId String   @map("competitor_id")
+  year         Int
+  displayOrder Int      @default(0) @map("display_order")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  brand      Brand      @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  competitor Competitor @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  statusChanges BrandCompetitorAssignmentStatusChange[]
+
+  @@unique([brandId, year, competitorId], name: "brand_competitor_assignment_brand_year_competitor_unique")
+  @@index([brandId, year, displayOrder])
+  @@index([competitorId])
+  @@map("brand_competitor_assignments")
+}
+
+model BrandCompetitorAssignmentStatusChange {
+  id                   String           @id @default(cuid())
+  assignmentId         String           @map("assignment_id")
+  effectiveYear        Int              @map("effective_year")
+  effectiveMonth       Int              @map("effective_month")
+  status               CompetitorStatus
+  createdAt            DateTime         @default(now()) @map("created_at")
+  updatedAt            DateTime         @updatedAt @map("updated_at")
+
+  assignment BrandCompetitorAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+
+  @@unique([assignmentId, effectiveYear, effectiveMonth], name: "brand_competitor_assignment_status_change_unique")
+  @@index([assignmentId, effectiveYear, effectiveMonth], map: "bcasc_assignment_effective_idx")
+  @@map("brand_competitor_assignment_status_changes")
+}
+
+model BrandCompetitor {
+  id             String                @id @default(cuid())
+  brandId        String                @map("brand_id")
+  competitorId   String                @map("competitor_id")
+  activeFromYear Int                   @map("active_from_year")
+  activeToYear   Int?                  @map("active_to_year")
+  displayOrder   Int                   @default(0) @map("display_order")
+  status         BrandCompetitorStatus @default(active)
+  createdAt      DateTime              @default(now()) @map("created_at")
+  updatedAt      DateTime              @updatedAt @map("updated_at")
+
+  brand      Brand      @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  competitor Competitor @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+
+  @@unique([brandId, competitorId, activeFromYear], name: "brand_competitor_brand_competitor_year_unique")
+  @@index([brandId, activeFromYear, activeToYear, status])
+  @@map("brand_competitors")
+}
+
+model CompetitorEvidence {
+  id                  String   @id @default(cuid())
+  reportVersionId     String   @map("report_version_id")
+  competitorId        String   @map("competitor_id")
+  title               String   @db.Text
+  postUrl             String?  @db.Text @map("post_url")
+  note                String   @db.Text
+  capturedMetricValue Float?   @map("captured_metric_value")
+  capturedMetricLabel String?  @db.Text @map("captured_metric_label")
+  displayOrder        Int      @default(0) @map("display_order")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  reportVersion ReportVersion @relation(fields: [reportVersionId], references: [id], onDelete: Cascade)
+  competitor    Competitor    @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+
+  @@unique([reportVersionId, competitorId], name: "competitor_evidence_version_competitor_unique")
+  @@index([reportVersionId, displayOrder])
+  @@index([competitorId])
+  @@map("competitor_evidence")
+}
+
+model CompetitorMonitoring {
+  id                         String                     @id @default(cuid())
+  reportVersionId            String                     @map("report_version_id")
+  competitorId               String                     @map("competitor_id")
+  status                     CompetitorMonitoringStatus? @map("status")
+  followerCount              Int?                       @map("follower_count")
+  noActivityNote             String?                    @db.Text @map("no_activity_note")
+  noActivityEvidenceImageUrl String?                    @db.Text @map("no_activity_evidence_image_url")
+  createdAt                  DateTime                   @default(now()) @map("created_at")
+  updatedAt                  DateTime                   @updatedAt @map("updated_at")
+
+  reportVersion ReportVersion               @relation(fields: [reportVersionId], references: [id], onDelete: Cascade)
+  competitor    Competitor                  @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  posts         CompetitorMonitoringPost[]
+
+  @@unique([reportVersionId, competitorId], name: "competitor_monitoring_version_competitor_unique")
+  @@index([reportVersionId])
+  @@index([competitorId])
+  @@map("competitor_monitoring")
+}
+
+model CompetitorMonitoringPost {
+  id                    String   @id @default(cuid())
+  competitorMonitoringId String  @map("competitor_monitoring_id")
+  displayOrder          Int      @default(1) @map("display_order")
+  screenshotUrl         String   @db.Text @map("screenshot_url")
+  postUrl               String?  @db.Text @map("post_url")
+  note                  String?  @db.Text
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  competitorMonitoring CompetitorMonitoring @relation(fields: [competitorMonitoringId], references: [id], onDelete: Cascade)
+
+  @@unique([competitorMonitoringId, displayOrder], name: "competitor_monitoring_post_monitoring_display_unique")
+  @@index([competitorMonitoringId])
+  @@map("competitor_monitoring_posts")
+}
+
+model QuestionMaster {
+  id           String         @id @default(cuid())
+  questionText String         @unique @map("question_text")
+  status       QuestionStatus @default(active)
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+
+  brandActivations BrandQuestionActivation[]
+
+  @@map("question_masters")
+}
+
+model BrandQuestionActivation {
+  id             String         @id @default(cuid())
+  brandId        String         @map("brand_id")
+  questionMasterId String       @map("question_master_id")
+  activeFromDate DateTime       @map("active_from_date")
+  activeToDate   DateTime?      @map("active_to_date")
+  displayOrder   Int            @default(0) @map("display_order")
+  status         QuestionStatus @default(active)
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  brand         Brand          @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  questionMaster QuestionMaster @relation(fields: [questionMasterId], references: [id], onDelete: Cascade)
+  questionEvidence QuestionEvidence[]
+
+  @@unique([brandId, questionMasterId, activeFromDate], name: "brand_question_activation_brand_question_from_unique")
+  @@index([brandId, activeFromDate, activeToDate, status])
+  @@index([questionMasterId])
+  @@map("brand_question_activations")
+}
+
+model QuestionEvidence {
+  id                       String   @id @default(cuid())
+  reportVersionId          String   @map("report_version_id")
+  brandQuestionActivationId String  @map("brand_question_activation_id")
+  title                    String?  @db.Text
+  responseNote             String?  @db.Text @map("response_note")
+  postUrl                  String?  @db.Text @map("post_url")
+  mode                     QuestionMonthlyMode @default(has_questions)
+  questionCount            Int      @default(0) @map("question_count")
+  displayOrder             Int      @default(0) @map("display_order")
+  createdAt                DateTime @default(now()) @map("created_at")
+  updatedAt                DateTime @updatedAt @map("updated_at")
+
+  reportVersion          ReportVersion           @relation(fields: [reportVersionId], references: [id], onDelete: Cascade)
+  brandQuestionActivation BrandQuestionActivation @relation(fields: [brandQuestionActivationId], references: [id], onDelete: Cascade)
+  screenshots            QuestionEvidenceScreenshot[]
+
+  @@unique([reportVersionId, brandQuestionActivationId], name: "question_evidence_version_activation_unique")
+  @@index([reportVersionId, displayOrder])
+  @@index([brandQuestionActivationId])
+  @@map("question_evidence")
+}
+
+model QuestionEvidenceScreenshot {
+  id                 String   @id @default(cuid())
+  questionEvidenceId String   @map("question_evidence_id")
+  displayOrder       Int      @default(1) @map("display_order")
+  screenshotUrl      String   @db.Text @map("screenshot_url")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  questionEvidence QuestionEvidence @relation(fields: [questionEvidenceId], references: [id], onDelete: Cascade)
+
+  @@unique([questionEvidenceId, displayOrder], name: "question_evidence_screenshot_evidence_order_unique")
+  @@index([questionEvidenceId])
+  @@map("question_evidence_screenshots")
+}
+
+model QuestionHighlightScreenshot {
+  id              String   @id @default(cuid())
+  reportVersionId String   @map("report_version_id")
+  displayOrder    Int      @default(1) @map("display_order")
+  screenshotUrl   String   @db.Text @map("screenshot_url")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  reportVersion ReportVersion @relation(fields: [reportVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([reportVersionId, displayOrder], name: "question_highlight_screenshot_version_order_unique")
+  @@index([reportVersionId])
+  @@map("question_highlight_screenshots")
+}

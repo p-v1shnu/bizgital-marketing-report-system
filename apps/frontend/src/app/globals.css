@@ -1,0 +1,234 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 6px);
+  --font-sans: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+  --font-serif: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+}
+
+:root {
+  color-scheme: light dark;
+  --background: #f5efe4;
+  --foreground: #1f1a14;
+  --card: rgba(255, 250, 241, 0.82);
+  --card-foreground: #231d17;
+  --popover: rgba(255, 249, 239, 0.96);
+  --popover-foreground: #231d17;
+  --primary: #b4502f;
+  --primary-foreground: #fff8f1;
+  --secondary: rgba(114, 98, 77, 0.12);
+  --secondary-foreground: #3e3327;
+  --muted: rgba(114, 98, 77, 0.08);
+  --muted-foreground: #695947;
+  --accent: rgba(31, 106, 82, 0.12);
+  --accent-foreground: #1f6a52;
+  --destructive: #bb3d2b;
+  --border: rgba(31, 26, 20, 0.12);
+  --input: rgba(31, 26, 20, 0.14);
+  --ring: rgba(180, 80, 47, 0.4);
+  --radius: 1.5rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #12100d;
+    --foreground: #f4ebdc;
+    --card: rgba(26, 22, 18, 0.84);
+    --card-foreground: #f4ebdc;
+    --popover: rgba(26, 22, 18, 0.96);
+    --popover-foreground: #f4ebdc;
+    --primary: #f18c57;
+    --primary-foreground: #1d140f;
+    --secondary: rgba(244, 235, 220, 0.08);
+    --secondary-foreground: #f4ebdc;
+    --muted: rgba(244, 235, 220, 0.06);
+    --muted-foreground: #c7b89f;
+    --accent: rgba(88, 184, 148, 0.14);
+    --accent-foreground: #7be1bb;
+    --destructive: #ff8a71;
+    --border: rgba(244, 235, 220, 0.12);
+    --input: rgba(244, 235, 220, 0.16);
+    --ring: rgba(241, 140, 87, 0.44);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html,
+  body {
+    @apply min-h-full;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    background-image:
+      radial-gradient(circle at top left, rgba(180, 80, 47, 0.16), transparent 36%),
+      radial-gradient(circle at right center, rgba(31, 106, 82, 0.12), transparent 28%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent);
+  }
+
+  a {
+    @apply text-inherit no-underline;
+  }
+}
+
+@keyframes login-float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(0, -16px, 0) scale(1.04);
+  }
+}
+
+@keyframes login-rise {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 18px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.login-atmosphere {
+  background:
+    radial-gradient(circle at 12% 16%, rgba(241, 140, 87, 0.22), transparent 35%),
+    radial-gradient(circle at 85% 14%, rgba(123, 225, 187, 0.18), transparent 30%),
+    radial-gradient(circle at 50% 100%, rgba(241, 140, 87, 0.1), transparent 48%);
+}
+
+.login-orb {
+  pointer-events: none;
+  position: absolute;
+  border-radius: 9999px;
+  mix-blend-mode: screen;
+  filter: blur(10px);
+  opacity: 0.44;
+}
+
+.login-orb--primary {
+  width: min(44vw, 460px);
+  aspect-ratio: 1 / 1;
+  left: -10%;
+  top: -8%;
+  background: radial-gradient(circle at 30% 30%, rgba(255, 196, 145, 0.5), rgba(241, 140, 87, 0.05));
+  animation: login-float 15s ease-in-out infinite;
+}
+
+.login-orb--accent {
+  width: min(48vw, 520px);
+  aspect-ratio: 1 / 1;
+  right: -14%;
+  bottom: -20%;
+  background: radial-gradient(circle at 65% 45%, rgba(123, 225, 187, 0.35), rgba(70, 152, 123, 0.05));
+  animation: login-float 18s ease-in-out infinite reverse;
+}
+
+.login-grid-overlay {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 48px 48px;
+  opacity: 0.1;
+  mask-image: radial-gradient(circle at center, black 20%, transparent 90%);
+}
+
+.login-card {
+  background: color-mix(in oklab, var(--card) 92%, transparent);
+  backdrop-filter: blur(10px);
+  box-shadow:
+    0 20px 50px -26px rgba(0, 0, 0, 0.65),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.login-rise {
+  animation: login-rise 620ms ease-out both;
+}
+
+@media (max-width: 1024px) {
+  .login-orb--primary {
+    left: -25%;
+    top: -12%;
+  }
+
+  .login-orb--accent {
+    right: -35%;
+    bottom: -20%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-orb--primary,
+  .login-orb--accent,
+  .login-rise {
+    animation: none;
+  }
+}
+
+[data-dashboard-export-theme='light'] {
+  color-scheme: light;
+  --background: #ffffff;
+  --foreground: #111827;
+  --card: #ffffff;
+  --card-foreground: #111827;
+  --popover: #ffffff;
+  --popover-foreground: #111827;
+  --primary: #d97745;
+  --primary-foreground: #fff7ed;
+  --secondary: rgba(15, 23, 42, 0.06);
+  --secondary-foreground: #1f2937;
+  --muted: rgba(15, 23, 42, 0.05);
+  --muted-foreground: #64748b;
+  --accent: rgba(16, 185, 129, 0.12);
+  --accent-foreground: #047857;
+  --destructive: #dc2626;
+  --border: rgba(15, 23, 42, 0.12);
+  --input: rgba(15, 23, 42, 0.16);
+  --ring: rgba(217, 119, 69, 0.34);
+}
+
+[data-dashboard-export-theme='light'] .recharts-cartesian-axis-tick-value {
+  fill: #64748b !important;
+}
+
+[data-dashboard-export-theme='light'] .recharts-cartesian-grid line {
+  stroke: rgba(100, 116, 139, 0.22) !important;
+}
+
+[data-dashboard-export-theme='light'] .recharts-legend-item-text {
+  color: #334155 !important;
+}
+
+[data-dashboard-export-theme='light'] .recharts-tooltip-cursor {
+  fill: rgba(100, 116, 139, 0.08) !important;
+}

@@ -1,0 +1,164 @@
+name: Competitor E2E
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - 'codex/**'
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  api-e2e:
+    name: API E2E (Monitoring Workflow)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      mysql:
+        image: mysql:8.4
+        ports:
+          - 3306:3306
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: bizgital_marketing_report
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+    env:
+      DATABASE_URL: mysql://root:root@127.0.0.1:3306/bizgital_marketing_report
+      PORT: 3003
+      API_PREFIX: api
+      IMPORT_STORAGE_DIR: storage/imports
+      APP_ORIGIN: http://localhost:3200
+      INTERNAL_API_BASE_URL: http://localhost:3003/api
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:3003/api
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Wait for MySQL
+        shell: bash
+        run: |
+          for i in {1..40}; do
+            (echo > /dev/tcp/127.0.0.1/3306) >/dev/null 2>&1 && exit 0
+            sleep 2
+          done
+          echo "MySQL did not become ready in time."
+          exit 1
+
+      - name: Prepare database
+        run: |
+          npm --workspace @bizgital-marketing-report/backend run db:generate
+          npm --workspace @bizgital-marketing-report/backend run db:push
+          npm --workspace @bizgital-marketing-report/backend run db:seed
+          npm --workspace @bizgital-marketing-report/backend run db:backfill-competitor-assignments
+
+      - name: Start backend
+        shell: bash
+        run: |
+          npm --workspace @bizgital-marketing-report/backend run start:e2e > backend.log 2>&1 &
+
+      - name: Wait for backend health
+        shell: bash
+        run: |
+          for i in {1..80}; do
+            curl -fsS http://localhost:3003/api/health && exit 0
+            sleep 2
+          done
+          echo "Backend health endpoint did not become ready."
+          tail -n 200 backend.log || true
+          exit 1
+
+      - name: Run API E2E workflow
+        run: npm --workspace @bizgital-marketing-report/backend run qa:e2e-competitor-workflow -- --base-url=http://localhost:3003/api --setup-year=2096
+
+      - name: Upload backend log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-e2e-backend-log
+          path: backend.log
+
+  ui-e2e:
+    name: UI E2E (Admin Setup + Monitoring Checklist)
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      mysql:
+        image: mysql:8.4
+        ports:
+          - 3306:3306
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: bizgital_marketing_report
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+    env:
+      DATABASE_URL: mysql://root:root@127.0.0.1:3306/bizgital_marketing_report
+      PORT: 3003
+      API_PREFIX: api
+      IMPORT_STORAGE_DIR: storage/imports
+      APP_ORIGIN: http://localhost:3200
+      INTERNAL_API_BASE_URL: http://localhost:3003/api
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:3003/api
+      E2E_BACKEND_BASE_URL: http://localhost:3003/api
+      E2E_FRONTEND_BASE_URL: http://localhost:3200
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Wait for MySQL
+        shell: bash
+        run: |
+          for i in {1..40}; do
+            (echo > /dev/tcp/127.0.0.1/3306) >/dev/null 2>&1 && exit 0
+            sleep 2
+          done
+          echo "MySQL did not become ready in time."
+          exit 1
+
+      - name: Prepare database
+        run: |
+          npm --workspace @bizgital-marketing-report/backend run db:generate
+          npm --workspace @bizgital-marketing-report/backend run db:push
+          npm --workspace @bizgital-marketing-report/backend run db:seed
+          npm --workspace @bizgital-marketing-report/backend run db:backfill-competitor-assignments
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Run UI E2E
+        run: npm --workspace @bizgital-marketing-report/frontend run qa:e2e-ui
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-e2e-playwright-report
+          path: |
+            playwright-report
+            test-results

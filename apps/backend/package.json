@@ -1,0 +1,42 @@
+{
+  "name": "@bizgital-marketing-report/backend",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "db:generate": "prisma generate --schema prisma/schema.prisma",
+    "db:push": "prisma db push --schema prisma/schema.prisma",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:backfill-competitor-assignments": "tsx scripts/backfill-competitor-assignments.ts",
+    "db:backfill-competitor-monitoring": "tsx scripts/backfill-competitor-monitoring.ts",
+    "db:backfill-import-snapshots": "node scripts/backfill-import-snapshots.cjs",
+    "qa:e2e-competitor-workflow": "tsx scripts/e2e-competitor-workflow.ts",
+    "demo:story": "tsx scripts/prepare-demo-story.ts",
+    "build": "npm run db:generate && tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "start:e2e": "tsc -p tsconfig.build.json && node dist/main.js",
+    "dev:stop": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$pids = Get-NetTCPConnection -LocalPort 3003 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique; if ($pids) { $pids | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }; Write-Host 'Stopped process(es) on port 3003.' } else { Write-Host 'No process found on port 3003.' }\"",
+    "dev:restart": "npm run dev:stop && npm run dev",
+    "dev": "set PORT=3003&& set APP_ORIGIN=http://localhost:3200&& set API_PREFIX=api&& set IMPORT_STORAGE_DIR=storage/imports&& tsc -p tsconfig.build.json && node dist/main.js",
+    "start:dev": "npm run dev",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1030.0",
+    "@aws-sdk/s3-request-presigner": "^3.1030.0",
+    "@nestjs/common": "latest",
+    "@nestjs/config": "latest",
+    "@nestjs/core": "latest",
+    "@nestjs/platform-express": "latest",
+    "@prisma/client": "^6.16.2",
+    "prisma": "^6.16.2",
+    "reflect-metadata": "latest",
+    "rxjs": "latest",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/multer": "^2.1.0",
+    "@types/node": "latest",
+    "tsx": "latest",
+    "typescript": "latest"
+  }
+}

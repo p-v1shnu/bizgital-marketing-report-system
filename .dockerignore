@@ -1,0 +1,9 @@
+node_modules
+.next
+apps/frontend/.next
+dist
+coverage
+*.log
+.git
+.env
+mysql-data
