@@ -36,6 +36,23 @@ Competitor quality gates run from `.github/workflows/competitor-e2e.yml`:
 - `api-e2e`: backend API workflow checks for setup + monitoring + readiness
 - `ui-e2e`: Playwright checks for admin setup and competitor checklist UX
 
+## Production preflight
+
+Before release, run backend preflight checks:
+
+```powershell
+npm --workspace @bizgital-marketing-report/backend run qa:production-preflight
+```
+
+Optional API guard smoke checks (requires running backend):
+
+```powershell
+npm --workspace @bizgital-marketing-report/backend run qa:production-smoke
+```
+
+Expected smoke result:
+- anonymous calls to `/media/presign-upload`, `/media/presign-read`, and `/media/delete-object` return `401`
+
 ## Workspace layout
 
 ```text
@@ -69,8 +86,8 @@ docker compose up --build
 
 3. Open the services:
 
-- frontend: `http://localhost:3000`
-- backend health: `http://localhost:3001/api/health`
+- frontend: `http://localhost:3200`
+- backend health: `http://localhost:3003/api/health`
 - mysql: `localhost:3306`
 
 ### Option B: Run apps directly with Node.js
@@ -134,6 +151,9 @@ Media upload notes (S3-compatible):
 - frontend requests a presigned upload URL from `POST /api/media/presign-upload`
 - browser uploads directly to object storage (MinIO / Spaces)
 - database stores only the final object URL
+- frontend serves stored media through `/api/media/proxy` (session required)
+- backend media APIs (`presign-upload`, `presign-read`, `delete-object`) require authenticated session cookies
+- manual `cleanup-orphans` endpoint requires an admin session
 - when user removes/replaces an image in the same editing session, UI calls `POST /api/media/delete-object` to delete the old uploaded object immediately
 - backend also runs an automatic orphan cleanup job (daily by default) to delete storage objects not referenced by DB
 
@@ -152,11 +172,9 @@ docker compose up -d minio
 
 3. Create bucket `report-media` (or your configured `MEDIA_S3_BUCKET`).
 
-4. Set bucket to public read:
-
-```powershell
-docker run --rm -e MC_HOST_local="http://minioadmin:minioadmin@host.docker.internal:9000" minio/mc anonymous set download local/report-media
-```
+4. Keep bucket private (recommended for production safety):
+- Do not enable anonymous download on the bucket.
+- Media is delivered through signed read URLs + `/api/media/proxy` instead.
 
 5. Set CORS for browser upload.
 
@@ -174,6 +192,7 @@ docker restart bizgital-marketing-report-minio
 6. Ensure backend env values are set (see `.env.example` / `apps/backend/.env.example`):
 
 ```env
+AUTH_SESSION_SECRET=change-this-in-production
 MEDIA_S3_ENDPOINT=http://localhost:9000
 MEDIA_S3_REGION=us-east-1
 MEDIA_S3_BUCKET=report-media
@@ -183,11 +202,16 @@ MEDIA_S3_FORCE_PATH_STYLE=true
 MEDIA_S3_PUBLIC_BASE_URL=http://localhost:9000/report-media
 MEDIA_UPLOAD_MAX_BYTES=10485760
 MEDIA_PRESIGN_EXPIRES_SECONDS=900
+MEDIA_READ_PRESIGN_EXPIRES_SECONDS=120
 MEDIA_ORPHAN_CLEANUP_ENABLED=true
 MEDIA_ORPHAN_CLEANUP_INTERVAL_HOURS=24
 MEDIA_ORPHAN_CLEANUP_INITIAL_DELAY_MINUTES=5
 MEDIA_ORPHAN_CLEANUP_MAX_DELETE_PER_RUN=500
 ```
+
+Important:
+- `AUTH_SESSION_SECRET` must use the same value in both frontend and backend environments.
+- Production must use a long random secret (do not keep the development fallback value).
 
 7. Restart backend after env changes:
 
@@ -198,12 +222,11 @@ npm run dev:backend
 8. Quick verification:
 
 ```powershell
-docker run --rm -e MC_HOST_local="http://minioadmin:minioadmin@host.docker.internal:9000" minio/mc anonymous get local/report-media
 docker run --rm -e MC_HOST_local="http://minioadmin:minioadmin@host.docker.internal:9000" minio/mc admin config get local api
 ```
 
 Expected checks:
-- bucket permission shows `download`
+- bucket does not allow anonymous download
 - API config shows `cors_allow_origin=http://localhost:3200`
 
 Manual orphan cleanup trigger (optional):
@@ -224,6 +247,11 @@ Keep the same code and switch only env:
 - `MEDIA_S3_SECRET_KEY=<spaces-secret-key>`
 - `MEDIA_S3_FORCE_PATH_STYLE=false`
 - `MEDIA_S3_PUBLIC_BASE_URL=https://<cdn-or-space-domain>`
+- `MEDIA_READ_PRESIGN_EXPIRES_SECONDS=120`
+- `AUTH_SESSION_SECRET=<long-random-shared-secret-for-frontend-and-backend>`
+
+Security note:
+- Keep the storage bucket private (no anonymous read) so copied raw object URLs cannot be opened without authenticated proxy/signing flow.
 
 With this shape, local MinIO and production Spaces share one upload flow and one API contract.
 
@@ -249,20 +277,52 @@ The application containers are designed to live behind Caddy in production.
 - forwarded headers from Caddy should be preserved
 - `APP_ORIGIN` and `NEXT_PUBLIC_API_BASE_URL` should point to the public domain in production
 
-Example Caddy shape:
+Recommended deployment shape (Caddy runs on host machine):
+
+1. Copy and set production env values:
+
+```powershell
+Copy-Item deploy\\.env.prod.example .env
+```
+
+Update at least these keys in `.env`:
+- `APP_ORIGIN=https://report.example.com`
+- `NEXT_PUBLIC_API_BASE_URL=https://report.example.com/api`
+- `AUTH_SESSION_SECRET=<long-random-secret>`
+- database and media storage keys (`MYSQL_*`, `MEDIA_*`)
+
+2. Start production compose (loopback-only service ports):
+
+```powershell
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+If production uses local MinIO instead of external S3/Spaces:
+
+```powershell
+docker compose -f docker-compose.prod.yml --profile with-minio up -d --build
+```
+
+3. Install Caddy route on host (example file: `deploy/Caddyfile.example`):
 
 ```caddyfile
 report.example.com {
   encode zstd gzip
 
-  handle /api/* {
-    reverse_proxy backend:3001
+  @api path /api/*
+  handle @api {
+    reverse_proxy 127.0.0.1:3003
   }
 
   handle {
-    reverse_proxy frontend:3000
+    reverse_proxy 127.0.0.1:3200
   }
 }
 ```
 
-That keeps Caddy as the only public entrypoint while the app containers stay simple and container-friendly.
+4. Reload Caddy and verify:
+- `https://report.example.com/api/health` returns OK
+- app login works
+- media endpoints block anonymous requests (run `qa:production-smoke`)
+
+That keeps Caddy as the only public entrypoint while app containers stay private behind loopback bindings.

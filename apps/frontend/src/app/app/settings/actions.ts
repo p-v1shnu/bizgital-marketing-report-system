@@ -14,6 +14,7 @@ import {
   getImportColumnMappingConfig,
   publishImportColumnMapping,
   rollbackImportColumnMapping,
+  updateContentCountPolicy,
   updateTopContentDataSourcePolicy,
   type ImportColumnMappingRule,
   updateImportColumnMappingDraft,
@@ -500,6 +501,39 @@ export async function updateTopContentDataSourcePolicyAction(formData: FormData)
         mode === 'csv_only'
           ? 'Top Content policy saved: CSV only (manual rows excluded).'
           : 'Top Content policy saved: CSV + manual rows.'
+    },
+    returnPath
+  );
+}
+
+export async function updateContentCountPolicyAction(formData: FormData) {
+  const returnPath = normalizeReturnPath(formData.get('returnPath'));
+  const auth = await requireAnyAdmin(returnPath);
+  const mode = normalizeText(formData.get('mode')) as 'csv_only' | 'csv_and_manual';
+  const note = normalizeText(formData.get('note')) || null;
+
+  if (mode !== 'csv_only' && mode !== 'csv_and_manual') {
+    toPage({ error: 'Content count policy mode is invalid.' }, returnPath);
+  }
+
+  try {
+    await updateContentCountPolicy({
+      mode,
+      note,
+      actorEmail: auth.user.email
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to update Content count policy.';
+    toPage({ error: message }, returnPath);
+  }
+
+  revalidateSettings();
+  toPage(
+    {
+      message:
+        mode === 'csv_only'
+          ? 'Content count policy saved: CSV only (manual rows excluded).'
+          : 'Content count policy saved: CSV + manual rows.'
     },
     returnPath
   );

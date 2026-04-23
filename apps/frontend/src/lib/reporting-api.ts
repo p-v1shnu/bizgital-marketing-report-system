@@ -107,6 +107,25 @@ export type ReportingListItem = {
   };
 };
 
+export type ReportingYearSetupCheck = {
+  key:
+    | 'kpi_plan'
+    | 'competitor_assignments'
+    | 'question_assignments'
+    | 'related_product_options';
+  label: string;
+  required: boolean;
+  passed: boolean;
+  detail: string;
+};
+
+export type ReportingYearSetupStatus = {
+  year: number;
+  canCreateReport: boolean;
+  summary: string;
+  checks: ReportingYearSetupCheck[];
+};
+
 export type ReportingListResponse = {
   brand: {
     id: string;
@@ -116,6 +135,12 @@ export type ReportingListResponse = {
   };
   year: number;
   cadence: 'monthly';
+  yearOptions: Array<{
+    year: number;
+    isReady: boolean;
+    hasReports: boolean;
+  }>;
+  selectedYearSetup: ReportingYearSetupStatus;
   suggestedNextPeriod: {
     year: number;
     month: number;
@@ -133,6 +158,8 @@ export type ReportingRecycleBinItem = {
   year: number;
   month: number;
   label: string;
+  createdAt: string;
+  createdYear: number;
   deletedAt: string;
   deletedByName: string | null;
   deletedByEmail: string | null;
@@ -155,6 +182,21 @@ export type ReportingRecycleBinResponse = {
   cadence: 'monthly';
   retentionDays: number;
   items: ReportingRecycleBinItem[];
+};
+
+export type PrepareReportingYearSetupResponse = {
+  brand: {
+    id: string;
+    code: string;
+    name: string;
+  };
+  sourceYear: number;
+  targetYear: number;
+  copied: {
+    kpiItemCount: number;
+    competitorAssignmentCount: number;
+  };
+  setup: ReportingYearSetupStatus;
 };
 
 export type ReportingDetailResponse = {
@@ -385,6 +427,16 @@ export type ImportTableLayoutResponse = {
 };
 
 export type TopContentDataSourcePolicyMode = 'csv_only' | 'csv_and_manual';
+export type ContentCountPolicyMode = 'csv_only' | 'csv_and_manual';
+
+export type ContentCountPolicyResponse = {
+  mode: ContentCountPolicyMode;
+  label: string;
+  excludeManualRows: boolean;
+  updatedAt: string | null;
+  updatedBy: string | null;
+  note: string | null;
+};
 
 export type TopContentDataSourcePolicyResponse = {
   mode: TopContentDataSourcePolicyMode;
@@ -632,6 +684,32 @@ export type DatasetOverviewResponse = {
     pageFollowers: string | null;
     pageVisit: string | null;
   };
+  contentCount: {
+    preview: {
+      reportVersionId: string;
+      countedContentCount: number;
+      csvRowCount: number;
+      manualRowCount: number;
+      policyMode: ContentCountPolicyMode;
+      policyLabel: string;
+      policyUpdatedAt: string | null;
+      policyUpdatedBy: string | null;
+      policyNote: string | null;
+    } | null;
+    approvedSnapshot: {
+      reportVersionId: string;
+      capturedAt: string;
+      approvedAt: string | null;
+      countedContentCount: number;
+      csvRowCount: number;
+      manualRowCount: number;
+      policyMode: ContentCountPolicyMode;
+      policyLabel: string;
+      policyUpdatedAt: string | null;
+      policyUpdatedBy: string | null;
+      policyNote: string | null;
+    } | null;
+  };
   preview: {
     totalRows: number;
     shownRows: number;
@@ -828,6 +906,7 @@ export type CompetitorOverviewResponse = {
       id: string | null;
       status: CompetitorMonitoringStatus | null;
       followerCount: number | null;
+      monthlyPostCount: number | null;
       highlightNote: string | null;
       noActivityEvidenceImageUrl: string | null;
       posts: Array<{
@@ -1676,6 +1755,20 @@ export async function getTopContentDataSourcePolicy(): Promise<TopContentDataSou
   return response.json();
 }
 
+export async function getContentCountPolicy(): Promise<ContentCountPolicyResponse> {
+  const response = await fetch(`${getBackendApiBaseUrl()}/config/content-count-policy`, {
+    cache: 'no-store'
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      await readResponseErrorMessage(response, 'Failed to load content count policy.')
+    );
+  }
+
+  return response.json();
+}
+
 export async function updateTopContentDataSourcePolicy(payload: {
   mode: TopContentDataSourcePolicyMode;
   actorEmail?: string | null;
@@ -1683,6 +1776,14 @@ export async function updateTopContentDataSourcePolicy(payload: {
   excludedContentStyleValueKeys?: string[];
 }) {
   return postReportingAction('/config/top-content-data-source-policy', payload);
+}
+
+export async function updateContentCountPolicy(payload: {
+  mode: ContentCountPolicyMode;
+  actorEmail?: string | null;
+  note?: string | null;
+}) {
+  return postReportingAction('/config/content-count-policy', payload);
 }
 
 export async function getImportColumnMappingConfig(): Promise<ImportColumnMappingConfigResponse> {
@@ -1757,6 +1858,20 @@ export async function getReportingPeriods(
   }
 
   return response.json();
+}
+
+export async function prepareReportingYearSetup(payload: {
+  brandId: string;
+  targetYear: number;
+  sourceYear?: number;
+}): Promise<PrepareReportingYearSetupResponse> {
+  return postReportingAction(
+    `/brands/${payload.brandId}/reporting-periods/year-setup/prepare`,
+    {
+      targetYear: payload.targetYear,
+      sourceYear: payload.sourceYear
+    }
+  );
 }
 
 export async function getReportingRecycleBin(
@@ -2046,6 +2161,7 @@ export async function saveCompetitorMonitoring(
   payload: {
     status?: CompetitorMonitoringStatus | null;
     followerCount?: number | null;
+    monthlyPostCount?: number | null;
     highlightNote?: string | null;
     noActivityEvidenceImageUrl?: string | null;
     posts?: Array<{
@@ -2310,7 +2426,8 @@ export async function createMediaPresignedUpload(payload: {
       'Content-Type': 'application/json'
     },
     body: JSON.stringify(payload),
-    cache: 'no-store'
+    cache: 'no-store',
+    credentials: 'include'
   });
 
   if (!response.ok) {
@@ -2332,7 +2449,8 @@ export async function deleteMediaObject(payload: {
       'Content-Type': 'application/json'
     },
     body: JSON.stringify(payload),
-    cache: 'no-store'
+    cache: 'no-store',
+    credentials: 'include'
   });
 
   if (!response.ok) {

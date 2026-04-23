@@ -51,9 +51,10 @@ type SaveMeta = {
 
 const AUTOSAVE_MS = 1000;
 const MAX_HIGHLIGHT_SHOTS = 10;
+const MIN_HIGHLIGHT_SHOTS = 1;
 
 function ensureAtLeastOneScreenshotSlot(values: string[]) {
-  return values.length > 0 ? values : [''];
+  return values.length >= MIN_HIGHLIGHT_SHOTS ? values : [''];
 }
 
 function toDraft(item: QuestionOverviewResponse['items'][number]): DraftEntry {
@@ -428,6 +429,10 @@ export function QuestionsManager({
 
   function removeHighlightScreenshot(index: number) {
     updateHighlights((current) => {
+      if (current.screenshots.length <= MIN_HIGHLIGHT_SHOTS) {
+        return current;
+      }
+
       const nextScreenshots = current.screenshots.filter((_, itemIndex) => itemIndex !== index);
 
       return {
@@ -850,6 +855,7 @@ export function QuestionsManager({
                   />
                   {!isReadOnly ? (
                     <Button
+                      disabled={highlightDraft.screenshots.length <= MIN_HIGHLIGHT_SHOTS}
                       onClick={() => removeHighlightScreenshot(index)}
                       size="sm"
                       type="button"

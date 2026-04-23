@@ -3,7 +3,12 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 
-import { AUTH_COOKIE_NAME, normalizeEmail } from '@/lib/auth';
+import { normalizeEmail } from '@/lib/auth';
+import {
+  AUTH_COOKIE_NAME,
+  AUTH_SESSION_TTL_SECONDS,
+  createAuthSessionCookieValue
+} from '@/lib/auth-session';
 import { bootstrapSuperAdmin, getSuperAdminBootstrapStatus } from '@/lib/reporting-api';
 
 function toSetupPageWithError(message: string): never {
@@ -52,13 +57,17 @@ export async function bootstrapSuperAdminAction(formData: FormData) {
   }
 
   const cookieStore = await cookies();
-  cookieStore.set(AUTH_COOKIE_NAME, response.user.email, {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
-    path: '/',
-    maxAge: 60 * 60 * 24 * 30
-  });
+  cookieStore.set(
+    AUTH_COOKIE_NAME,
+    createAuthSessionCookieValue(response.user.email),
+    {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      path: '/',
+      maxAge: AUTH_SESSION_TTL_SECONDS
+    }
+  );
 
   redirect('/app');
 }

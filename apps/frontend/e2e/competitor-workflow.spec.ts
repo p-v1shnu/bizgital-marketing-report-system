@@ -14,6 +14,27 @@ type ReportingPeriodResponse = {
   month: number;
 };
 
+type ReportingListResponse = {
+  yearOptions: Array<{
+    year: number;
+    isReady: boolean;
+    hasReports: boolean;
+  }>;
+  items: Array<{
+    id: string;
+    year: number;
+    month: number;
+    latestVersionId: string | null;
+    currentDraftVersionId: string | null;
+  }>;
+};
+
+type ResolvedPeriodResult = {
+  period: ReportingPeriodResponse;
+  created: boolean;
+  hadDraft: boolean;
+};
+
 type ReportingDetailResponse = {
   period: {
     reviewReadiness: {
@@ -74,7 +95,7 @@ async function requestJson<T>(
 
 async function createUniquePeriod(
   year: number
-): Promise<ReportingPeriodResponse> {
+): Promise<ResolvedPeriodResult> {
   for (const month of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]) {
     const response = await fetch(
       `${backendBaseUrl}/brands/${brandCode}/reporting-periods`,
@@ -89,7 +110,11 @@ async function createUniquePeriod(
     const payload = await response.json().catch(() => null);
 
     if (response.ok) {
-      return payload as ReportingPeriodResponse;
+      return {
+        period: payload as ReportingPeriodResponse,
+        created: true,
+        hadDraft: false
+      };
     }
 
     if (response.status === 409) {
@@ -101,7 +126,35 @@ async function createUniquePeriod(
     );
   }
 
-  throw new Error(`Unable to create unique period in year ${year}.`);
+  const reporting = await requestJson<ReportingListResponse>(
+    `/brands/${brandCode}/reporting-periods?year=${year}`
+  );
+  const reusable =
+    reporting.items.find(
+      (item) =>
+        item.latestVersionId === null && item.currentDraftVersionId === null
+    ) ??
+    reporting.items.find(
+      (item) =>
+        item.latestVersionId === null && item.currentDraftVersionId !== null
+    ) ??
+    null;
+
+  if (reusable) {
+    return {
+      period: {
+        id: reusable.id,
+        year: reusable.year,
+        month: reusable.month
+      },
+      created: false,
+      hadDraft: reusable.currentDraftVersionId !== null
+    };
+  }
+
+  throw new Error(
+    `Unable to create unique period in year ${year}, and no reusable empty period was found.`
+  );
 }
 
 async function cleanupRequest(
@@ -182,6 +235,34 @@ function isSaveAssignmentsResponse(url: string, year: number) {
   );
 }
 
+function resolveReadySourceYear(reporting: ReportingListResponse, targetYear: number) {
+  const readyYears = reporting.yearOptions
+    .filter((option) => option.isReady && option.year !== targetYear)
+    .map((option) => option.year)
+    .sort((left, right) => right - left);
+
+  return readyYears[0] ?? null;
+}
+
+async function prepareYearSetup(targetYear: number) {
+  const reporting = await requestJson<ReportingListResponse>(
+    `/brands/${brandCode}/reporting-periods?year=${targetYear}`
+  );
+  const sourceYear = resolveReadySourceYear(reporting, targetYear);
+
+  if (sourceYear === null) {
+    throw new Error(`No ready source year found to prepare ${targetYear}.`);
+  }
+
+  await requestJson(`/brands/${brandCode}/reporting-periods/year-setup/prepare`, {
+    method: 'POST',
+    body: {
+      targetYear,
+      sourceYear
+    }
+  });
+}
+
 test('admin setup can assign competitor and save assignments', async ({ page }) => {
   const isolated = await findIsolatedSetupYear(70);
   const testYear = isolated.year;
@@ -206,9 +287,10 @@ test('admin setup can assign competitor and save assignments', async ({ page }) 
     competitorId = createdCompetitor.id;
 
     await setAdminCookie(page);
-    await page.goto(`/app/brands/${brandCode}?tab=competitors&year=${testYear}`);
+    await page.goto(`/app/brands/${brandCode}?tab=year-setup&year=${testYear}`);
     await page.waitForLoadState('networkidle');
 
+    await page.getByRole('button', { name: /^Competitors$/ }).click();
     await expect(page.getByTestId('competitor-setup-manager')).toBeVisible();
     await page.getByTestId('catalog-search-input').fill(competitorName);
     await expect(page.getByTestId(`add-assignment-${competitorId}`)).toBeVisible();
@@ -264,6 +346,7 @@ test('monthly monitoring checklist auto-saves and marks competitor complete', as
   const competitorName = `UI E2E Monitoring ${randomSuffix()}`;
   let competitorId: string | null = null;
   let periodId: string | null = null;
+  let periodCreatedByTest = false;
   let originalAssignments: string[] = isolated.setup.assignments.map(
     (item) => item.competitor.id
   );
@@ -282,6 +365,7 @@ test('monthly monitoring checklist auto-saves and marks competitor complete', as
     );
     competitorId = createdCompetitor.id;
 
+    await prepareYearSetup(testYear);
     await requestJson(`/brands/${brandCode}/competitor-setup/${testYear}/assignments`, {
       method: 'POST',
       body: {
@@ -289,11 +373,14 @@ test('monthly monitoring checklist auto-saves and marks competitor complete', as
       }
     });
 
-    const period = await createUniquePeriod(testYear);
-    periodId = period.id;
-    await requestJson(`/reporting-periods/${periodId}/drafts`, {
-      method: 'POST'
-    });
+    const periodResult = await createUniquePeriod(testYear);
+    periodId = periodResult.period.id;
+    periodCreatedByTest = periodResult.created;
+    if (!periodResult.hadDraft) {
+      await requestJson(`/reporting-periods/${periodId}/drafts`, {
+        method: 'POST'
+      });
+    }
 
     await setAdminCookie(page);
     await page.goto(`/app/${brandCode}/reports/${periodId}/competitors`);
@@ -341,7 +428,7 @@ test('monthly monitoring checklist auto-saves and marks competitor complete', as
       { timeout: 30_000 }
     );
   } finally {
-    if (periodId) {
+    if (periodId && periodCreatedByTest) {
       await cleanupRequest(`/reporting-periods/${periodId}`, { method: 'DELETE' });
     }
 
@@ -374,6 +461,7 @@ test('monthly monitoring has_posts enforces screenshot and max 5 posts', async (
   const competitorName = `UI E2E Has Posts ${randomSuffix()}`;
   let competitorId: string | null = null;
   let periodId: string | null = null;
+  let periodCreatedByTest = false;
   let originalAssignments: string[] = isolated.setup.assignments.map(
     (item) => item.competitor.id
   );
@@ -392,6 +480,7 @@ test('monthly monitoring has_posts enforces screenshot and max 5 posts', async (
     );
     competitorId = createdCompetitor.id;
 
+    await prepareYearSetup(testYear);
     await requestJson(`/brands/${brandCode}/competitor-setup/${testYear}/assignments`, {
       method: 'POST',
       body: {
@@ -399,11 +488,14 @@ test('monthly monitoring has_posts enforces screenshot and max 5 posts', async (
       }
     });
 
-    const period = await createUniquePeriod(testYear);
-    periodId = period.id;
-    await requestJson(`/reporting-periods/${periodId}/drafts`, {
-      method: 'POST'
-    });
+    const periodResult = await createUniquePeriod(testYear);
+    periodId = periodResult.period.id;
+    periodCreatedByTest = periodResult.created;
+    if (!periodResult.hadDraft) {
+      await requestJson(`/reporting-periods/${periodId}/drafts`, {
+        method: 'POST'
+      });
+    }
 
     await setAdminCookie(page);
     await page.goto(`/app/${brandCode}/reports/${periodId}/competitors`);
@@ -415,10 +507,11 @@ test('monthly monitoring has_posts enforces screenshot and max 5 posts', async (
     await page.getByTestId(`competitor-checklist-${competitorId}`).click();
     await page.getByTestId('follower-input').fill('1500');
     await page.getByTestId('status-has-posts-button').click();
+    await page.getByTestId('monthly-post-count-input').fill('8');
 
     const addPostButton = page.getByRole('button', { name: 'Add post' });
-    await expect(page.getByText('Posts (5/5)')).toBeVisible();
-    await expect(addPostButton).toBeDisabled();
+    await expect(page.getByText('Posts (1/5)')).toBeVisible();
+    await expect(addPostButton).toBeEnabled();
 
     await page.getByPlaceholder('Post URL (optional)').first().fill('https://facebook.com/example/posts/1');
     await page.getByRole('button', { name: 'Save all' }).click();
@@ -433,7 +526,8 @@ test('monthly monitoring has_posts enforces screenshot and max 5 posts', async (
         body: {
           status: 'has_posts',
           followerCount: 1500,
-          highlightNote: null,
+          monthlyPostCount: 8,
+          highlightNote: 'Monthly highlight summary for monitored posts.',
           noActivityEvidenceImageUrl: null,
           posts: [
             {
@@ -475,7 +569,7 @@ test('monthly monitoring has_posts enforces screenshot and max 5 posts', async (
     );
 
   } finally {
-    if (periodId) {
+    if (periodId && periodCreatedByTest) {
       await cleanupRequest(`/reporting-periods/${periodId}`, { method: 'DELETE' });
     }
 

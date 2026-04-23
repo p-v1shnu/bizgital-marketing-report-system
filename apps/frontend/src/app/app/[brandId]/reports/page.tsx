@@ -6,12 +6,15 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { getAuthContext, getMembershipReportAccess } from '@/lib/auth';
-import type { ReportingListItem, ReportingRecycleBinItem } from '@/lib/reporting-api';
+import type {
+  ReportingListItem,
+  ReportingRecycleBinItem,
+  ReportingYearSetupStatus
+} from '@/lib/reporting-api';
 import {
   getReportingRecycleBin,
   getReportingPeriodDetail,
-  getReportingPeriods,
-  type ReportingDetailResponse
+  getReportingPeriods
 } from '@/lib/reporting-api';
 import {
   badgeToneForState,
@@ -57,6 +60,23 @@ function sortPeriodsDescending(left: { year: number; month: number }, right: { y
   return right.month - left.month;
 }
 
+function normalizeSelectedYear(rawYear: string | undefined, fallbackYear: number) {
+  if (!rawYear) {
+    return fallbackYear;
+  }
+
+  const parsed = Number.parseInt(rawYear, 10);
+  if (!Number.isFinite(parsed)) {
+    return fallbackYear;
+  }
+
+  if (parsed < 2000 || parsed > 3000) {
+    return fallbackYear;
+  }
+
+  return parsed;
+}
+
 function detailForItem(detailsById: Map<string, PeriodDetail>, item: ReportingListItem) {
   return detailsById.get(item.id) ?? null;
 }
@@ -79,6 +99,13 @@ function formatTimestamp(value: string | null) {
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit'
+  });
+}
+
+function formatMonthYear(value: string) {
+  return new Date(value).toLocaleString('en-GB', {
+    year: 'numeric',
+    month: 'long'
   });
 }
 
@@ -307,10 +334,21 @@ export default async function ReportsPage({
   const canApproveReports = reportAccess.canApproveReports;
   const currentYear = new Date().getUTCFullYear();
   const currentMonth = new Date().getUTCMonth() + 1;
-  const selectedYear = Number(resolvedSearchParams?.year ?? currentYear);
+  const selectedYear = normalizeSelectedYear(resolvedSearchParams?.year, currentYear);
 
   let items: ReportingListItem[] = [];
   let recycleBinItems: ReportingRecycleBinItem[] = [];
+  let yearOptions: Array<{
+    year: number;
+    isReady: boolean;
+    hasReports: boolean;
+  }> = [];
+  let selectedYearSetup: ReportingYearSetupStatus = {
+    year: selectedYear,
+    canCreateReport: true,
+    summary: 'Year setup is ready.',
+    checks: []
+  };
   let recycleRetentionDays = 7;
   let detailsById = new Map<string, PeriodDetail>();
   let brandDisplayName = brandId;
@@ -323,6 +361,8 @@ export default async function ReportsPage({
   try {
     const reportingData = await getReportingPeriods(brandId, selectedYear);
     brandDisplayName = reportingData.brand.name;
+    yearOptions = reportingData.yearOptions;
+    selectedYearSetup = reportingData.selectedYearSetup;
     items = [...reportingData.items].sort(sortPeriodsDescending);
     suggestedCreateYear = reportingData.suggestedNextPeriod.year;
     suggestedCreateMonth = reportingData.suggestedNextPeriod.month;
@@ -369,6 +409,16 @@ export default async function ReportsPage({
   const submittedCount = items.filter(
     (item) => item.latestVersionState === 'submitted'
   ).length;
+  const yearDropdownOptions =
+    yearOptions.length > 0
+      ? yearOptions
+      : [
+          {
+            year: selectedYear,
+            isReady: selectedYearSetup.canCreateReport,
+            hasReports: items.length > 0
+          }
+        ];
 
   return (
     <section className="space-y-6">
@@ -381,17 +431,48 @@ export default async function ReportsPage({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Button asChild size="sm" variant="outline">
-            <Link href={`/app/${brandId}/reports?year=${selectedYear - 1}`}>
-              {selectedYear - 1}
-            </Link>
-          </Button>
+          {selectedYear > 2000 ? (
+            <Button asChild size="sm" variant="outline">
+              <Link href={`/app/${brandId}/reports?year=${selectedYear - 1}`}>
+                {selectedYear - 1}
+              </Link>
+            </Button>
+          ) : null}
           <Badge variant="outline">{selectedYear}</Badge>
-          <Button asChild size="sm" variant="outline">
-            <Link href={`/app/${brandId}/reports?year=${selectedYear + 1}`}>
-              {selectedYear + 1}
-            </Link>
-          </Button>
+          {selectedYear < 3000 ? (
+            <Button asChild size="sm" variant="outline">
+              <Link href={`/app/${brandId}/reports?year=${selectedYear + 1}`}>
+                {selectedYear + 1}
+              </Link>
+            </Button>
+          ) : null}
+
+          <form
+            action={`/app/${brandId}/reports`}
+            className="flex items-center gap-2"
+            key={`reports-year-jump-${selectedYear}`}
+            method="get"
+          >
+            <label className="sr-only" htmlFor="reports-year-jump-select">
+              Jump to year
+            </label>
+            <select
+              className="h-9 min-w-[112px] rounded-full border border-input bg-background/70 px-3 text-sm text-foreground"
+              defaultValue={String(selectedYear)}
+              id="reports-year-jump-select"
+              name="year"
+            >
+              {yearDropdownOptions.map((option) => (
+                <option key={option.year} value={option.year}>
+                  {option.year}
+                  {option.isReady ? '' : ' • setup required'}
+                </option>
+              ))}
+            </select>
+            <Button size="sm" type="submit" variant="outline">
+              Jump
+            </Button>
+          </form>
         </div>
       </div>
 
@@ -435,7 +516,7 @@ export default async function ReportsPage({
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="rounded-[24px] border border-border/60 bg-background/60 px-4 py-4 text-sm text-muted-foreground">
-              Default month follows the latest report for this brand.
+              Default month follows the latest report in the selected year.
               <div className="mt-2 font-medium text-foreground">
                 Suggested: {suggestedCreateLabel}
               </div>
@@ -446,8 +527,10 @@ export default async function ReportsPage({
                 brandId={brandId}
                 layout="horizontal"
                 recycleBinItems={recycleBinItems}
+                selectedYear={selectedYear}
                 suggestedCreateMonth={suggestedCreateMonth}
                 suggestedCreateYear={suggestedCreateYear}
+                selectedYearSetup={selectedYearSetup}
               />
             ) : (
               <div className="rounded-[20px] border border-border/60 bg-background/50 px-4 py-4 text-sm text-muted-foreground">
@@ -747,7 +830,13 @@ export default async function ReportsPage({
                 before permanent deletion.
               </div>
             ) : (
-              <div className="rounded-[24px] border border-border/60 bg-background/55">
+              <div className="space-y-3">
+                <div className="rounded-[24px] border border-border/60 bg-background/55 px-4 py-4 text-sm text-muted-foreground">
+                  Auto-delete policy: deleted reports are kept for {recycleRetentionDays} days.
+                  You can restore them before the displayed expiry time. After expiry, the system
+                  permanently deletes report data and media from Recycle Bin automatically.
+                </div>
+                <div className="rounded-[24px] border border-border/60 bg-background/55">
                 <div className="divide-y divide-border/50">
                   {recycleBinItems.map((item) => {
                     const deletedBy =
@@ -762,6 +851,9 @@ export default async function ReportsPage({
                       >
                         <div className="space-y-2">
                           <div className="font-medium text-foreground">{item.label}</div>
+                          <div className="text-xs text-muted-foreground">
+                            Created {formatMonthYear(item.createdAt)}
+                          </div>
                           <div className="text-xs text-muted-foreground">
                             Deleted {formatTimestamp(item.deletedAt)} by {deletedBy}
                           </div>
@@ -783,7 +875,7 @@ export default async function ReportsPage({
                             brandId={brandId}
                             className="h-8 rounded-full px-3 text-xs"
                             periodId={item.id}
-                            year={selectedYear}
+                            year={new Date(item.deletedAt).getUTCFullYear()}
                           />
                         ) : (
                           <div className="text-xs text-muted-foreground">
@@ -793,6 +885,7 @@ export default async function ReportsPage({
                       </article>
                     );
                   })}
+                </div>
                 </div>
               </div>
             )}

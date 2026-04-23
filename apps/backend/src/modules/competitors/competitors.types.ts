@@ -54,6 +54,7 @@ export type CompetitorOverviewResponse = {
       id: string | null;
       status: CompetitorMonitoringStatus | null;
       followerCount: number | null;
+      monthlyPostCount: number | null;
       highlightNote: string | null;
       noActivityEvidenceImageUrl: string | null;
       posts: Array<{
@@ -131,6 +132,7 @@ export type CompetitorYearSetupResponse = {
 export type SaveCompetitorMonitoringInput = {
   status?: CompetitorMonitoringStatus | null;
   followerCount?: number | null;
+  monthlyPostCount?: number | null;
   highlightNote?: string | null;
   noActivityEvidenceImageUrl?: string | null;
   actorName?: string | null;

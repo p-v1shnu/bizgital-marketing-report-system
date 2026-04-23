@@ -52,6 +52,7 @@ type MonitoringWithPosts = {
   id: string;
   status: CompetitorMonitoringStatus | null;
   followerCount: number | null;
+  monthlyPostCount: number | null;
   noActivityNote: string | null;
   noActivityEvidenceImageUrl: string | null;
   posts: Array<{
@@ -189,6 +190,7 @@ export class CompetitorsService {
           id: monitoring?.id ?? null,
           status: monitoring?.status ?? null,
           followerCount: monitoring?.followerCount ?? null,
+          monthlyPostCount: monitoring?.monthlyPostCount ?? null,
           highlightNote: monitoring?.noActivityNote ?? null,
           noActivityEvidenceImageUrl: monitoring?.noActivityEvidenceImageUrl ?? null,
           posts: (monitoring?.posts ?? []).map((post) => ({
@@ -259,6 +261,7 @@ export class CompetitorsService {
     const shouldDelete =
       normalized.status === null &&
       normalized.followerCount === null &&
+      normalized.monthlyPostCount === null &&
       !normalized.highlightNote &&
       !normalized.noActivityEvidenceImageUrl &&
       normalized.posts.length === 0;
@@ -325,6 +328,10 @@ export class CompetitorsService {
         update: {
           status: normalized.status,
           followerCount: normalized.followerCount,
+          monthlyPostCount:
+            normalized.status === CompetitorMonitoringStatus.has_posts
+              ? normalized.monthlyPostCount
+              : null,
           noActivityNote: normalized.highlightNote,
           noActivityEvidenceImageUrl:
             normalized.status === CompetitorMonitoringStatus.has_posts
@@ -336,6 +343,10 @@ export class CompetitorsService {
           competitorId,
           status: normalized.status,
           followerCount: normalized.followerCount,
+          monthlyPostCount:
+            normalized.status === CompetitorMonitoringStatus.has_posts
+              ? normalized.monthlyPostCount
+              : null,
           noActivityNote: normalized.highlightNote,
           noActivityEvidenceImageUrl:
             normalized.status === CompetitorMonitoringStatus.has_posts
@@ -394,7 +405,8 @@ export class CompetitorsService {
         brandId: brand.id,
         periodId: period.id,
         status: persisted.status,
-        postCount: persisted.posts.length
+        postCount: persisted.posts.length,
+        monthlyPostCount: persisted.monthlyPostCount
       },
       actor: {
         actorName: input.actorName,
@@ -407,6 +419,7 @@ export class CompetitorsService {
       competitorId,
       status: persisted.status,
       followerCount: persisted.followerCount,
+      monthlyPostCount: persisted.monthlyPostCount,
       highlightNote: persisted.noActivityNote,
       noActivityEvidenceImageUrl: persisted.noActivityEvidenceImageUrl,
       posts: persisted.posts.map((post) => ({
@@ -1452,9 +1465,17 @@ export class CompetitorsService {
     let hasRequiredEvidence = false;
 
     if (monitoring?.status === CompetitorMonitoringStatus.has_posts) {
+      const hasMonthlyPostCount =
+        monitoring.monthlyPostCount !== null &&
+        monitoring.monthlyPostCount !== undefined &&
+        Number.isInteger(monitoring.monthlyPostCount) &&
+        monitoring.monthlyPostCount >= monitoring.posts.length;
+      const hasHighlightNote = !!monitoring.noActivityNote?.trim();
       hasRequiredEvidence =
         monitoring.posts.length > 0 &&
-        monitoring.posts.every((post) => post.screenshotUrl.trim().length > 0);
+        monitoring.posts.every((post) => post.screenshotUrl.trim().length > 0) &&
+        hasMonthlyPostCount &&
+        hasHighlightNote;
     } else if (monitoring?.status === CompetitorMonitoringStatus.no_activity) {
       hasRequiredEvidence =
         !!monitoring.noActivityNote?.trim() &&
@@ -1488,6 +1509,22 @@ export class CompetitorsService {
 
       if (followerCount < 0) {
         throw new BadRequestException('Follower count must be 0 or more.');
+      }
+    }
+
+    const rawMonthlyPostCount =
+      input.monthlyPostCount === null || input.monthlyPostCount === undefined
+        ? null
+        : Number(input.monthlyPostCount);
+    let monthlyPostCount = rawMonthlyPostCount;
+
+    if (rawMonthlyPostCount !== null) {
+      if (!Number.isFinite(rawMonthlyPostCount) || !Number.isInteger(rawMonthlyPostCount)) {
+        throw new BadRequestException('Monthly post count must be a whole number.');
+      }
+
+      if (rawMonthlyPostCount < 0) {
+        throw new BadRequestException('Monthly post count must be 0 or more.');
       }
     }
 
@@ -1543,9 +1580,38 @@ export class CompetitorsService {
       );
     }
 
+    if (status === CompetitorMonitoringStatus.has_posts) {
+      if (monthlyPostCount === null) {
+        throw new BadRequestException(
+          'Monthly post count is required in has-posts mode.'
+        );
+      }
+
+      if (!highlightNote) {
+        throw new BadRequestException(
+          'Highlight note is required in has-posts mode.'
+        );
+      }
+
+      if (posts.length === 0) {
+        throw new BadRequestException(
+          'At least one highlighted post screenshot is required in has-posts mode.'
+        );
+      }
+
+      if (monthlyPostCount !== null && monthlyPostCount < posts.length) {
+        throw new BadRequestException(
+          'Monthly post count cannot be lower than highlighted post screenshots.'
+        );
+      }
+    } else {
+      monthlyPostCount = null;
+    }
+
     return {
       status,
       followerCount,
+      monthlyPostCount,
       highlightNote,
       noActivityEvidenceImageUrl,
       posts

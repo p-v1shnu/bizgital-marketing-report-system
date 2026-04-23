@@ -41,6 +41,7 @@ type DraftPost = {
 type Draft = {
   status: CompetitorMonitoringStatus | '';
   followerCount: string;
+  monthlyPostCount: string;
   highlightNote: string;
   noActivityEvidenceImageUrl: string;
   posts: DraftPost[];
@@ -67,6 +68,7 @@ type Completion = {
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3003/api';
 const MAX_POSTS = 5;
+const MIN_POSTS = 1;
 const AUTOSAVE_MS = 1000;
 
 function buildEmptyPost(id: string): DraftPost {
@@ -78,7 +80,7 @@ function buildEmptyPost(id: string): DraftPost {
 }
 
 function buildDefaultPosts(seed: string) {
-  return Array.from({ length: MAX_POSTS }, (_, index) =>
+  return Array.from({ length: MIN_POSTS }, (_, index) =>
     buildEmptyPost(`${seed}-post-${index + 1}`)
   );
 }
@@ -97,6 +99,7 @@ function resetPostDrafts(posts: DraftPost[], seed: string) {
 
 function hasPostModeDraftContent(draft: Draft) {
   return (
+    draft.monthlyPostCount.trim().length > 0 ||
     draft.highlightNote.trim().length > 0 ||
     draft.posts.some(
       (post) => post.screenshotUrl.trim().length > 0 || post.postUrl.trim().length > 0
@@ -116,7 +119,7 @@ function buildModeSwitchConfirmationMessage(
   nextStatus: CompetitorMonitoringStatus
 ) {
   if (draft.status === 'has_posts' && nextStatus === 'no_activity' && hasPostModeDraftContent(draft)) {
-    return 'Switch to "No posts this month"? This will clear all post screenshots, post URLs, and highlight note.';
+    return 'Switch to "No posts this month"? This will clear total post count, post screenshots, post URLs, and highlight note.';
   }
 
   if (
@@ -174,6 +177,10 @@ function toDraft(item: CompetitorOverviewResponse['items'][number]): Draft {
       item.monitoring.followerCount === null
         ? ''
         : String(item.monitoring.followerCount),
+    monthlyPostCount:
+      item.monitoring.monthlyPostCount === null
+        ? ''
+        : String(item.monitoring.monthlyPostCount),
     highlightNote: item.monitoring.highlightNote ?? '',
     noActivityEvidenceImageUrl: item.monitoring.noActivityEvidenceImageUrl ?? '',
     posts
@@ -199,7 +206,18 @@ function evaluateWithRequirement(draft: Draft, isRequired: boolean): Completion 
 
   if (draft.status === 'has_posts') {
     const validCount = draft.posts.filter((post) => post.screenshotUrl.trim()).length;
-    hasEvidence = validCount > 0 && validCount <= MAX_POSTS;
+    const monthlyPost = draft.monthlyPostCount.trim();
+    const monthlyPostCount = monthlyPost ? Number(monthlyPost) : NaN;
+    const hasMonthlyPostCount =
+      monthlyPost.length > 0 &&
+      Number.isInteger(monthlyPostCount) &&
+      monthlyPostCount >= validCount;
+    const hasHighlightNote = draft.highlightNote.trim().length > 0;
+    hasEvidence =
+      validCount > 0 &&
+      validCount <= MAX_POSTS &&
+      hasMonthlyPostCount &&
+      hasHighlightNote;
   }
   if (draft.status === 'no_activity') {
     hasEvidence =
@@ -222,6 +240,15 @@ function serialize(draft: Draft) {
     return { ok: false as const, error: 'Follower count must be whole number.' };
   }
 
+  const monthlyPost = draft.monthlyPostCount.trim();
+  const monthlyPostCount = monthlyPost ? Number(monthlyPost) : null;
+  if (
+    monthlyPost &&
+    (!Number.isInteger(monthlyPostCount) || (monthlyPostCount ?? -1) < 0)
+  ) {
+    return { ok: false as const, error: 'Monthly post count must be whole number.' };
+  }
+
   if (draft.status === 'has_posts') {
     if (draft.posts.length > MAX_POSTS) {
       return { ok: false as const, error: `Maximum ${MAX_POSTS} posts per competitor.` };
@@ -239,11 +266,45 @@ function serialize(draft: Draft) {
       };
     }
 
+    if (monthlyPostCount === null) {
+      return {
+        ok: false as const,
+        error: 'Monthly post count is required in has-posts mode.'
+      };
+    }
+
+    if (!normalize(draft.highlightNote)) {
+      return {
+        ok: false as const,
+        error: 'Highlight note is required in has-posts mode.'
+      };
+    }
+
+    const highlightedPostCount = draft.posts.filter(
+      (post) => post.screenshotUrl.trim().length > 0
+    ).length;
+    if (highlightedPostCount === 0) {
+      return {
+        ok: false as const,
+        error: 'At least one highlighted post screenshot is required in has-posts mode.'
+      };
+    }
+    if (
+      monthlyPostCount !== null &&
+      highlightedPostCount > monthlyPostCount
+    ) {
+      return {
+        ok: false as const,
+        error: 'Monthly post count cannot be lower than highlighted post screenshots.'
+      };
+    }
+
     return {
       ok: true as const,
       payload: {
         status: 'has_posts',
         followerCount,
+        monthlyPostCount,
         highlightNote: normalize(draft.highlightNote),
         noActivityEvidenceImageUrl: null,
         posts: draft.posts
@@ -263,6 +324,7 @@ function serialize(draft: Draft) {
       payload: {
         status: 'no_activity',
         followerCount,
+        monthlyPostCount: null,
         highlightNote: normalize(draft.highlightNote),
         noActivityEvidenceImageUrl: normalize(draft.noActivityEvidenceImageUrl),
         posts: []
@@ -275,6 +337,7 @@ function serialize(draft: Draft) {
     payload: {
       status: null,
       followerCount,
+      monthlyPostCount: null,
       highlightNote: null,
       noActivityEvidenceImageUrl: null,
       posts: []
@@ -512,6 +575,7 @@ export function CompetitorMonitoringWorkspace({
         return {
           ...draft,
           status: 'has_posts',
+          monthlyPostCount: '',
           highlightNote: '',
           noActivityEvidenceImageUrl: '',
           posts:
@@ -526,6 +590,7 @@ export function CompetitorMonitoringWorkspace({
       return {
         ...draft,
         status: 'no_activity',
+        monthlyPostCount: '',
         highlightNote: '',
         noActivityEvidenceImageUrl: '',
         posts:
@@ -678,7 +743,7 @@ export function CompetitorMonitoringWorkspace({
                           ) : null}
                         </div>
                         <div className="mt-1 text-xs text-muted-foreground">
-                          Use post list mode (max {MAX_POSTS} posts, screenshot required per post).
+                          Use post list mode (total posts + highlight note required, at least 1 highlight screenshot, max {MAX_POSTS}).
                         </div>
                       </div>
                       <div
@@ -735,7 +800,7 @@ export function CompetitorMonitoringWorkspace({
                           ) : null}
                         </div>
                         <div className="mt-1 text-xs text-muted-foreground">
-                          Use post list mode (max {MAX_POSTS} posts, screenshot required per post).
+                          Use post list mode (total posts + highlight note required, at least 1 highlight screenshot, max {MAX_POSTS}).
                         </div>
                       </button>
                       <button
@@ -774,6 +839,27 @@ export function CompetitorMonitoringWorkspace({
 
                 {active.draft.status === 'has_posts' ? (
                   <div className="space-y-3 rounded-2xl border border-border/60 p-4">
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium text-muted-foreground">
+                        Total posts published this month (required)
+                      </label>
+                      <Input
+                        data-testid="monthly-post-count-input"
+                        type="number"
+                        min={0}
+                        step={1}
+                        disabled={isReadOnly || !active.assignment.isRequired}
+                        placeholder="Total posts published this month"
+                        value={active.draft.monthlyPostCount}
+                        onChange={(event) => {
+                          const value = event.currentTarget.value;
+                          updateDraft(active.competitor.id, (draft) => ({
+                            ...draft,
+                            monthlyPostCount: value
+                          }));
+                        }}
+                      />
+                    </div>
                     <div className="flex items-center justify-between gap-2">
                       <div className="text-sm font-medium">Posts ({active.draft.posts.length}/{MAX_POSTS})</div>
                       {!isReadOnly ? (
@@ -783,13 +869,22 @@ export function CompetitorMonitoringWorkspace({
                         </Button>
                       ) : null}
                     </div>
+                    <div className="text-xs text-muted-foreground">
+                      Screenshots below are highlight examples only (at least 1 required, up to {MAX_POSTS}).
+                    </div>
                     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                       {active.draft.posts.map((post, index) => (
                         <div className="space-y-3 rounded-xl border border-border/60 p-3" key={post.id}>
                           <div className="flex items-center justify-between">
                             <div className="text-xs font-medium text-muted-foreground">Post {index + 1}</div>
                             {!isReadOnly ? (
-                              <Button type="button" size="sm" variant="ghost" disabled={!active.assignment.isRequired} onClick={() => updateDraft(active.competitor.id, (draft) => ({ ...draft, posts: draft.posts.filter((candidate) => candidate.id !== post.id) }))}>
+                              <Button type="button" size="sm" variant="ghost" disabled={!active.assignment.isRequired || active.draft.posts.length <= MIN_POSTS} onClick={() => updateDraft(active.competitor.id, (draft) => {
+                                const filtered = draft.posts.filter((candidate) => candidate.id !== post.id);
+                                return {
+                                  ...draft,
+                                  posts: filtered.length > 0 ? filtered : buildDefaultPosts(active.competitor.id)
+                                };
+                              })}>
                                 <MinusCircle />
                                 Remove
                               </Button>
@@ -844,12 +939,12 @@ export function CompetitorMonitoringWorkspace({
                     </div>
                     <div className="space-y-2">
                       <label className="text-xs font-medium text-muted-foreground">
-                        Highlight note (optional)
+                        Highlight note (required)
                       </label>
                       <Textarea
                         disabled={isReadOnly || !active.assignment.isRequired}
                         className="min-h-28 w-full rounded-2xl border border-input bg-background/70 px-4 py-3 text-sm text-foreground shadow-sm outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/60"
-                        placeholder="Write competitor highlight summary for this month."
+                        placeholder="Write competitor highlight summary for this month (required)."
                         value={active.draft.highlightNote}
                         onChange={(event) => {
                           const value = event.currentTarget.value;

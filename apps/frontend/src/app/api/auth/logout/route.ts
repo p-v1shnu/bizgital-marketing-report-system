@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-import { AUTH_COOKIE_NAME } from '@/lib/auth';
+import { AUTH_COOKIE_NAME } from '@/lib/auth-session';
 import { toAppUrl } from '@/lib/app-origin';
 
 export async function GET(request: Request) {

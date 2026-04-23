@@ -4,10 +4,14 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 
 import {
-  AUTH_COOKIE_NAME,
   normalizeEmail,
   sanitizeNextPath
 } from '@/lib/auth';
+import {
+  AUTH_COOKIE_NAME,
+  AUTH_SESSION_TTL_SECONDS,
+  createAuthSessionCookieValue
+} from '@/lib/auth-session';
 import { getSuperAdminBootstrapStatus, loginWithPassword } from '@/lib/reporting-api';
 
 function redirectToLogin(nextPath: string, error: string): never {
@@ -43,12 +47,12 @@ export async function loginAction(formData: FormData) {
   }
 
   const cookieStore = await cookies();
-  cookieStore.set(AUTH_COOKIE_NAME, account.email, {
+  cookieStore.set(AUTH_COOKIE_NAME, createAuthSessionCookieValue(account.email), {
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
     path: '/',
-    maxAge: 60 * 60 * 24 * 30
+    maxAge: AUTH_SESSION_TTL_SECONDS
   });
 
   redirect(nextPath);

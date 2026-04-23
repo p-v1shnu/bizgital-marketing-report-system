@@ -4,8 +4,10 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 
 import { getBrands, getSuperAdminBootstrapStatus } from './reporting-api';
-
-export const AUTH_COOKIE_NAME = 'bizgital-marketing-report.user-email';
+import {
+  AUTH_COOKIE_NAME,
+  parseAuthSessionCookieValue
+} from './auth-session';
 
 type BrandRole = 'admin' | 'content' | 'approver' | 'viewer';
 
@@ -150,7 +152,9 @@ export function sanitizeNextPath(value: string | null | undefined) {
 
 async function readSessionEmail() {
   const cookieStore = await cookies();
-  return normalizeEmail(cookieStore.get(AUTH_COOKIE_NAME)?.value);
+  return normalizeEmail(
+    parseAuthSessionCookieValue(cookieStore.get(AUTH_COOKIE_NAME)?.value)
+  );
 }
 
 export async function getAuthContext(): Promise<AuthContext> {

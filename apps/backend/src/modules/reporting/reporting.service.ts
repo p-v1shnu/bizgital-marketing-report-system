@@ -6,6 +6,8 @@ import {
   NotFoundException
 } from '@nestjs/common';
 import {
+  BrandDropdownFieldKey,
+  BrandDropdownOptionStatus,
   ImportJobStatus,
   Prisma,
   QuestionStatus,
@@ -17,6 +19,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { BrandsService } from '../brands/brands.service';
+import { CompetitorsService } from '../competitors/competitors.service';
 import { toManualFormulaRowsSettingKey } from '../dataset/manual-formula-rows-setting';
 import { toManualSourceRowsSettingKey } from '../dataset/manual-source-rows-setting';
 import { toKpiPlanSnapshotSettingKey } from '../kpi/kpi-plan-snapshot-setting';
@@ -25,6 +28,10 @@ import { ManualMetricsService } from '../manual-metrics/manual-metrics.service';
 import { MediaService } from '../media/media.service';
 import { AVAILABLE_TARGETS_BY_KEY, METRIC_TARGET_FIELDS } from '../mapping/mapping-targets';
 import { MetricsService } from '../metrics/metrics.service';
+import {
+  toTopContentCountSnapshotSettingKey
+} from '../top-content/top-content-content-count-snapshot-setting';
+import { TopContentService } from '../top-content/top-content.service';
 import {
   parseReportActivityLogSettingPayload,
   stringifyReportActivityLogSettingPayload,
@@ -73,6 +80,34 @@ type ActionActorInput = {
   actorEmail?: string | null;
 };
 
+type YearSetupCheck = {
+  key:
+    | 'kpi_plan'
+    | 'competitor_assignments'
+    | 'question_assignments'
+    | 'related_product_options';
+  label: string;
+  required: boolean;
+  passed: boolean;
+  detail: string;
+};
+
+type YearSetupStatus = {
+  year: number;
+  canCreateReport: boolean;
+  summary: string;
+  checks: YearSetupCheck[];
+};
+
+type YearSetupContext = {
+  reportYears: Set<number>;
+  kpiConfiguredYears: Set<number>;
+  kpiReadyYears: Set<number>;
+  competitorReadyYears: Set<number>;
+  questionAssignmentsReady: boolean;
+  relatedProductOptionsReady: boolean;
+};
+
 type ReportMediaDeleteTargets = {
   objectKeys: string[];
   publicUrls: string[];
@@ -103,11 +138,13 @@ export class ReportingService {
     private readonly prisma: PrismaService,
     private readonly auditLogService: AuditLogService,
     private readonly brandsService: BrandsService,
+    private readonly competitorsService: CompetitorsService,
     private readonly kpiService: KpiService,
     private readonly manualMetricsService: ManualMetricsService,
     private readonly metricsService: MetricsService,
     private readonly reviewReadinessService: ReviewReadinessService,
-    private readonly mediaService: MediaService
+    private readonly mediaService: MediaService,
+    private readonly topContentService: TopContentService
   ) {}
 
   async listReportingPeriods(
@@ -117,8 +154,10 @@ export class ReportingService {
     await this.purgeExpiredDeletedReportingPeriods();
     const brand = await this.brandsService.getBrandByCodeOrThrow(brandCode);
     const targetYear = Number.isFinite(year) ? year : null;
+    const currentYear = new Date().getUTCFullYear();
+    const selectedYear = targetYear ?? currentYear;
 
-    const [periods, latestMonthlyPeriod] = await Promise.all([
+    const [periods, latestMonthlyPeriod, yearSetupContext] = await Promise.all([
       this.prisma.reportingPeriod.findMany({
         where: {
           brandId: brand.id,
@@ -145,15 +184,23 @@ export class ReportingService {
         where: {
           brandId: brand.id,
           cadence: ReportCadence.monthly,
-          deletedAt: null
+          deletedAt: null,
+          ...(targetYear !== null ? { year: targetYear } : {})
         },
         select: {
           year: true,
           month: true
         },
         orderBy: [{ year: 'desc' }, { month: 'desc' }]
-      })
+      }),
+      this.getYearSetupContext(brand.id)
     ]);
+    const selectedYearSetup = this.toYearSetupStatus(selectedYear, yearSetupContext);
+    const yearOptions = this.buildYearOptions({
+      selectedYear,
+      currentYear,
+      context: yearSetupContext
+    });
 
     const readinessByPeriodId = new Map(
       await Promise.all(
@@ -184,9 +231,13 @@ export class ReportingService {
         name: brand.name,
         timezone: brand.timezone
       },
-      year: targetYear ?? new Date().getUTCFullYear(),
+      year: selectedYear,
       cadence: 'monthly',
-      suggestedNextPeriod: this.resolveSuggestedNextPeriod(latestMonthlyPeriod),
+      yearOptions,
+      selectedYearSetup,
+      suggestedNextPeriod: this.resolveSuggestedNextPeriod(latestMonthlyPeriod, {
+        fallbackYear: selectedYear
+      }),
       items: periods.map((period) =>
         this.toListItem(period, {
           canSubmitLatest: readinessByPeriodId.get(period.id)?.canSubmit ?? false,
@@ -466,8 +517,16 @@ export class ReportingService {
 
   async createReportingPeriod(input: CreatePeriodInput) {
     await this.purgeExpiredDeletedReportingPeriods();
+    this.assertYear(input.year);
     this.assertMonth(input.month);
     const brand = await this.brandsService.getBrandByCodeOrThrow(input.brandCode);
+    const yearSetupContext = await this.getYearSetupContext(brand.id);
+    const yearSetupStatus = this.toYearSetupStatus(input.year, yearSetupContext);
+
+    if (!yearSetupStatus.canCreateReport) {
+      throw new ConflictException(this.buildYearSetupBlockedMessage(yearSetupStatus));
+    }
+
     const createMonthlyPeriod = async () =>
       this.prisma.$transaction(async tx => {
         const period = await tx.reportingPeriod.create({
@@ -559,6 +618,79 @@ export class ReportingService {
 
       throw error;
     }
+  }
+
+  async prepareYearSetup(
+    brandCode: string,
+    targetYear: number,
+    sourceYear?: number
+  ) {
+    this.assertYear(targetYear);
+    const resolvedSourceYear = sourceYear ?? targetYear - 1;
+    this.assertYear(resolvedSourceYear);
+
+    if (resolvedSourceYear === targetYear) {
+      throw new BadRequestException('Source year and target year must be different.');
+    }
+
+    const brand = await this.brandsService.getBrandByCodeOrThrow(brandCode);
+    let copiedKpiCount = 0;
+    let copiedCompetitorCount = 0;
+
+    const targetKpiPlan = await this.kpiService.getBrandKpiPlan(brandCode, targetYear);
+    if (targetKpiPlan.items.length === 0) {
+      const sourceKpiPlan = await this.kpiService.getBrandKpiPlan(brandCode, resolvedSourceYear);
+
+      if (sourceKpiPlan.items.length > 0) {
+        await this.kpiService.updateBrandKpiPlan(brandCode, targetYear, {
+          items: sourceKpiPlan.items.map((item, index) => ({
+            kpiCatalogId: item.kpi.id,
+            targetValue: item.targetValue,
+            note: item.note,
+            sortOrder: item.sortOrder ?? index + 1
+          }))
+        });
+        copiedKpiCount = sourceKpiPlan.items.length;
+      }
+    }
+
+    const targetCompetitorSetup = await this.competitorsService.getYearSetup(
+      brandCode,
+      targetYear
+    );
+    if (targetCompetitorSetup.assignments.length === 0) {
+      const sourceCompetitorSetup = await this.competitorsService.getYearSetup(
+        brandCode,
+        resolvedSourceYear
+      );
+
+      if (sourceCompetitorSetup.assignments.length > 0) {
+        const copyResult = await this.competitorsService.copyYearAssignments(
+          brandCode,
+          resolvedSourceYear,
+          targetYear
+        );
+        copiedCompetitorCount = copyResult.copiedCount;
+      }
+    }
+
+    const yearSetupContext = await this.getYearSetupContext(brand.id);
+    const targetYearSetup = this.toYearSetupStatus(targetYear, yearSetupContext);
+
+    return {
+      brand: {
+        id: brand.id,
+        code: brand.code,
+        name: brand.name
+      },
+      sourceYear: resolvedSourceYear,
+      targetYear,
+      copied: {
+        kpiItemCount: copiedKpiCount,
+        competitorAssignmentCount: copiedCompetitorCount
+      },
+      setup: targetYearSetup
+    };
   }
 
   async createOrResumeDraft(periodId: string, actor?: ActionActorInput) {
@@ -746,6 +878,10 @@ export class ReportingService {
         version.reportingPeriod.brandId
       );
       await this.kpiService.captureKpiPlanSnapshotForReportVersion(version.id, tx);
+      await this.topContentService.captureApprovalContentCountSnapshot(version.id, {
+        capturedAt: now,
+        tx
+      });
       await this.lockActiveFormulasForApprovedVersion(tx, version.id);
       await this.appendReportActivityLogWithClient(tx, {
         reportingPeriodId: version.reportingPeriodId,
@@ -1909,7 +2045,8 @@ export class ReportingService {
       const reportVersionSettingKeys = period.reportVersions.flatMap(version => [
         toManualSourceRowsSettingKey(version.id),
         toManualFormulaRowsSettingKey(version.id),
-        toKpiPlanSnapshotSettingKey(version.id)
+        toKpiPlanSnapshotSettingKey(version.id),
+        toTopContentCountSnapshotSettingKey(version.id)
       ]);
       const periodSettingKeys = [toReportActivityLogSettingKey(period.id)];
       const settingKeys = [...new Set([...reportVersionSettingKeys, ...periodSettingKeys])];
@@ -2179,6 +2316,8 @@ export class ReportingService {
       year: period.year,
       month: period.month,
       label: this.formatMonthLabel(period.year, period.month),
+      createdAt: period.createdAt.toISOString(),
+      createdYear: period.createdAt.getUTCFullYear(),
       deletedAt: deletedAt.toISOString(),
       deletedByName: period.deletedByName,
       deletedByEmail: period.deletedByEmail,
@@ -2668,12 +2807,22 @@ export class ReportingService {
     latestMonthlyPeriod: {
       year: number;
       month: number;
-    } | null
+    } | null,
+    options?: {
+      fallbackYear?: number;
+    }
   ) {
     if (!latestMonthlyPeriod) {
       const now = new Date();
-      const year = now.getUTCFullYear();
-      const month = now.getUTCMonth() + 1;
+      const fallbackYear =
+        options?.fallbackYear &&
+        Number.isInteger(options.fallbackYear) &&
+        options.fallbackYear >= 2000 &&
+        options.fallbackYear <= 3000
+          ? options.fallbackYear
+          : null;
+      const year = fallbackYear ?? now.getUTCFullYear();
+      const month = fallbackYear !== null ? 1 : now.getUTCMonth() + 1;
       return {
         year,
         month,
@@ -2690,6 +2839,196 @@ export class ReportingService {
       month,
       label: this.formatMonthLabel(year, month)
     };
+  }
+
+  private async getYearSetupContext(brandId: string): Promise<YearSetupContext> {
+    const [
+      reportYearsRows,
+      kpiPlans,
+      competitorAssignmentYears,
+      activeQuestionAssignmentCount,
+      activeRelatedProductOptionCount
+    ] = await Promise.all([
+        this.prisma.reportingPeriod.findMany({
+          where: {
+            brandId,
+            cadence: ReportCadence.monthly,
+            deletedAt: null
+          },
+          select: {
+            year: true
+          },
+          distinct: ['year']
+        }),
+        this.prisma.brandKpiPlan.findMany({
+          where: {
+            brandId
+          },
+          select: {
+            year: true,
+            _count: {
+              select: {
+                items: true
+              }
+            }
+          }
+        }),
+        this.prisma.brandCompetitorAssignment.findMany({
+          where: {
+            brandId
+          },
+          select: {
+            year: true
+          },
+          distinct: ['year']
+        }),
+        this.prisma.brandQuestionActivation.count({
+          where: {
+            brandId,
+            status: QuestionStatus.active,
+            questionMaster: {
+              status: QuestionStatus.active
+            }
+          }
+        }),
+        this.prisma.brandDropdownOption.count({
+          where: {
+            brandId,
+            fieldKey: BrandDropdownFieldKey.related_product,
+            status: BrandDropdownOptionStatus.active
+          }
+        })
+      ]);
+
+    return {
+      reportYears: new Set(reportYearsRows.map((row) => row.year)),
+      kpiConfiguredYears: new Set(kpiPlans.map((plan) => plan.year)),
+      kpiReadyYears: new Set(
+        kpiPlans.filter((plan) => plan._count.items > 0).map((plan) => plan.year)
+      ),
+      competitorReadyYears: new Set(competitorAssignmentYears.map((row) => row.year)),
+      questionAssignmentsReady: activeQuestionAssignmentCount > 0,
+      relatedProductOptionsReady: activeRelatedProductOptionCount > 0
+    };
+  }
+
+  private toYearSetupStatus(year: number, context: YearSetupContext): YearSetupStatus {
+    const hasKpiPlan = context.kpiConfiguredYears.has(year);
+    const hasReadyKpiPlan = context.kpiReadyYears.has(year);
+    const hasCompetitorAssignments = context.competitorReadyYears.has(year);
+
+    const kpiPassed = hasReadyKpiPlan;
+    const competitorPassed = hasCompetitorAssignments;
+    const questionPassed = context.questionAssignmentsReady;
+    const relatedProductPassed = context.relatedProductOptionsReady;
+
+    const checks: YearSetupCheck[] = [
+      {
+        key: 'kpi_plan',
+        label: 'KPI plan',
+        required: true,
+        passed: kpiPassed,
+        detail: kpiPassed
+          ? 'Yearly KPI targets are configured.'
+          : hasKpiPlan
+            ? 'KPI plan exists but has no KPI items yet.'
+            : 'Configure yearly KPI targets before creating reports.'
+      },
+      {
+        key: 'competitor_assignments',
+        label: 'Competitor setup',
+        required: true,
+        passed: competitorPassed,
+        detail: competitorPassed
+          ? 'Competitor assignments are configured for this year.'
+          : 'Assign competitors for this year before creating reports.'
+      },
+      {
+        key: 'question_assignments',
+        label: 'Question categories',
+        required: true,
+        passed: questionPassed,
+        detail: questionPassed
+          ? 'Question categories are assigned for this brand.'
+          : 'Assign at least one active question category before creating reports.'
+      },
+      {
+        key: 'related_product_options',
+        label: 'Columns (Related Product)',
+        required: true,
+        passed: relatedProductPassed,
+        detail: relatedProductPassed
+          ? 'Related Product options are configured for this brand.'
+          : 'Add at least one active Related Product option before creating reports.'
+      }
+    ];
+
+    const failedRequiredChecks = checks.filter((check) => check.required && !check.passed);
+    const canCreateReport = failedRequiredChecks.length === 0;
+    const summary = canCreateReport
+      ? 'Year setup is ready. You can create report periods for this year.'
+      : `Complete year setup before creating reports: ${failedRequiredChecks
+          .map((check) => check.label)
+          .join(', ')}.`;
+
+    return {
+      year,
+      canCreateReport,
+      summary,
+      checks
+    };
+  }
+
+  private buildYearOptions(input: {
+    selectedYear: number;
+    currentYear: number;
+    context: YearSetupContext;
+  }) {
+    const years = new Set<number>([
+      input.selectedYear,
+      input.currentYear - 1,
+      input.currentYear,
+      input.currentYear + 1
+    ]);
+
+    for (const year of input.context.reportYears) {
+      years.add(year);
+    }
+    for (const year of input.context.kpiConfiguredYears) {
+      years.add(year);
+    }
+    for (const year of input.context.competitorReadyYears) {
+      years.add(year);
+    }
+
+    return Array.from(years)
+      .filter((year) => Number.isInteger(year) && year >= 2000 && year <= 3000)
+      .filter((year) => year <= input.currentYear + 1 || year === input.selectedYear)
+      .sort((left, right) => right - left)
+      .map((year) => ({
+        year,
+        isReady: this.toYearSetupStatus(year, input.context).canCreateReport,
+        hasReports: input.context.reportYears.has(year)
+      }));
+  }
+
+  private buildYearSetupBlockedMessage(status: YearSetupStatus) {
+    const failedRequiredChecks = status.checks.filter((check) => check.required && !check.passed);
+    if (failedRequiredChecks.length === 0) {
+      return `Cannot create report for ${status.year} yet. Year setup is still incomplete.`;
+    }
+
+    const checklist = failedRequiredChecks
+      .map((check) => `${check.label} (${check.detail})`)
+      .join('; ');
+
+    return `Cannot create report for ${status.year} yet. Complete year setup first: ${checklist}.`;
+  }
+
+  private assertYear(year: number) {
+    if (!Number.isInteger(year) || year < 2000 || year > 3000) {
+      throw new BadRequestException('Year must be between 2000 and 3000.');
+    }
   }
 
   private assertMonth(month: number) {

@@ -1,0 +1,12 @@
+report.example.com {
+  encode zstd gzip
+
+  @api path /api/*
+  handle @api {
+    reverse_proxy 127.0.0.1:3003
+  }
+
+  handle {
+    reverse_proxy 127.0.0.1:3200
+  }
+}

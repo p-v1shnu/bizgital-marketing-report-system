@@ -598,6 +598,10 @@ export default async function DashboardPage({
         pageFollowers,
         viewers,
         pageVisit,
+        contentCountPreview:
+          datasetOverview?.contentCount.preview?.countedContentCount ?? null,
+        contentCountApprovedSnapshot:
+          datasetOverview?.contentCount.approvedSnapshot?.countedContentCount ?? null,
         competitorsFollowersAverage
       };
     })
@@ -868,14 +872,23 @@ export default async function DashboardPage({
   let questionTrendLoadFailedCount = 0;
 
   if (dashboardView === 'content' && selectedContentPeriod && selectedContentSourceState !== null) {
-    const selectedVisibleIndex = dashboardItemsForChart.findIndex(
-      (item) => item.id === selectedContentPeriod.id
-    );
+    const previousCalendarYear =
+      selectedContentPeriod.month === 1
+        ? selectedContentPeriod.year - 1
+        : selectedContentPeriod.year;
+    const previousCalendarMonth =
+      selectedContentPeriod.month === 1 ? 12 : selectedContentPeriod.month - 1;
+    previousVisiblePeriodLabel = monthLabel(previousCalendarYear, previousCalendarMonth);
+    const previousCalendarPeriod =
+      items.find(
+        (item) =>
+          item.year === previousCalendarYear && item.month === previousCalendarMonth
+      ) ?? null;
     const previousVisiblePeriod =
-      selectedVisibleIndex > 0 ? dashboardItemsForChart[selectedVisibleIndex - 1] : null;
-    previousVisiblePeriodLabel = previousVisiblePeriod
-      ? monthLabel(previousVisiblePeriod.year, previousVisiblePeriod.month)
-      : null;
+      previousCalendarPeriod &&
+      getDashboardSourceState(previousCalendarPeriod, includeSubmittedPreview) !== null
+        ? previousCalendarPeriod
+        : null;
 
     const [topResult, questionResult, competitorResult, previousCompetitorResult] =
       await Promise.allSettled([
@@ -1026,6 +1039,16 @@ export default async function DashboardPage({
           selectedContentEnhancement?.pageFollowers ??
           null
       : null;
+  const ownBrandMonthlyPostCount =
+    selectedContentPeriod && selectedContentSourceState !== null
+      ? selectedContentSourceState === 'submitted_preview'
+        ? selectedContentEnhancement?.contentCountPreview ??
+          selectedContentEnhancement?.contentCountApprovedSnapshot ??
+          null
+        : selectedContentEnhancement?.contentCountApprovedSnapshot ??
+          selectedContentEnhancement?.contentCountPreview ??
+          null
+      : null;
   const ownBrandSummary =
     selectedContentPeriod && selectedContentSourceState !== null
       ? {
@@ -1033,7 +1056,7 @@ export default async function DashboardPage({
           name: brandDisplayName,
           logoUrl: brandLogoUrl,
           pageFollowers: ownBrandFollowerCount,
-          capturedPosts: selectedTopContentOverview?.cards.length ?? null
+          monthlyPosts: ownBrandMonthlyPostCount
         }
       : null;
 
@@ -1496,7 +1519,7 @@ export default async function DashboardPage({
               </CardContent>
             </Card>
 
-            <div className="xl:col-span-2 2xl:col-span-3">
+            <div className="col-span-full">
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-3">
@@ -1572,7 +1595,7 @@ export default async function DashboardPage({
             </div>
             </>
           ) : (
-            <div className="space-y-5 xl:col-span-2 2xl:col-span-3">
+            <div className="col-span-full space-y-5">
               <Card id="dashboard-content-overview">
                 <CardHeader>
                   <CardTitle className="flex min-w-0 items-center gap-3">
@@ -1610,7 +1633,13 @@ export default async function DashboardPage({
 
                   <div className="flex flex-wrap items-center gap-2">
                     <Button asChild size="sm" variant="outline">
-                      <a href="#dashboard-content-top-posts">Top posts</a>
+                      <a href="#dashboard-content-top-3-views">Top 3 Views</a>
+                    </Button>
+                    <Button asChild size="sm" variant="outline">
+                      <a href="#dashboard-content-top-3-viewers-post">Top 3 Viewers (Post)</a>
+                    </Button>
+                    <Button asChild size="sm" variant="outline">
+                      <a href="#dashboard-content-top-3-engagement">Top 3 Engagement</a>
                     </Button>
                     <Button asChild size="sm" variant="outline">
                       <a href="#dashboard-content-customer-questions">Customer questions</a>

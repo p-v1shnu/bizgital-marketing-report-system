@@ -15,6 +15,17 @@ export type CreateMediaPresignUploadResponse = {
   maxBytes: number;
 };
 
+export type CreateMediaPresignReadInput = {
+  publicUrl?: string | null;
+  objectKey?: string | null;
+};
+
+export type CreateMediaPresignReadResponse = {
+  readUrl: string;
+  objectKey: string;
+  expiresInSeconds: number;
+};
+
 export type DeleteMediaObjectInput = {
   publicUrl?: string | null;
   objectKey?: string | null;

@@ -48,6 +48,32 @@ export type DatasetOverviewResponse = {
     pageFollowers: string | null;
     pageVisit: string | null;
   };
+  contentCount: {
+    preview: {
+      reportVersionId: string;
+      countedContentCount: number;
+      csvRowCount: number;
+      manualRowCount: number;
+      policyMode: 'csv_only' | 'csv_and_manual';
+      policyLabel: string;
+      policyUpdatedAt: string | null;
+      policyUpdatedBy: string | null;
+      policyNote: string | null;
+    } | null;
+    approvedSnapshot: {
+      reportVersionId: string;
+      capturedAt: string;
+      approvedAt: string | null;
+      countedContentCount: number;
+      csvRowCount: number;
+      manualRowCount: number;
+      policyMode: 'csv_only' | 'csv_and_manual';
+      policyLabel: string;
+      policyUpdatedAt: string | null;
+      policyUpdatedBy: string | null;
+      policyNote: string | null;
+    } | null;
+  };
   preview: {
     totalRows: number;
     shownRows: number;

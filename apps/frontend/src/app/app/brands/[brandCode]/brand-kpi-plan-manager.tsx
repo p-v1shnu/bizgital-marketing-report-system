@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Copy } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -17,6 +16,8 @@ type Props = {
   catalog: KpiCatalogItem[];
   initialYear: number;
   plan: BrandKpiPlanResponse;
+  showYearPicker?: boolean;
+  onPlanChanged?: (plan: BrandKpiPlanResponse) => void;
 };
 
 type Draft = {
@@ -75,7 +76,14 @@ function sortItems(items: PlanItem[]) {
   return [...items].sort((left, right) => left.sortOrder - right.sortOrder);
 }
 
-export function BrandKpiPlanManager({ brandCode, catalog, initialYear, plan }: Props) {
+export function BrandKpiPlanManager({
+  brandCode,
+  catalog,
+  initialYear,
+  plan,
+  showYearPicker = true,
+  onPlanChanged
+}: Props) {
   const router = useRouter();
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3003/api';
   const currentYear = new Date().getUTCFullYear();
@@ -93,13 +101,14 @@ export function BrandKpiPlanManager({ brandCode, catalog, initialYear, plan }: P
 
   const selectedCatalogIds = new Set(draftItems.map(item => item.kpi.id));
   const catalogById = useMemo(() => new Map(catalog.map(item => [item.id, item])), [catalog]);
+  const maxSelectableYear = Math.max(maxVisitedYear, currentYear + 1, selectedYear + 1);
   const yearOptions = useMemo(() => {
     const years: number[] = [];
-    for (let year = maxVisitedYear; year >= 2000; year -= 1) {
+    for (let year = maxSelectableYear; year >= 2000; year -= 1) {
       years.push(year);
     }
     return years;
-  }, [maxVisitedYear]);
+  }, [maxSelectableYear]);
 
   function clearStatus() {
     setStatusError(null);
@@ -190,6 +199,7 @@ export function BrandKpiPlanManager({ brandCode, catalog, initialYear, plan }: P
       setSelectedYear(loaded.year);
       setMaxVisitedYear(current => Math.max(current, loaded.year));
       setDraftItems(sortItems(loaded.items));
+      onPlanChanged?.(loaded);
       router.replace(`/app/brands/${brandCode}?tab=kpi&year=${loaded.year}`);
     } catch (error) {
       setStatusError(
@@ -207,6 +217,7 @@ export function BrandKpiPlanManager({ brandCode, catalog, initialYear, plan }: P
     try {
       const saved = await postPlanForYear(selectedYear, items);
       setDraftItems(sortItems(saved.items));
+      onPlanChanged?.(saved);
       setStatusMessage(successMessage);
       closeModal();
       router.refresh();
@@ -214,30 +225,6 @@ export function BrandKpiPlanManager({ brandCode, catalog, initialYear, plan }: P
     } catch (error) {
       setStatusError(error instanceof Error ? error.message : 'Failed to save KPI plan.');
       return false;
-    } finally {
-      setPendingKey(null);
-    }
-  }
-
-  async function copyToNextYear() {
-    const targetYear = selectedYear + 1;
-    setPendingKey('copy-year');
-    clearStatus();
-
-    try {
-      const saved = await postPlanForYear(targetYear, draftItems);
-      setSelectedYear(saved.year);
-      setMaxVisitedYear(current => Math.max(current, saved.year));
-      setDraftItems(sortItems(saved.items));
-      router.replace(`/app/brands/${brandCode}?tab=kpi&year=${saved.year}`);
-      setStatusMessage(`Copied ${saved.items.length} KPI targets to ${saved.year}.`);
-      router.refresh();
-    } catch (error) {
-      setStatusError(
-        error instanceof Error
-          ? error.message
-          : `Failed to copy KPI plan to ${targetYear}.`
-      );
     } finally {
       setPendingKey(null);
     }
@@ -327,45 +314,36 @@ export function BrandKpiPlanManager({ brandCode, catalog, initialYear, plan }: P
         </div>
       ) : null}
 
-      <div className="rounded-[24px] border border-border/60 bg-background/60 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="text-base font-semibold text-foreground">Year setup</div>
-          <Badge variant="outline">
-            {draftItems.length} KPI in {selectedYear}
-          </Badge>
-        </div>
-
-        <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,220px)_auto] md:items-end">
-          <div className="space-y-2">
-            <label className="text-sm font-medium" htmlFor="kpi-plan-year-select">
-              Report year
-            </label>
-            <Select
-              disabled={pendingKey !== null}
-              id="kpi-plan-year-select"
-              onChange={event => void loadYear(Number(event.currentTarget.value))}
-              value={String(selectedYear)}
-            >
-              {yearOptions.map(year => (
-                <option key={year} value={year}>
-                  {year}
-                </option>
-              ))}
-            </Select>
+      {showYearPicker ? (
+        <div className="rounded-[24px] border border-border/60 bg-background/60 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="text-base font-semibold text-foreground">Year setup</div>
+            <Badge variant="outline">
+              {draftItems.length} KPI in {selectedYear}
+            </Badge>
           </div>
 
-          <Button
-            className="w-fit"
-            disabled={pendingKey !== null || selectedYear >= 3000}
-            onClick={() => void copyToNextYear()}
-            type="button"
-            variant="outline"
-          >
-            <Copy />
-            Copy to {selectedYear + 1}
-          </Button>
+          <div className="mt-4 max-w-[220px] space-y-2">
+            <div className="space-y-2">
+              <label className="text-sm font-medium" htmlFor="kpi-plan-year-select">
+                Report year
+              </label>
+              <Select
+                disabled={pendingKey !== null}
+                id="kpi-plan-year-select"
+                onChange={event => void loadYear(Number(event.currentTarget.value))}
+                value={String(selectedYear)}
+              >
+                {yearOptions.map(year => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </div>
         </div>
-      </div>
+      ) : null}
 
       <div className="rounded-[24px] border border-border/60 bg-background/60 p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">

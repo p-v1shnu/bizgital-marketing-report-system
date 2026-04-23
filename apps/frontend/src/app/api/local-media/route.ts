@@ -5,16 +5,24 @@ import { extname, resolve } from 'node:path';
 
 import { NextResponse } from 'next/server';
 
+import { getAuthContext } from '@/lib/auth';
+
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
-function resolvePublicRoot() {
-  const directRoot = resolve(process.cwd(), 'public');
+function resolveLocalMediaRoot() {
+  const directRoot = resolve(process.cwd(), '.local-media');
+  const monorepoRoot = resolve(process.cwd(), 'apps/frontend/.local-media');
+
+  if (existsSync(monorepoRoot)) {
+    return monorepoRoot;
+  }
+
   if (existsSync(directRoot)) {
     return directRoot;
   }
 
-  const monorepoRoot = resolve(process.cwd(), 'apps/frontend/public');
-  if (existsSync(monorepoRoot)) {
+  const appFolder = resolve(process.cwd(), 'apps/frontend');
+  if (existsSync(appFolder)) {
     return monorepoRoot;
   }
 
@@ -58,6 +66,11 @@ export const runtime = 'nodejs';
 
 export async function POST(request: Request) {
   try {
+    const auth = await getAuthContext();
+    if (!auth.user) {
+      return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
+    }
+
     const formData = await request.formData();
     const file = formData.get('file');
 
@@ -85,8 +98,8 @@ export async function POST(request: Request) {
     const scope = sanitizeScope(formData.get('scope'));
     const extension = resolveExtension(file);
     const filename = `${Date.now()}-${randomUUID()}${extension}`;
-    const publicRoot = resolvePublicRoot();
-    const targetDirectory = resolve(publicRoot, 'uploads', scope);
+    const localMediaRoot = resolveLocalMediaRoot();
+    const targetDirectory = resolve(localMediaRoot, 'uploads', scope);
     const filePath = resolve(targetDirectory, filename);
 
     await mkdir(targetDirectory, { recursive: true });

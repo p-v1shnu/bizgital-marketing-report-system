@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import { ShieldCheck } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
@@ -47,6 +48,13 @@ export default async function SetupSuperAdminPage({ searchParams }: SetupSuperAd
           <Card className="login-card rounded-[28px] border-border/70">
             <CardHeader className="space-y-2">
               <CardTitle className="flex items-center gap-2">
+                <Image
+                  alt="BIZGITAL logo"
+                  className="size-5"
+                  height={20}
+                  src="/branding/bizgital-logo-2.png"
+                  width={20}
+                />
                 <ShieldCheck className="size-5 text-primary" />
                 Super Admin setup status
               </CardTitle>
@@ -85,12 +93,22 @@ export default async function SetupSuperAdminPage({ searchParams }: SetupSuperAd
 
       <div className="login-rise relative mx-auto grid w-full max-w-5xl items-center gap-8 lg:grid-cols-[minmax(0,1fr)_430px]">
         <section className="mx-auto w-full max-w-2xl space-y-5 text-center lg:mx-0 lg:text-left">
-          <Badge
-            className="mx-auto rounded-xl border-primary/35 bg-card/70 px-3 py-1 uppercase tracking-[0.18em] lg:mx-0"
-            variant="outline"
-          >
-            System setup
-          </Badge>
+          <div className="mx-auto flex w-fit items-center gap-3 lg:mx-0">
+            <Image
+              alt="BIZGITAL logo"
+              className="size-11"
+              height={44}
+              priority
+              src="/branding/bizgital-logo-2.png"
+              width={44}
+            />
+            <Badge
+              className="rounded-xl border-primary/35 bg-card/70 px-3 py-1 uppercase tracking-[0.18em]"
+              variant="outline"
+            >
+              System setup
+            </Badge>
+          </div>
           <h1 className="text-balance text-3xl font-semibold tracking-[-0.03em] text-foreground md:text-5xl">
             Configure Bootstrap Super Admin
           </h1>

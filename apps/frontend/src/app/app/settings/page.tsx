@@ -8,6 +8,7 @@ import {
   getBrands,
   getAdminAuditLogs,
   getComputedFormulas,
+  getContentCountPolicy,
   getGlobalCompanyFormatOptions,
   getImportColumnMappingConfig,
   getImportTableLayout,
@@ -27,12 +28,12 @@ import {
 import { BrandsManager } from './brands-manager';
 import { AuditLogManager } from './audit-log-manager';
 import { CompanyFormatOptionsManager } from './company-format-options-manager';
+import { ContentPolicyManager } from './content-policy-manager';
 import { FormulaManager } from './formula-manager';
 import { ImportColumnLayoutManager } from './import-column-layout-manager';
 import { ImportMappingManager } from './import-mapping-manager';
 import { KpiCatalogManager } from './kpi-catalog-manager';
 import { QuestionCatalogManager } from './question-catalog-manager';
-import { TopContentPolicyManager } from './top-content-policy-manager';
 import { UsersAccessManager } from './users-access-manager';
 
 type SettingsTab =
@@ -40,7 +41,7 @@ type SettingsTab =
   | 'brands'
   | 'columns'
   | 'import-mapping'
-  | 'top-content'
+  | 'content-policy'
   | 'formulas'
   | 'kpis'
   | 'questions'
@@ -68,7 +69,7 @@ const tabs: Array<{
   { key: 'brands', label: 'Brands', icon: Building2 },
   { key: 'columns', label: 'Table Display', icon: Columns3 },
   { key: 'import-mapping', label: 'Import Mapping', icon: Link2 },
-  { key: 'top-content', label: 'Top Content Policy', icon: Image },
+  { key: 'content-policy', label: 'Content Policy', icon: Image },
   { key: 'formulas', label: 'Formula Manager', icon: Calculator },
   { key: 'kpis', label: 'KPI Catalog', icon: Target },
   { key: 'questions', label: 'Question Catalog', icon: BadgeCheck },
@@ -82,6 +83,10 @@ const fieldLabelFallback = new Map<GlobalFieldTab, string>([
 ]);
 
 function parseSettingsTab(value?: string): SettingsTab {
+  if (value === 'top-content') {
+    return 'content-policy';
+  }
+
   return tabs.some(tab => tab.key === value) ? (value as SettingsTab) : 'users';
 }
 
@@ -131,7 +136,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   const shouldLoadUsers = activeTab === 'users' || activeTab === 'brands';
   const shouldLoadColumns = activeTab === 'columns';
   const shouldLoadImportMapping = activeTab === 'import-mapping';
-  const shouldLoadTopContentPolicy = activeTab === 'top-content';
+  const shouldLoadContentPolicy = activeTab === 'content-policy';
   const shouldLoadFormulas = activeTab === 'formulas' || activeTab === 'kpis';
   const shouldLoadKpis = activeTab === 'kpis';
   const shouldLoadQuestionCatalog = activeTab === 'questions';
@@ -231,7 +236,21 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         data: null as Awaited<ReturnType<typeof getImportColumnMappingConfig>> | null,
         error: null as string | null
       };
-  const topContentPolicyResult = shouldLoadTopContentPolicy
+  const contentCountPolicyResult = shouldLoadContentPolicy
+    ? await getContentCountPolicy()
+        .then(data => ({ data, error: null as string | null }))
+        .catch(error => ({
+          data: null,
+          error:
+            error instanceof Error
+              ? error.message
+              : 'Failed to load Content count policy.'
+        }))
+    : {
+        data: null as Awaited<ReturnType<typeof getContentCountPolicy>> | null,
+        error: null as string | null
+      };
+  const topContentPolicyResult = shouldLoadContentPolicy
     ? await getTopContentDataSourcePolicy()
         .then(data => ({ data, error: null as string | null }))
         .catch(error => ({
@@ -426,18 +445,6 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="rounded-[20px] border border-border/60 bg-background/55 px-4 py-3 text-sm text-muted-foreground">
-              Related Product is now brand-level. Manage it inside each brand admin page.
-              <div className="mt-2">
-                <Button asChild size="sm" variant="outline">
-                  <Link href="/app/brands">Open brand admin</Link>
-                </Button>
-              </div>
-            </div>
-            <div className="rounded-[20px] border border-border/60 bg-background/55 px-4 py-3 text-sm text-muted-foreground">
-              Campaign Base is now a boolean field in Import table and no longer managed as dropdown options.
-            </div>
-
             {metaColumnsResult.error ? (
               <div className="rounded-[18px] border border-rose-500/25 bg-rose-500/8 px-3 py-3 text-sm text-rose-700 dark:text-rose-300">
                 {metaColumnsResult.error}
@@ -523,29 +530,22 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         </Card>
       ) : null}
 
-      {activeTab === 'top-content' ? (
+      {activeTab === 'content-policy' ? (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-3">
               <Image className="text-primary" />
-              Top content policy
+              Content policy
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {topContentPolicyResult.error ? (
-              <div className="rounded-[24px] border border-rose-500/25 bg-rose-500/8 px-4 py-4 text-sm text-rose-700 dark:text-rose-300">
-                {topContentPolicyResult.error}
-              </div>
-            ) : topContentPolicyResult.data ? (
-              <TopContentPolicyManager
-                policy={topContentPolicyResult.data}
-                returnPath="/app/settings?tab=top-content"
-              />
-            ) : (
-              <div className="rounded-[24px] border border-dashed border-border/60 px-4 py-4 text-sm text-muted-foreground">
-                Top Content policy is unavailable right now.
-              </div>
-            )}
+            <ContentPolicyManager
+              contentCountPolicy={contentCountPolicyResult.data}
+              contentCountPolicyError={contentCountPolicyResult.error}
+              returnPath="/app/settings?tab=content-policy"
+              topContentPolicy={topContentPolicyResult.data}
+              topContentPolicyError={topContentPolicyResult.error}
+            />
           </CardContent>
         </Card>
       ) : null}

@@ -66,6 +66,22 @@ export class ReportingController {
     });
   }
 
+  @Post('brands/:brandId/reporting-periods/year-setup/prepare')
+  prepareYearSetup(
+    @Param('brandId') brandCode: string,
+    @Body('targetYear', ParseIntPipe) targetYear: number,
+    @Body('sourceYear') sourceYear?: string | number | null
+  ) {
+    const parsedSourceYear =
+      sourceYear === null || sourceYear === undefined ? null : Number(sourceYear);
+    const resolvedSourceYear =
+      parsedSourceYear !== null && Number.isFinite(parsedSourceYear)
+        ? parsedSourceYear
+        : undefined;
+
+    return this.reportingService.prepareYearSetup(brandCode, targetYear, resolvedSourceYear);
+  }
+
   @Post('reporting-periods/:periodId/drafts')
   createOrResumeDraft(
     @Param('periodId') periodId: string,

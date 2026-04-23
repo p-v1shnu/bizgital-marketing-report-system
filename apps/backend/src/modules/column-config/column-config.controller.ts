@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Post, Query } from '@nestjs/common';
 
 import type {
+  ContentCountPolicyResponse,
   CreateImportColumnMappingDraftFromHeadersInput,
   CreateComputedFormulaInput,
   CreateGlobalCompanyFormatOptionInput,
@@ -11,6 +12,7 @@ import type {
   ReorderGlobalCompanyFormatOptionsInput,
   RollbackImportColumnMappingInput,
   TopContentDataSourcePolicyResponse,
+  UpdateContentCountPolicyInput,
   UpdateImportColumnMappingDraftInput,
   UpdateImportTableLayoutInput,
   UpdateComputedFormulaInput,
@@ -107,6 +109,16 @@ export class ColumnConfigController {
   @Post('import-table-layout')
   updateImportTableLayout(@Body() body: UpdateImportTableLayoutInput) {
     return this.columnConfigService.updateImportTableLayout(body);
+  }
+
+  @Get('content-count-policy')
+  getContentCountPolicy(): Promise<ContentCountPolicyResponse> {
+    return this.columnConfigService.getContentCountPolicy();
+  }
+
+  @Post('content-count-policy')
+  updateContentCountPolicy(@Body() body: UpdateContentCountPolicyInput) {
+    return this.columnConfigService.updateContentCountPolicy(body);
   }
 
   @Get('top-content-data-source-policy')

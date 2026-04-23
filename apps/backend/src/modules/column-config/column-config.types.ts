@@ -117,6 +117,22 @@ export type UpdateImportTableLayoutInput = {
 };
 
 export type TopContentDataSourcePolicyMode = 'csv_only' | 'csv_and_manual';
+export type ContentCountPolicyMode = 'csv_only' | 'csv_and_manual';
+
+export type ContentCountPolicyResponse = {
+  mode: ContentCountPolicyMode;
+  label: string;
+  excludeManualRows: boolean;
+  updatedAt: string | null;
+  updatedBy: string | null;
+  note: string | null;
+};
+
+export type UpdateContentCountPolicyInput = {
+  mode: ContentCountPolicyMode;
+  actorEmail?: string | null;
+  note?: string | null;
+};
 
 export type TopContentDataSourcePolicyResponse = {
   mode: TopContentDataSourcePolicyMode;

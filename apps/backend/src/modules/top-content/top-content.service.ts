@@ -9,6 +9,7 @@ import {
   BrandDropdownFieldKey,
   ComputedColumnKey,
   MappingTargetField,
+  Prisma,
   ReportWorkflowState
 } from '@prisma/client';
 
@@ -16,7 +17,11 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { BrandsService } from '../brands/brands.service';
 import { ColumnConfigService } from '../column-config/column-config.service';
-import type { TopContentDataSourcePolicyMode } from '../column-config/column-config.types';
+import type {
+  ContentCountPolicyMode,
+  ContentCountPolicyResponse,
+  TopContentDataSourcePolicyMode
+} from '../column-config/column-config.types';
 import { MediaService } from '../media/media.service';
 import { readImportJobSnapshot } from '../imports/import-snapshot';
 import { AVAILABLE_TARGETS_BY_KEY } from '../mapping/mapping-targets';
@@ -25,6 +30,12 @@ import {
   toManualSourceRowsSettingKey
 } from '../dataset/manual-source-rows-setting';
 import { TOP_CONTENT_SLOTS, type TopContentSlotKey } from './top-content.constants';
+import {
+  TOP_CONTENT_COUNT_SNAPSHOT_SETTING_VERSION,
+  parseTopContentCountSnapshotSettingPayload,
+  stringifyTopContentCountSnapshotSettingPayload,
+  toTopContentCountSnapshotSettingKey
+} from './top-content-content-count-snapshot-setting';
 import type { TopContentOverviewResponse } from './top-content.types';
 
 type RankedRow = {
@@ -99,6 +110,27 @@ const DEFAULT_ENGAGEMENT_SOURCE_LABEL_A = 'Reactions, comments and shares';
 const DEFAULT_ENGAGEMENT_SOURCE_LABEL_B = 'Total clicks';
 const DEFAULT_PERMALINK_LABEL = 'Permalink';
 const DEFAULT_CONTENT_STYLE_LABEL = 'Content Style';
+
+type TopContentCountPolicySummary = {
+  mode: ContentCountPolicyMode;
+  label: string;
+  excludeManualRows: boolean;
+  updatedAt: string | null;
+  updatedBy: string | null;
+  note: string | null;
+};
+
+export type TopContentContentCountSummary = {
+  reportVersionId: string;
+  countedContentCount: number;
+  csvRowCount: number;
+  manualRowCount: number;
+  policy: TopContentCountPolicySummary;
+};
+
+export type TopContentContentCountSnapshot = TopContentContentCountSummary & {
+  capturedAt: string;
+};
 
 @Injectable()
 export class TopContentService {
@@ -247,6 +279,86 @@ export class TopContentService {
     await this.refreshForReportVersion(targetVersion.id);
 
     return this.getOverview(brandCode, periodId);
+  }
+
+  async getContentCountPreviewForReportVersion(
+    reportVersionId: string
+  ): Promise<TopContentContentCountSummary> {
+    const policy = await this.columnConfigService.getContentCountPolicy();
+    return this.buildContentCountSummary(reportVersionId, policy);
+  }
+
+  async captureApprovalContentCountSnapshot(
+    reportVersionId: string,
+    options?: {
+      capturedAt?: Date;
+      tx?: Prisma.TransactionClient;
+    }
+  ): Promise<TopContentContentCountSnapshot> {
+    const policy = await this.columnConfigService.getContentCountPolicy();
+    const prismaClient = options?.tx ?? this.prisma;
+    const summary = await this.buildContentCountSummary(
+      reportVersionId,
+      policy,
+      prismaClient
+    );
+    const capturedAt = (options?.capturedAt ?? new Date()).toISOString();
+    const payload = {
+      version: TOP_CONTENT_COUNT_SNAPSHOT_SETTING_VERSION,
+      capturedAt,
+      reportVersionId,
+      countedContentCount: summary.countedContentCount,
+      csvRowCount: summary.csvRowCount,
+      manualRowCount: summary.manualRowCount,
+      policy: summary.policy
+    };
+
+    await prismaClient.globalUiSetting.upsert({
+      where: {
+        settingKey: toTopContentCountSnapshotSettingKey(reportVersionId)
+      },
+      update: {
+        valueJson: stringifyTopContentCountSnapshotSettingPayload(payload)
+      },
+      create: {
+        settingKey: toTopContentCountSnapshotSettingKey(reportVersionId),
+        valueJson: stringifyTopContentCountSnapshotSettingPayload(payload)
+      }
+    });
+
+    return {
+      ...summary,
+      capturedAt
+    };
+  }
+
+  async getApprovalContentCountSnapshot(
+    reportVersionId: string
+  ): Promise<TopContentContentCountSnapshot | null> {
+    const setting = await this.prisma.globalUiSetting.findUnique({
+      where: {
+        settingKey: toTopContentCountSnapshotSettingKey(reportVersionId)
+      },
+      select: {
+        valueJson: true
+      }
+    });
+    const parsed = parseTopContentCountSnapshotSettingPayload(
+      setting?.valueJson ?? null
+    );
+
+    if (!parsed) {
+      return null;
+    }
+
+    return {
+      reportVersionId: parsed.reportVersionId,
+      capturedAt: parsed.capturedAt,
+      countedContentCount: parsed.countedContentCount,
+      csvRowCount: parsed.csvRowCount,
+      manualRowCount: parsed.manualRowCount,
+      policy: parsed.policy
+    };
   }
 
   async refreshForReportVersion(
@@ -1561,6 +1673,57 @@ export class TopContentService {
       .replace(/^-+|-+$/g, '');
 
     return normalized || null;
+  }
+
+  private async buildContentCountSummary(
+    reportVersionId: string,
+    policy: ContentCountPolicyResponse,
+    prismaClient: Prisma.TransactionClient | PrismaService = this.prisma
+  ): Promise<TopContentContentCountSummary> {
+    const [latestImportJob, totalDatasetRowCount] = await Promise.all([
+      prismaClient.importJob.findFirst({
+        where: {
+          reportVersionId
+        },
+        orderBy: {
+          createdAt: 'desc'
+        },
+        select: {
+          snapshotSourceType: true,
+          snapshotSheetName: true,
+          snapshotHeaderRow: true,
+          snapshotDataRows: true
+        }
+      }),
+      prismaClient.datasetRow.count({
+        where: {
+          reportVersionId
+        }
+      })
+    ]);
+    const importSnapshot = latestImportJob
+      ? readImportJobSnapshot(latestImportJob)
+      : null;
+    const csvRowCount = importSnapshot?.dataRows.length ?? 0;
+    const manualRowCount = Math.max(totalDatasetRowCount - csvRowCount, 0);
+
+    return {
+      reportVersionId,
+      countedContentCount:
+        policy.mode === 'csv_and_manual'
+          ? csvRowCount + manualRowCount
+          : csvRowCount,
+      csvRowCount,
+      manualRowCount,
+      policy: {
+        mode: policy.mode,
+        label: policy.label,
+        excludeManualRows: policy.excludeManualRows,
+        updatedAt: policy.updatedAt,
+        updatedBy: policy.updatedBy,
+        note: policy.note
+      }
+    };
   }
 
   private resolveContentStyleValueKey(input: {

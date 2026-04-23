@@ -564,7 +564,6 @@ export function DashboardGlobalKpiControls({
     fontScale,
     contentChartTextScale,
     momDisplayMode,
-    contentPreset,
     contentMetricScale,
     contentFollowerScale,
     contentBadgeScale,
@@ -586,7 +585,6 @@ export function DashboardGlobalKpiControls({
     setFontScale,
     setContentChartTextScale,
     setMomDisplayMode,
-    setContentPreset,
     setContentMetricScale,
     setContentFollowerScale,
     setContentBadgeScale,
@@ -755,22 +753,6 @@ export function DashboardGlobalKpiControls({
   const contentControls = (
     <div className="flex min-w-0 flex-1 items-center gap-2">
       <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-3 overflow-x-auto pb-1">
-        <div className="flex shrink-0 items-center gap-2">
-          <label className={controlLabelClassName} htmlFor="dashboard-content-preset">
-            Content preset
-          </label>
-          <select
-            className={`${controlSelectClassName} w-[150px]`}
-            id="dashboard-content-preset"
-            onChange={(event) => setContentPreset(event.target.value as DashboardContentPreset)}
-            value={contentPreset}
-          >
-            <option value="standard">Standard</option>
-            <option value="presentation">Presentation</option>
-            <option value="compact">Compact</option>
-          </select>
-        </div>
-
         <div className="flex shrink-0 items-center gap-2">
           <label className={controlLabelClassName} htmlFor="dashboard-content-chart-text-scale">
             Chart text

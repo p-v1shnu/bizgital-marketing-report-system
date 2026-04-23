@@ -65,8 +65,11 @@ export class QuestionsService {
         where: {
           brandId: brand.id
         },
-        include: {
-          questionMaster: true,
+        select: {
+          id: true,
+          questionMasterId: true,
+          displayOrder: true,
+          status: true,
           _count: {
             select: {
               questionEvidence: true
@@ -77,12 +80,30 @@ export class QuestionsService {
       })
     ]);
 
+    const catalogById = new Map(catalog.map(item => [item.id, item]));
     const uniqueAssignments = this.deduplicateAssignments(brandAssignments);
-    const activeAssignments = uniqueAssignments.filter(
-      item =>
-        item.status === QuestionStatus.active &&
-        item.questionMaster.status === QuestionStatus.active
-    );
+    const activeAssignments = uniqueAssignments
+      .map(item => {
+        const questionMaster = catalogById.get(item.questionMasterId) ?? null;
+        if (
+          item.status !== QuestionStatus.active ||
+          !questionMaster ||
+          questionMaster.status !== QuestionStatus.active
+        ) {
+          return null;
+        }
+
+        return {
+          ...item,
+          questionMaster
+        };
+      })
+      .filter(
+        (
+          item
+        ): item is (typeof uniqueAssignments)[number] & { questionMaster: (typeof catalog)[number] } =>
+          item !== null
+      );
     const approvedUsedActivationIds = await this.findApprovedUsedAssignmentIds(
       activeAssignments.map(item => item.id)
     );
@@ -259,6 +280,17 @@ export class QuestionsService {
       throw new NotFoundException('Question category was not found.');
     }
 
+    const assignedBrandCount = await this.prisma.brandQuestionActivation.count({
+      where: {
+        questionMasterId: questionId
+      }
+    });
+    if (assignedBrandCount > 0) {
+      throw new ConflictException(
+        'Cannot delete because this category is assigned to one or more brands.'
+      );
+    }
+
     const approvedUsedQuestionIds = await this.findApprovedUsedQuestionIds([questionId]);
     if (approvedUsedQuestionIds.has(questionId)) {
       throw new ConflictException(
@@ -321,14 +353,6 @@ export class QuestionsService {
       where: {
         brandId: brand.id
       },
-      include: {
-        questionMaster: {
-          select: {
-            id: true,
-            questionText: true
-          }
-        }
-      },
       orderBy: [{ createdAt: 'asc' }]
     });
     const byQuestionId = new Map(allAssignments.map(item => [item.questionMasterId, item]));
@@ -343,8 +367,28 @@ export class QuestionsService {
       approvedUsedActivationIds.has(item.id)
     );
     if (blockedRemovals.length > 0) {
+      const blockedQuestionIds = Array.from(
+        new Set(blockedRemovals.map(item => item.questionMasterId))
+      );
+      const blockedMasters =
+        blockedQuestionIds.length > 0
+          ? await this.prisma.questionMaster.findMany({
+              where: {
+                id: {
+                  in: blockedQuestionIds
+                }
+              },
+              select: {
+                id: true,
+                questionText: true
+              }
+            })
+          : [];
+      const blockedLabelByQuestionId = new Map(
+        blockedMasters.map(item => [item.id, item.questionText])
+      );
       const blockedLabels = blockedRemovals
-        .map(item => item.questionMaster.questionText.trim())
+        .map(item => (blockedLabelByQuestionId.get(item.questionMasterId) ?? '').trim())
         .filter(item => item.length > 0)
         .slice(0, 3)
         .join(', ');
@@ -952,18 +996,58 @@ export class QuestionsService {
     const assignments = await this.prisma.brandQuestionActivation.findMany({
       where: {
         brandId,
-        status: QuestionStatus.active,
-        questionMaster: {
-          status: QuestionStatus.active
-        }
+        status: QuestionStatus.active
       },
-      include: {
-        questionMaster: true
+      select: {
+        id: true,
+        questionMasterId: true,
+        displayOrder: true
       },
       orderBy: [{ displayOrder: 'asc' }, { createdAt: 'asc' }]
     });
 
-    return this.deduplicateAssignments(assignments);
+    const questionMasterIds = Array.from(
+      new Set(assignments.map(item => item.questionMasterId))
+    );
+    const questionMasters =
+      questionMasterIds.length > 0
+        ? await this.prisma.questionMaster.findMany({
+            where: {
+              id: {
+                in: questionMasterIds
+              },
+              status: QuestionStatus.active
+            },
+            select: {
+              id: true,
+              questionText: true,
+              status: true
+            }
+          })
+        : [];
+    const questionMasterById = new Map(questionMasters.map(item => [item.id, item]));
+
+    const resolvedAssignments: ResolvedQuestionAssignment[] = assignments
+      .map(item => {
+        const questionMaster = questionMasterById.get(item.questionMasterId) ?? null;
+        if (!questionMaster) {
+          return null;
+        }
+
+        return {
+          id: item.id,
+          questionMasterId: item.questionMasterId,
+          displayOrder: item.displayOrder,
+          questionMaster: {
+            id: questionMaster.id,
+            questionText: questionMaster.questionText,
+            status: questionMaster.status
+          }
+        } satisfies ResolvedQuestionAssignment;
+      })
+      .filter((item): item is ResolvedQuestionAssignment => item !== null);
+
+    return this.deduplicateAssignments(resolvedAssignments);
   }
 
   private async getQuestionSnapshotCaptureState(periodId: string) {
@@ -1460,19 +1544,27 @@ export class QuestionsService {
         activeCount: catalog.filter(item => item.status === QuestionStatus.active).length,
         inactiveCount: catalog.filter(item => item.status === QuestionStatus.inactive).length
       },
-      items: catalog.map(item => ({
-        id: item.id,
-        text: item.questionText,
-        status: item.status,
-        canDelete: !approvedUsedQuestionIds.has(item.id),
-        removeBlockedReason: approvedUsedQuestionIds.has(item.id)
-          ? 'Cannot delete because this category is already used in an approved report.'
-          : null,
-        usage: {
-          assignedBrandCount: assignedBrandCountByQuestionId.get(item.id) ?? 0,
-          hasApprovedUsage: approvedUsedQuestionIds.has(item.id)
-        }
-      }))
+      items: catalog.map(item => {
+        const assignedBrandCount = assignedBrandCountByQuestionId.get(item.id) ?? 0;
+        const hasBrandUsage = assignedBrandCount > 0;
+        const hasApprovedUsage = approvedUsedQuestionIds.has(item.id);
+
+        return {
+          id: item.id,
+          text: item.questionText,
+          status: item.status,
+          canDelete: !hasBrandUsage && !hasApprovedUsage,
+          removeBlockedReason: hasBrandUsage
+            ? 'Cannot delete because this category is assigned to one or more brands.'
+            : hasApprovedUsage
+              ? 'Cannot delete because this category is already used in an approved report.'
+              : null,
+          usage: {
+            assignedBrandCount,
+            hasApprovedUsage
+          }
+        };
+      })
     };
   }
 }

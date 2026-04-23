@@ -86,6 +86,27 @@ export type ReportingListResponse = {
   };
   year: number;
   cadence: 'monthly';
+  yearOptions: Array<{
+    year: number;
+    isReady: boolean;
+    hasReports: boolean;
+  }>;
+  selectedYearSetup: {
+    year: number;
+    canCreateReport: boolean;
+    summary: string;
+    checks: Array<{
+      key:
+        | 'kpi_plan'
+        | 'competitor_assignments'
+        | 'question_assignments'
+        | 'related_product_options';
+      label: string;
+      required: boolean;
+      passed: boolean;
+      detail: string;
+    }>;
+  };
   suggestedNextPeriod: {
     year: number;
     month: number;
@@ -103,6 +124,8 @@ export type ReportingRecycleBinItem = {
   year: number;
   month: number;
   label: string;
+  createdAt: string;
+  createdYear: number;
   deletedAt: string;
   deletedByName: string | null;
   deletedByEmail: string | null;

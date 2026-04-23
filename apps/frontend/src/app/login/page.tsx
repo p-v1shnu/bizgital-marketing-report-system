@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
@@ -43,9 +44,19 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
       <div className="relative mx-auto grid w-full max-w-6xl items-center gap-8 lg:grid-cols-[minmax(0,1fr)_430px] lg:gap-10">
         <section className="login-rise mx-auto w-full max-w-2xl space-y-5 text-center lg:mx-0 lg:text-left">
-          <Badge className="mx-auto rounded-xl border-primary/35 bg-card/70 px-3 py-1 uppercase tracking-[0.18em] lg:mx-0" variant="outline">
-            BIZGITAL
-          </Badge>
+          <div className="mx-auto flex w-fit items-center gap-3 lg:mx-0">
+            <Image
+              alt="BIZGITAL logo"
+              className="size-[84px]"
+              height={84}
+              priority
+              src="/branding/bizgital-logo-2.png"
+              width={84}
+            />
+            <Badge className="rounded-xl border-primary/35 bg-card/70 px-3 py-1 uppercase tracking-[0.18em]" variant="outline">
+              BIZGITAL
+            </Badge>
+          </div>
           <h1 className="text-balance text-3xl font-semibold tracking-[-0.03em] text-foreground md:text-5xl">
             One hub for tracking, reviewing, and approving your BIZGITAL Marketing Report.
           </h1>

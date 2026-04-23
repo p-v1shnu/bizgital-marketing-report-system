@@ -6,11 +6,13 @@ import type { ReactNode } from 'react';
 import {
   LayoutDashboard,
   Settings2,
+  Target,
   TableProperties
 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { toProtectedMediaUrl } from '@/lib/media-url';
 import { cn } from '@/lib/utils';
 
 const navigation = [
@@ -25,6 +27,12 @@ const navigation = [
     label: 'Dashboard',
     description: 'Approved reporting view',
     icon: LayoutDashboard
+  },
+  {
+    href: 'kpi-check',
+    label: 'KPI Check',
+    description: 'Quick CSV target check',
+    icon: Target
   }
 ] as const;
 
@@ -41,6 +49,7 @@ type BrandShellProps = {
 
 export function BrandShell({ brand, canManageBrand, children }: BrandShellProps) {
   const pathname = usePathname();
+  const protectedBrandLogoUrl = toProtectedMediaUrl(brand.logoUrl);
 
   return (
     <section className="space-y-6">
@@ -51,12 +60,12 @@ export function BrandShell({ brand, canManageBrand, children }: BrandShellProps)
               <Badge variant="outline">Brand workspace</Badge>
             </div>
             <div className="flex items-center gap-3">
-              {brand.logoUrl ? (
+              {protectedBrandLogoUrl ? (
                 <div className="size-10 overflow-hidden rounded-xl border border-border/60 bg-background/70">
                   <img
                     alt={`${brand.name} logo`}
                     className="h-full w-full object-cover"
-                    src={brand.logoUrl}
+                    src={protectedBrandLogoUrl}
                   />
                 </div>
               ) : null}

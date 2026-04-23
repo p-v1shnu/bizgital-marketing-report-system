@@ -9,6 +9,7 @@ import {
 import { ImagePlus, LoaderCircle, Trash2, ZoomIn } from 'lucide-react';
 
 import { createMediaPresignedUpload, deleteMediaObject } from '@/lib/reporting-api';
+import { toProtectedMediaUrl } from '@/lib/media-url';
 import { cn } from '@/lib/utils';
 
 import { Button } from './button';
@@ -298,6 +299,7 @@ export function ImageUploadField({
       ? 'h-36 w-36 rounded-[12px]'
       : `${previewRatioClassName} w-full rounded-[12px]`;
   const previewFitClassName = previewFit === 'contain' ? 'object-contain bg-muted/25' : 'object-cover';
+  const currentPreviewSrc = toProtectedMediaUrl(currentValue) ?? currentValue;
   const updateValue = (nextValue: string) => {
     if (value === undefined) {
       setInternalValue(nextValue);
@@ -515,7 +517,7 @@ export function ImageUploadField({
                 previewFitClassName,
                 previewFrameClassName
               )}
-              src={currentValue}
+              src={currentPreviewSrc}
             />
           </button>
         ) : (
@@ -605,7 +607,7 @@ export function ImageUploadField({
             <img
               alt={previewAlt}
               className="max-h-[78vh] w-full object-contain"
-              src={currentValue}
+              src={currentPreviewSrc}
             />
           </div>
         </ModalShell>

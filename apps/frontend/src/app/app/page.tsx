@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { requireAuth } from '@/lib/auth';
+import { toProtectedMediaUrl } from '@/lib/media-url';
 import type { BrandSummary, ReportingListItem } from '@/lib/reporting-api';
 import { getBrands, getReportingPeriods } from '@/lib/reporting-api';
 import { labelForState, monthLabel } from '@/lib/reporting-ui';
@@ -159,19 +160,22 @@ export default async function BrandWorkspacesPage({
                 : 'No assigned brand matches your search.'}
             </div>
           ) : (
-            filteredRows.map(({ brand, draftCount, submittedCount, latestPeriod }) => (
+            filteredRows.map(({ brand, draftCount, submittedCount, latestPeriod }) => {
+              const protectedBrandLogoUrl = toProtectedMediaUrl(brand.logoUrl);
+
+              return (
                 <div
                   className="grid gap-4 rounded-[28px] border border-border/60 bg-background/60 p-4 md:grid-cols-[minmax(0,1.4fr)_120px_140px_160px_auto]"
                   key={brand.id}
                 >
                   <div className="min-w-0">
                     <div className="flex items-center gap-3">
-                      {brand.logoUrl ? (
+                      {protectedBrandLogoUrl ? (
                         <div className="size-10 overflow-hidden rounded-xl border border-border/60 bg-background/70">
                           <img
                             alt={`${brand.name} logo`}
                             className="h-full w-full object-cover"
-                            src={brand.logoUrl}
+                            src={protectedBrandLogoUrl}
                           />
                         </div>
                       ) : (
@@ -227,8 +231,8 @@ export default async function BrandWorkspacesPage({
                     </Button>
                   </div>
                 </div>
-              )
-            )
+              );
+            })
           )}
         </CardContent>
       </Card>

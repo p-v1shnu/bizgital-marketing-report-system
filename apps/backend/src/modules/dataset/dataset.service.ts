@@ -105,6 +105,18 @@ export class DatasetService {
       null;
     const latestVersion = period.reportVersions[0] ?? null;
     const targetVersion = currentDraft ?? latestVersion;
+    const latestApprovedVersion =
+      period.reportVersions.find(
+        version => version.workflowState === ReportWorkflowState.approved
+      ) ?? null;
+    const [contentCountPreview, approvedContentCountSnapshot] = await Promise.all([
+      targetVersion
+        ? this.topContentService.getContentCountPreviewForReportVersion(targetVersion.id)
+        : Promise.resolve(null),
+      latestApprovedVersion
+        ? this.topContentService.getApprovalContentCountSnapshot(latestApprovedVersion.id)
+        : Promise.resolve(null)
+    ]);
     const manualHeaderMetrics = targetVersion
       ? await this.manualMetricsService.getReportManualMetrics(targetVersion.id)
       : {
@@ -180,6 +192,36 @@ export class DatasetService {
         viewers: this.toStringValue(manualHeaderMetrics.viewers),
         pageFollowers: this.toStringValue(manualHeaderMetrics.pageFollowers),
         pageVisit: this.toStringValue(manualHeaderMetrics.pageVisit)
+      },
+      contentCount: {
+        preview: contentCountPreview
+          ? {
+              reportVersionId: contentCountPreview.reportVersionId,
+              countedContentCount: contentCountPreview.countedContentCount,
+              csvRowCount: contentCountPreview.csvRowCount,
+              manualRowCount: contentCountPreview.manualRowCount,
+              policyMode: contentCountPreview.policy.mode,
+              policyLabel: contentCountPreview.policy.label,
+              policyUpdatedAt: contentCountPreview.policy.updatedAt,
+              policyUpdatedBy: contentCountPreview.policy.updatedBy,
+              policyNote: contentCountPreview.policy.note
+            }
+          : null,
+        approvedSnapshot: approvedContentCountSnapshot
+          ? {
+              reportVersionId: approvedContentCountSnapshot.reportVersionId,
+              capturedAt: approvedContentCountSnapshot.capturedAt,
+              approvedAt: latestApprovedVersion?.approvedAt?.toISOString() ?? null,
+              countedContentCount: approvedContentCountSnapshot.countedContentCount,
+              csvRowCount: approvedContentCountSnapshot.csvRowCount,
+              manualRowCount: approvedContentCountSnapshot.manualRowCount,
+              policyMode: approvedContentCountSnapshot.policy.mode,
+              policyLabel: approvedContentCountSnapshot.policy.label,
+              policyUpdatedAt: approvedContentCountSnapshot.policy.updatedAt,
+              policyUpdatedBy: approvedContentCountSnapshot.policy.updatedBy,
+              policyNote: approvedContentCountSnapshot.policy.note
+            }
+          : null
       }
     };
     const displayLabelLookup =

@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { resolveAppOrigin, resolveMicrosoftRedirectUri, toAppUrl } from '@/lib/app-origin';
+import {
+  AUTH_COOKIE_NAME,
+  AUTH_SESSION_TTL_SECONDS,
+  createAuthSessionCookieValue
+} from '@/lib/auth-session';
 import { readMicrosoftAuthEnv } from '@/lib/microsoft-auth-env';
-
-const AUTH_COOKIE_NAME = 'bizgital-marketing-report.user-email';
 const AUTH_COOKIE_STATE = 'bizgital-marketing-report.ms.state';
 const AUTH_COOKIE_VERIFIER = 'bizgital-marketing-report.ms.verifier';
 const AUTH_COOKIE_NEXT = 'bizgital-marketing-report.ms.next';
@@ -209,12 +212,12 @@ export async function GET(request: NextRequest) {
   const response = NextResponse.redirect(new URL(nextPath, resolveAppOrigin(request)));
   const secure = process.env.NODE_ENV === 'production';
 
-  response.cookies.set(AUTH_COOKIE_NAME, backendPayload.email.toLowerCase(), {
+  response.cookies.set(AUTH_COOKIE_NAME, createAuthSessionCookieValue(backendPayload.email), {
     httpOnly: true,
     sameSite: 'lax',
     secure,
     path: '/',
-    maxAge: 60 * 60 * 24 * 30
+    maxAge: AUTH_SESSION_TTL_SECONDS
   });
 
   return withTemporaryCookiesCleared(response);

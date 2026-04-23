@@ -1,0 +1,95 @@
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: ${PROJECT_NAME:-bizgital-marketing-report}-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    container_name: ${PROJECT_NAME:-bizgital-marketing-report}-backend
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3003
+      API_PREFIX: ${API_PREFIX:-api}
+      APP_ORIGIN: ${APP_ORIGIN}
+      AUTH_SESSION_SECRET: ${AUTH_SESSION_SECRET}
+      DATABASE_URL: mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE}
+      IMPORT_STORAGE_DIR: /workspace/storage/imports
+      MEDIA_S3_ENDPOINT: ${MEDIA_S3_ENDPOINT}
+      MEDIA_S3_REGION: ${MEDIA_S3_REGION}
+      MEDIA_S3_BUCKET: ${MEDIA_S3_BUCKET}
+      MEDIA_S3_ACCESS_KEY: ${MEDIA_S3_ACCESS_KEY}
+      MEDIA_S3_SECRET_KEY: ${MEDIA_S3_SECRET_KEY}
+      MEDIA_S3_FORCE_PATH_STYLE: ${MEDIA_S3_FORCE_PATH_STYLE}
+      MEDIA_S3_PUBLIC_BASE_URL: ${MEDIA_S3_PUBLIC_BASE_URL}
+      MEDIA_UPLOAD_MAX_BYTES: ${MEDIA_UPLOAD_MAX_BYTES:-10485760}
+      MEDIA_PRESIGN_EXPIRES_SECONDS: ${MEDIA_PRESIGN_EXPIRES_SECONDS:-900}
+      MEDIA_READ_PRESIGN_EXPIRES_SECONDS: ${MEDIA_READ_PRESIGN_EXPIRES_SECONDS:-120}
+      MEDIA_ORPHAN_CLEANUP_ENABLED: ${MEDIA_ORPHAN_CLEANUP_ENABLED:-true}
+      MEDIA_ORPHAN_CLEANUP_INTERVAL_HOURS: ${MEDIA_ORPHAN_CLEANUP_INTERVAL_HOURS:-24}
+      MEDIA_ORPHAN_CLEANUP_INITIAL_DELAY_MINUTES: ${MEDIA_ORPHAN_CLEANUP_INITIAL_DELAY_MINUTES:-5}
+      MEDIA_ORPHAN_CLEANUP_MAX_DELETE_PER_RUN: ${MEDIA_ORPHAN_CLEANUP_MAX_DELETE_PER_RUN:-500}
+      MEDIA_ORPHAN_CLEANUP_MIN_AGE_HOURS: ${MEDIA_ORPHAN_CLEANUP_MIN_AGE_HOURS:-168}
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-3003}:3003"
+    volumes:
+      - ./storage:/workspace/storage
+
+  frontend:
+    build:
+      context: .
+      dockerfile: apps/frontend/Dockerfile
+    container_name: ${PROJECT_NAME:-bizgital-marketing-report}-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      NEXT_PUBLIC_APP_NAME: BIZGITAL Marketing Report
+      INTERNAL_API_BASE_URL: http://backend:3003/${API_PREFIX:-api}
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:${BACKEND_PORT:-3003}/${API_PREFIX:-api}}
+      AUTH_SESSION_SECRET: ${AUTH_SESSION_SECRET}
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-3200}:3000"
+
+  minio:
+    image: minio/minio:latest
+    container_name: ${PROJECT_NAME:-bizgital-marketing-report}-minio
+    restart: unless-stopped
+    profiles: [ "with-minio" ]
+    environment:
+      MINIO_ROOT_USER: ${MEDIA_S3_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MEDIA_S3_SECRET_KEY}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio-data:/data
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+
+volumes:
+  mysql-data:
+  minio-data:

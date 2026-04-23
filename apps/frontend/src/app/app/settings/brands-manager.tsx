@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
@@ -9,6 +10,7 @@ import { ImageUploadField } from '@/components/ui/image-upload-field';
 import { Input } from '@/components/ui/input';
 import { ModalShell } from '@/components/ui/modal-shell';
 import { Select } from '@/components/ui/select';
+import { toProtectedMediaUrl } from '@/lib/media-url';
 import type { BrandSummary, UserSummary } from '@/lib/reporting-api';
 
 type Props = {
@@ -461,72 +463,84 @@ export function BrandsManager({ brands, users, actorName, actorEmail }: Props) {
                 </td>
               </tr>
             ) : (
-              filteredBrands.map(brand => (
-                <tr className="border-b border-border/50 last:border-b-0" key={brand.id}>
-                  <td className="px-4 py-3 font-medium text-foreground">
-                    <div className="flex items-center gap-3">
-                      {brand.logoUrl ? (
-                        <div className="size-9 overflow-hidden rounded-lg border border-border/60 bg-background/70">
-                          <img
-                            alt={`${brand.name} logo`}
-                            className="h-full w-full object-cover"
-                            src={brand.logoUrl}
-                          />
-                        </div>
-                      ) : (
-                        <div className="flex size-9 items-center justify-center rounded-lg border border-border/60 bg-background/70 text-xs font-semibold uppercase text-muted-foreground">
-                          {brand.name.slice(0, 2)}
-                        </div>
-                      )}
-                      <span>{brand.name}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {countNonAdminMembers(brand)}
-                  </td>
-                  <td className="px-4 py-3 text-xs text-muted-foreground">
-                    <div className="space-y-1">
-                      <div>Created: {formatLifecycleTimestamp(brand.createdAt)}</div>
-                      <div>Active: {formatLifecycleTimestamp(brand.activatedAt)}</div>
-                      <div>Inactive: {formatLifecycleTimestamp(brand.deactivatedAt)}</div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <button
-                      className={`h-7 w-14 rounded-full border transition ${
-                        brand.status === 'active'
-                          ? 'border-emerald-600/20 bg-emerald-500/40'
-                          : 'border-border bg-muted'
-                      }`}
-                      disabled={pendingKey === `toggle:${brand.code}`}
-                      onClick={() => toggleBrandStatus(brand)}
-                      type="button"
-                    >
-                      <span
-                        className={`mx-1 block h-5 w-5 rounded-full bg-background transition-transform ${
-                          brand.status === 'active' ? 'translate-x-6' : 'translate-x-0'
+              filteredBrands.map(brand => {
+                const protectedBrandLogoUrl = toProtectedMediaUrl(brand.logoUrl);
+
+                return (
+                  <tr className="border-b border-border/50 last:border-b-0" key={brand.id}>
+                    <td className="px-4 py-3 font-medium text-foreground">
+                      <div className="flex items-center gap-3">
+                        {protectedBrandLogoUrl ? (
+                          <div className="size-9 overflow-hidden rounded-lg border border-border/60 bg-background/70">
+                            <img
+                              alt={`${brand.name} logo`}
+                              className="h-full w-full object-cover"
+                              src={protectedBrandLogoUrl}
+                            />
+                          </div>
+                        ) : (
+                          <div className="flex size-9 items-center justify-center rounded-lg border border-border/60 bg-background/70 text-xs font-semibold uppercase text-muted-foreground">
+                            {brand.name.slice(0, 2)}
+                          </div>
+                        )}
+                        <span>{brand.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {countNonAdminMembers(brand)}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground">
+                      <div className="space-y-1">
+                        <div>Created: {formatLifecycleTimestamp(brand.createdAt)}</div>
+                        <div>Active: {formatLifecycleTimestamp(brand.activatedAt)}</div>
+                        <div>Inactive: {formatLifecycleTimestamp(brand.deactivatedAt)}</div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <button
+                        className={`h-7 w-14 rounded-full border transition ${
+                          brand.status === 'active'
+                            ? 'border-emerald-600/20 bg-emerald-500/40'
+                            : 'border-border bg-muted'
                         }`}
-                      />
-                    </button>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-2">
-                      <Button onClick={() => openEditModal(brand)} size="sm" type="button" variant="outline">
-                        Edit
-                      </Button>
-                      <Button
-                        disabled={pendingKey === `delete:${brand.code}`}
-                        onClick={() => requestDeleteBrand(brand)}
-                        size="sm"
+                        disabled={pendingKey === `toggle:${brand.code}`}
+                        onClick={() => toggleBrandStatus(brand)}
                         type="button"
-                        variant="outline"
                       >
-                        Delete
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))
+                        <span
+                          className={`mx-1 block h-5 w-5 rounded-full bg-background transition-transform ${
+                            brand.status === 'active' ? 'translate-x-6' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-2">
+                        <Button asChild size="sm" variant="outline">
+                          <Link href={`/app/brands/${brand.code}`}>Manage Brand</Link>
+                        </Button>
+                        <Button
+                          onClick={() => openEditModal(brand)}
+                          size="sm"
+                          type="button"
+                          variant="outline"
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          disabled={pendingKey === `delete:${brand.code}`}
+                          onClick={() => requestDeleteBrand(brand)}
+                          size="sm"
+                          type="button"
+                          variant="outline"
+                        >
+                          Delete
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

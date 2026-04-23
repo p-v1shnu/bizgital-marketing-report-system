@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { CircleHelp } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -103,6 +104,7 @@ type Props = {
     pageFollowers: string | null;
     pageVisit: string | null;
   } | null;
+  contentCount: DatasetOverviewResponse['contentCount'] | null;
   companyFormatFields: GlobalCompanyFormatOptionsResponse['fields'];
   initialVisibleSourceKeys: string[];
   isWorkingTableEditable: boolean;
@@ -671,6 +673,7 @@ export function ImportWorkingTable({
   sourcePreview,
   datasetPreview,
   manualHeader,
+  contentCount,
   companyFormatFields,
   initialVisibleSourceKeys,
   isWorkingTableEditable,
@@ -1842,6 +1845,24 @@ export function ImportWorkingTable({
     return 'Auto-save is on';
   })();
 
+  const approvedContentCountSnapshot = contentCount?.approvedSnapshot ?? null;
+  const previewContentCount = contentCount?.preview ?? null;
+  const hasDraftPreviewAgainstApprovedSnapshot =
+    !!approvedContentCountSnapshot &&
+    !!previewContentCount &&
+    approvedContentCountSnapshot.reportVersionId !== previewContentCount.reportVersionId;
+  const activeContentCount = hasDraftPreviewAgainstApprovedSnapshot
+    ? previewContentCount
+    : approvedContentCountSnapshot ?? previewContentCount;
+  const contentCountTitle = 'Content count';
+  const contentCountTooltip = activeContentCount
+    ? hasDraftPreviewAgainstApprovedSnapshot
+      ? `Preview count uses current policy: ${activeContentCount.policyLabel}. It currently counts ${activeContentCount.csvRowCount} CSV row(s) and ${activeContentCount.manualRowCount} manual row(s). Latest approved snapshot stays locked and is not recalculated.`
+      : approvedContentCountSnapshot
+        ? `Approved snapshot is locked. Count at approval: ${activeContentCount.countedContentCount} (${activeContentCount.csvRowCount} CSV + ${activeContentCount.manualRowCount} manual) using policy "${activeContentCount.policyLabel}".`
+        : `Preview count uses current policy: ${activeContentCount.policyLabel}. It currently counts ${activeContentCount.csvRowCount} CSV row(s) and ${activeContentCount.manualRowCount} manual row(s).`
+    : 'Content count preview is unavailable.';
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1875,7 +1896,7 @@ export function ImportWorkingTable({
       </div>
 
       <div className="space-y-3 rounded-2xl border border-border/60 bg-background/45 px-4 py-4">
-        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px_180px_180px]">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           <div>
             <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
               Source shown
@@ -1907,6 +1928,24 @@ export function ImportWorkingTable({
             </div>
             <div className="mt-2 text-sm font-medium text-foreground">
               {manualColumns.length} columns
+            </div>
+          </div>
+          <div>
+            <div className="flex items-center gap-1 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+              <span>{contentCountTitle}</span>
+              <span
+                aria-label="Count policy details"
+                className="inline-flex items-center text-muted-foreground/80"
+                role="img"
+                title={contentCountTooltip}
+              >
+                <CircleHelp className="size-3.5" />
+              </span>
+            </div>
+            <div className="mt-2 text-sm font-medium text-foreground">
+              {activeContentCount
+                ? formatValue(String(activeContentCount.countedContentCount))
+                : '-'}
             </div>
           </div>
         </div>

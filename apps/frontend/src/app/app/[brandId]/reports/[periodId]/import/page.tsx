@@ -530,6 +530,7 @@ export default async function ImportPage({ params, searchParams }: ImportPagePro
                   activeFormulas={computedFormulasResult.items}
                   brandId={brandId}
                   companyFormatFields={companyFormatFields}
+                  contentCount={datasetResult?.contentCount ?? null}
                   datasetPreview={datasetPreview}
                   initialVisibleSourceKeys={initialVisibleSourceKeys}
                   isReadOnly={isReadOnly}

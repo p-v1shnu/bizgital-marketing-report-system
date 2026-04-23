@@ -3,7 +3,6 @@ import {
   ArrowRight,
   BadgeCheck,
   Building2,
-  Target,
   Users,
   Waypoints
 } from 'lucide-react';
@@ -24,18 +23,17 @@ import {
 import { labelForState } from '@/lib/reporting-ui';
 
 import { CompanyFormatOptionsManager } from '../../settings/company-format-options-manager';
-import { BrandKpiPlanManager } from './brand-kpi-plan-manager';
-import { CompetitorSetupManager } from '../../[brandId]/competitor-setup/competitor-setup-manager';
+import { BrandYearSetupManager } from './brand-year-setup-manager';
 import { QuestionSetupManager } from '../../[brandId]/question-setup/question-setup-manager';
 
 const tabs = [
   { key: 'overview', label: 'Overview', icon: Building2 },
   { key: 'members', label: 'Members', icon: Users },
-  { key: 'kpi', label: 'KPI Targets', icon: Target },
-  { key: 'competitors', label: 'Competitors', icon: Waypoints },
+  { key: 'year-setup', label: 'Year Setup', icon: BadgeCheck },
   { key: 'questions', label: 'Questions', icon: BadgeCheck },
   { key: 'columns', label: 'Columns', icon: Waypoints }
 ] as const;
+const REPORTS_PER_PAGE = 12;
 
 type BrandAdminDetailPageProps = {
   params: Promise<{
@@ -44,13 +42,21 @@ type BrandAdminDetailPageProps = {
   searchParams?: Promise<{
     tab?: string;
     year?: string;
+    reportsPage?: string;
     message?: string;
     error?: string;
   }>;
 };
 
-function adminTabHref(brandCode: string, tab: string) {
-  return `/app/brands/${brandCode}?tab=${tab}`;
+function adminTabHref(brandCode: string, tab: string, year?: string) {
+  const params = new URLSearchParams();
+  params.set('tab', tab);
+
+  if (year) {
+    params.set('year', year);
+  }
+
+  return `/app/brands/${brandCode}?${params.toString()}`;
 }
 
 function resolveYear(rawYear: string | undefined) {
@@ -68,6 +74,34 @@ function resolveYear(rawYear: string | undefined) {
   return parsed;
 }
 
+function resolvePositiveInteger(rawValue: string | undefined, fallback: number) {
+  if (!rawValue) {
+    return fallback;
+  }
+
+  const parsed = Number(rawValue);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    return fallback;
+  }
+
+  return parsed;
+}
+
+function overviewReportsHref(brandCode: string, page: number, year?: string) {
+  const params = new URLSearchParams();
+  params.set('tab', 'overview');
+
+  if (year) {
+    params.set('year', year);
+  }
+
+  if (page > 1) {
+    params.set('reportsPage', String(page));
+  }
+
+  return `/app/brands/${brandCode}?${params.toString()}`;
+}
+
 export default async function BrandAdminDetailPage({
   params,
   searchParams
@@ -75,12 +109,15 @@ export default async function BrandAdminDetailPage({
   const { brandCode } = await params;
   await requireBrandAdminAccess(brandCode, `/app/brands/${brandCode}`);
   const resolvedSearchParams = searchParams ? await searchParams : {};
-  const activeTab = tabs.some(tab => tab.key === resolvedSearchParams.tab)
-    ? resolvedSearchParams.tab ?? 'overview'
+  const normalizedTab =
+    resolvedSearchParams.tab === 'kpi' || resolvedSearchParams.tab === 'competitors'
+      ? 'year-setup'
+      : resolvedSearchParams.tab;
+  const activeTab = tabs.some(tab => tab.key === normalizedTab)
+    ? normalizedTab ?? 'overview'
     : 'overview';
   const activeYear = new Date().getUTCFullYear();
-  const kpiPlanYear = resolveYear(resolvedSearchParams.year);
-  const competitorSetupYear = resolveYear(resolvedSearchParams.year);
+  const yearSetupYear = resolveYear(resolvedSearchParams.year);
 
   const [brand, reporting] = await Promise.all([
     getBrand(brandCode),
@@ -100,34 +137,29 @@ export default async function BrandAdminDetailPage({
                 : 'Failed to load related products for this brand.'
           }))
       : { data: null, error: null as string | null };
-  const kpiPlanResult =
-    activeTab === 'kpi'
-      ? await getBrandKpiPlan(brandCode, kpiPlanYear)
-          .then(data => ({ data, error: null as string | null }))
-          .catch(error => ({
-            data: null,
-            error: error instanceof Error ? error.message : 'Failed to load KPI plan.'
+  const yearSetupResult =
+    activeTab === 'year-setup'
+      ? await Promise.all([
+          getReportingPeriods(brandCode, yearSetupYear),
+          getKpiCatalog({ includeInactive: true }),
+          getBrandKpiPlan(brandCode, yearSetupYear),
+          getCompetitorYearSetup(brandCode, yearSetupYear)
+        ])
+          .then(([reportingYear, kpiCatalog, kpiPlan, competitorSetup]) => ({
+            data: {
+              reportingYear,
+              kpiCatalog,
+              kpiPlan,
+              competitorSetup
+            },
+            error: null as string | null
           }))
-      : { data: null, error: null as string | null };
-  const kpiCatalogResult =
-    activeTab === 'kpi'
-      ? await getKpiCatalog({ includeInactive: true })
-          .then(data => ({ data, error: null as string | null }))
-          .catch(error => ({
-            data: null,
-            error: error instanceof Error ? error.message : 'Failed to load KPI catalog.'
-          }))
-      : { data: null, error: null as string | null };
-  const competitorSetupResult =
-    activeTab === 'competitors'
-      ? await getCompetitorYearSetup(brandCode, competitorSetupYear)
-          .then(data => ({ data, error: null as string | null }))
           .catch(error => ({
             data: null,
             error:
               error instanceof Error
                 ? error.message
-              : 'Failed to load competitor setup.'
+                : 'Failed to load year setup.'
           }))
       : { data: null, error: null as string | null };
   const questionSetupResult =
@@ -150,6 +182,21 @@ export default async function BrandAdminDetailPage({
     reporting?.items.filter(item => item.latestVersionState === 'submitted').length ?? 0;
   const approvedCount =
     reporting?.items.filter(item => item.currentApprovedVersionId).length ?? 0;
+  const reportTotalPages = Math.max(1, Math.ceil(reportCount / REPORTS_PER_PAGE));
+  const reportPage = Math.min(
+    resolvePositiveInteger(resolvedSearchParams.reportsPage, 1),
+    reportTotalPages
+  );
+  const reportPageStart = (reportPage - 1) * REPORTS_PER_PAGE;
+  const visibleReportingItems =
+    reporting?.items.slice(reportPageStart, reportPageStart + REPORTS_PER_PAGE) ?? [];
+  const reportRangeStart = reportCount === 0 ? 0 : reportPageStart + 1;
+  const reportRangeEnd =
+    reportCount === 0
+      ? 0
+      : Math.min(reportCount, reportPageStart + visibleReportingItems.length);
+  const canGoPrevReportPage = reportPage > 1;
+  const canGoNextReportPage = reportPage < reportTotalPages;
 
   return (
     <section className="space-y-6">
@@ -160,7 +207,6 @@ export default async function BrandAdminDetailPage({
           </div>
           <div>
             <h1 className="text-3xl font-semibold tracking-[-0.03em]">{brand.name}</h1>
-            <div className="mt-1 text-sm text-muted-foreground">{brand.code}</div>
           </div>
         </div>
 
@@ -180,7 +226,7 @@ export default async function BrandAdminDetailPage({
                 ? 'border-primary/25 bg-primary/10 text-foreground'
                 : 'border-border/60 bg-background/60 text-muted-foreground hover:bg-background/80 hover:text-foreground'
             }`}
-            href={adminTabHref(brand.code, tab.key)}
+            href={adminTabHref(brand.code, tab.key, resolvedSearchParams.year)}
             key={tab.key}
           >
             <tab.icon className="size-4 text-primary" />
@@ -276,52 +322,26 @@ export default async function BrandAdminDetailPage({
         </Card>
       ) : null}
 
-      {activeTab === 'kpi' ? (
+      {activeTab === 'year-setup' ? (
         <Card>
           <CardHeader>
-            <CardTitle>KPI targets</CardTitle>
+            <CardTitle>Year setup</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="rounded-[20px] border border-border/60 bg-background/55 px-4 py-3 text-sm text-muted-foreground">
-              Brand-year KPI plans choose the KPI definitions that apply for that year. Different years can use different KPI counts.
-            </div>
-
-            {!kpiPlanResult.data || !kpiCatalogResult.data ? (
+            {!yearSetupResult.data ? (
               <div className="rounded-[18px] border border-rose-500/25 bg-rose-500/8 px-3 py-3 text-sm text-rose-700 dark:text-rose-300">
-                {kpiPlanResult.error ?? kpiCatalogResult.error ?? 'KPI planning is unavailable right now.'}
+                {yearSetupResult.error ?? 'Year setup is unavailable right now.'}
               </div>
             ) : (
-              <BrandKpiPlanManager
+              <BrandYearSetupManager
                 brandCode={brand.code}
-                catalog={kpiCatalogResult.data.items}
-                initialYear={kpiPlanYear}
-                plan={kpiPlanResult.data}
-              />
-            )}
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {activeTab === 'competitors' ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Competitors</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="rounded-[20px] border border-border/60 bg-background/55 px-4 py-3 text-sm text-muted-foreground">
-              Competitor setup is brand-scoped admin configuration. This controls
-              which competitors content teams must complete each month.
-            </div>
-
-            {!competitorSetupResult.data ? (
-              <div className="rounded-[18px] border border-rose-500/25 bg-rose-500/8 px-3 py-3 text-sm text-rose-700 dark:text-rose-300">
-                {competitorSetupResult.error ?? 'Competitor setup is unavailable right now.'}
-              </div>
-            ) : (
-              <CompetitorSetupManager
-                brandId={brand.code}
-                initialSetup={competitorSetupResult.data}
-                initialYear={competitorSetupYear}
+                hasExplicitYear={Boolean(resolvedSearchParams.year)}
+                initialCompetitorSetup={yearSetupResult.data.competitorSetup}
+                initialKpiCatalog={yearSetupResult.data.kpiCatalog.items}
+                initialKpiPlan={yearSetupResult.data.kpiPlan}
+                initialSetup={yearSetupResult.data.reportingYear.selectedYearSetup}
+                initialYear={yearSetupResult.data.reportingYear.year}
+                initialYearOptions={yearSetupResult.data.reportingYear.yearOptions}
               />
             )}
           </CardContent>
@@ -399,17 +419,51 @@ export default async function BrandAdminDetailPage({
             {reporting.items.length === 0 ? (
               <div className="text-sm text-muted-foreground">No reporting periods yet.</div>
             ) : (
-              reporting.items.map(item => (
-                <div
-                  className="grid gap-4 rounded-[24px] border border-border/60 bg-background/60 p-4 md:grid-cols-[minmax(0,1fr)_180px]"
-                  key={item.id}
-                >
-                  <div className="font-medium">{item.label}</div>
-                  <div className="text-sm text-muted-foreground md:text-right">
-                    {labelForState(item.latestVersionState ?? item.currentState)}
+              <>
+                {visibleReportingItems.map(item => (
+                  <div
+                    className="grid gap-4 rounded-[24px] border border-border/60 bg-background/60 p-4 md:grid-cols-[minmax(0,1fr)_180px]"
+                    key={item.id}
+                  >
+                    <div className="font-medium">{item.label}</div>
+                    <div className="text-sm text-muted-foreground md:text-right">
+                      {labelForState(item.latestVersionState ?? item.currentState)}
+                    </div>
                   </div>
-                </div>
-              ))
+                ))}
+                {reportTotalPages > 1 ? (
+                  <div className="flex items-center justify-between gap-3 pt-2">
+                    <div className="text-xs text-muted-foreground">
+                      Showing {reportRangeStart}-{reportRangeEnd} of {reportCount} (page {reportPage}{' '}
+                      of {reportTotalPages})
+                    </div>
+                    <div className="flex gap-2">
+                      <Button asChild disabled={!canGoPrevReportPage} size="sm" variant="outline">
+                        <Link
+                          href={overviewReportsHref(
+                            brand.code,
+                            Math.max(1, reportPage - 1),
+                            resolvedSearchParams.year
+                          )}
+                        >
+                          Previous
+                        </Link>
+                      </Button>
+                      <Button asChild disabled={!canGoNextReportPage} size="sm" variant="outline">
+                        <Link
+                          href={overviewReportsHref(
+                            brand.code,
+                            Math.min(reportTotalPages, reportPage + 1),
+                            resolvedSearchParams.year
+                          )}
+                        >
+                          Next
+                        </Link>
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+              </>
             )}
           </CardContent>
         </Card>

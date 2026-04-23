@@ -643,6 +643,7 @@ model CompetitorMonitoring {
   competitorId               String                     @map("competitor_id")
   status                     CompetitorMonitoringStatus? @map("status")
   followerCount              Int?                       @map("follower_count")
+  monthlyPostCount           Int?                       @map("monthly_post_count")
   noActivityNote             String?                    @db.Text @map("no_activity_note")
   noActivityEvidenceImageUrl String?                    @db.Text @map("no_activity_evidence_image_url")
   createdAt                  DateTime                   @default(now()) @map("created_at")

@@ -70,6 +70,21 @@ type CreatePeriodResponse = {
   month: number;
 };
 
+type ReportingListResponse = {
+  yearOptions: Array<{
+    year: number;
+    isReady: boolean;
+    hasReports: boolean;
+  }>;
+  items: Array<{
+    id: string;
+    year: number;
+    month: number;
+    latestVersionId: string | null;
+    currentDraftVersionId: string | null;
+  }>;
+};
+
 type DraftResponse = {
   id: string;
 };
@@ -260,6 +275,15 @@ function findCompetitorSection(detail: ReportingDetailResponse) {
   );
 }
 
+function resolveReadySourceYear(reporting: ReportingListResponse, targetYear: number) {
+  const readyYears = reporting.yearOptions
+    .filter((option) => option.isReady && option.year !== targetYear)
+    .map((option) => option.year)
+    .sort((left, right) => right - left);
+
+  return readyYears[0] ?? null;
+}
+
 async function createUniquePeriod(
   baseUrl: string,
   brandCode: string,
@@ -290,7 +314,32 @@ async function createUniquePeriod(
     }
   }
 
-  throw new Error(`Unable to create a unique reporting period in year ${year}.`);
+  const reporting = await requestJson<ReportingListResponse>(
+    baseUrl,
+    `/brands/${brandCode}/reporting-periods?year=${year}`
+  );
+  const reusable =
+    reporting.items.find(
+      (item) =>
+        item.latestVersionId === null && item.currentDraftVersionId === null
+    ) ??
+    reporting.items.find(
+      (item) =>
+        item.latestVersionId === null && item.currentDraftVersionId !== null
+    ) ??
+    null;
+
+  if (reusable) {
+    return {
+      id: reusable.id,
+      year: reusable.year,
+      month: reusable.month
+    };
+  }
+
+  throw new Error(
+    `Unable to create a unique reporting period in year ${year}, and no reusable empty period was found.`
+  );
 }
 
 async function main() {
@@ -309,6 +358,7 @@ async function main() {
   let competitorCreated = false;
   let originalCompetitorStatus: 'active' | 'inactive' | null = null;
   let periodId: string | null = null;
+  let periodCreatedByTest = false;
 
   const setupYear = args.setupYear;
   const copyYear = setupYear + 1;
@@ -433,22 +483,76 @@ async function main() {
     );
     record('Copy year', true, `Copied assignments ${setupYear} -> ${copyYear}`);
 
+    const reportingForSetupYear = await requestJson<ReportingListResponse>(
+      args.baseUrl,
+      `/brands/${brandCode}/reporting-periods?year=${setupYear}`
+    );
+    const sourceYearForSetup = resolveReadySourceYear(reportingForSetupYear, setupYear);
+
+    if (sourceYearForSetup !== null) {
+      await requestJson(
+        args.baseUrl,
+        `/brands/${brandCode}/reporting-periods/year-setup/prepare`,
+        {
+          method: 'POST',
+          body: {
+            targetYear: setupYear,
+            sourceYear: sourceYearForSetup
+          }
+        }
+      );
+      record(
+        'Prepare year setup',
+        true,
+        `Prepared ${setupYear} from ${sourceYearForSetup}`
+      );
+    } else {
+      record(
+        'Prepare year setup',
+        true,
+        `Skipped: no ready source year available for ${setupYear}`
+      );
+    }
+
+    const existingPeriods = await requestJson<ReportingListResponse>(
+      args.baseUrl,
+      `/brands/${brandCode}/reporting-periods?year=${setupYear}`
+    );
+    const existingPeriodIds = new Set(existingPeriods.items.map((item) => item.id));
+
     const createdPeriod = await createUniquePeriod(args.baseUrl, brandCode, setupYear);
     periodId = createdPeriod.id;
+    periodCreatedByTest = !existingPeriodIds.has(createdPeriod.id);
     record(
       'Create period',
       true,
-      `Created period ${createdPeriod.year}-${String(createdPeriod.month).padStart(2, '0')} (${periodId})`
+      `${periodCreatedByTest ? 'Created' : 'Reused'} period ${createdPeriod.year}-${String(createdPeriod.month).padStart(2, '0')} (${periodId})`
     );
 
-    const draft = await requestJson<DraftResponse>(
-      args.baseUrl,
-      `/reporting-periods/${periodId}/drafts`,
-      {
-        method: 'POST'
+    let draftId: string | null = null;
+    try {
+      const draft = await requestJson<DraftResponse>(
+        args.baseUrl,
+        `/reporting-periods/${periodId}/drafts`,
+        {
+          method: 'POST'
+        }
+      );
+      draftId = draft.id;
+      record('Create draft', true, `Draft id: ${draft.id}`);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) {
+        const detail = await requestJson<ReportingDetailResponse>(
+          args.baseUrl,
+          `/brands/${brandCode}/reporting-periods/${periodId}`
+        );
+        draftId = detail.period.currentDraftVersionId;
+        assertCondition(draftId, 'Expected an existing draft version after HTTP 409.');
+        record('Create draft', true, `Reused existing draft id: ${draftId}`);
+      } else {
+        throw error;
       }
-    );
-    record('Create draft', true, `Draft id: ${draft.id}`);
+    }
 
     const overviewBefore = await requestJson<CompetitorOverviewResponse>(
       args.baseUrl,
@@ -496,6 +600,8 @@ async function main() {
         body: {
           status: 'has_posts',
           followerCount: 1200,
+          monthlyPostCount: 10,
+          highlightNote: 'Monthly highlight summary for monitored posts.',
           posts: Array.from({ length: 6 }, (_, index) => ({
             displayOrder: index + 1,
             screenshotUrl: `https://example.com/post-${index + 1}.png`
@@ -504,6 +610,57 @@ async function main() {
       }
     );
     record('Validation: max 5 posts', true, 'HTTP 400 returned for 6 posts');
+
+    await requestExpectStatus(
+      args.baseUrl,
+      `/brands/${brandCode}/reporting-periods/${periodId}/competitors/${competitorId}/monitoring`,
+      400,
+      {
+        method: 'POST',
+        body: {
+          status: 'has_posts',
+          followerCount: 1200,
+          monthlyPostCount: 2,
+          highlightNote: 'Monthly highlight summary for monitored posts.',
+          posts: []
+        }
+      }
+    );
+    record(
+      'Validation: at least 1 highlight screenshot',
+      true,
+      'HTTP 400 returned when has_posts mode is saved without any highlighted post screenshot'
+    );
+
+    await requestExpectStatus(
+      args.baseUrl,
+      `/brands/${brandCode}/reporting-periods/${periodId}/competitors/${competitorId}/monitoring`,
+      400,
+      {
+        method: 'POST',
+        body: {
+          status: 'has_posts',
+          followerCount: 1200,
+          monthlyPostCount: 1,
+          highlightNote: 'Monthly highlight summary for monitored posts.',
+          posts: [
+            {
+              displayOrder: 1,
+              screenshotUrl: 'https://example.com/post-1.png'
+            },
+            {
+              displayOrder: 2,
+              screenshotUrl: 'https://example.com/post-2.png'
+            }
+          ]
+        }
+      }
+    );
+    record(
+      'Validation: monthly post count >= highlights',
+      true,
+      'HTTP 400 returned when monthly post count is lower than highlighted post screenshots'
+    );
 
     await requestJson(
       args.baseUrl,
@@ -592,6 +749,8 @@ async function main() {
         body: {
           status: 'has_posts',
           followerCount: 1800,
+          monthlyPostCount: 3,
+          highlightNote: 'Monthly highlight summary for monitored posts.',
           posts: [
             {
               displayOrder: 1,
@@ -626,7 +785,7 @@ async function main() {
     );
   } finally {
     if (!args.keepData && brandCode) {
-      if (periodId) {
+      if (periodId && periodCreatedByTest) {
         try {
           await requestJson(args.baseUrl, `/reporting-periods/${periodId}`, {
             method: 'DELETE'

@@ -1,22 +1,28 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { ModalShell } from '@/components/ui/modal-shell';
+import type { ReportingYearSetupStatus } from '@/lib/reporting-api';
 import { monthLabel } from '@/lib/reporting-ui';
 
-import { createPeriodAction, restoreReportingPeriodAction } from './actions';
+import {
+  createPeriodAction,
+  restoreReportingPeriodAction
+} from './actions';
 
 const selectClassName =
   'flex h-11 w-full rounded-2xl border border-input bg-background/70 px-4 py-2 text-sm text-foreground shadow-sm outline-none transition focus-visible:ring-2 focus-visible:ring-ring/60';
 
 type CreateReportFormProps = {
   brandId: string;
+  selectedYear: number;
   suggestedCreateYear: number;
   suggestedCreateMonth: number;
+  selectedYearSetup: ReportingYearSetupStatus;
   recycleBinItems: Array<{
     id: string;
     year: number;
@@ -38,13 +44,21 @@ function RestoreReportSubmitButton() {
 
 export function CreateReportForm({
   brandId,
+  selectedYear,
   suggestedCreateYear,
   suggestedCreateMonth,
+  selectedYearSetup,
   recycleBinItems,
   layout = 'vertical'
 }: CreateReportFormProps) {
-  const [year, setYear] = useState(suggestedCreateYear);
-  const [month, setMonth] = useState(suggestedCreateMonth);
+  const defaultMonth = useMemo(() => {
+    if (selectedYear === suggestedCreateYear) {
+      return suggestedCreateMonth;
+    }
+
+    return 1;
+  }, [selectedYear, suggestedCreateMonth, suggestedCreateYear]);
+  const [month, setMonth] = useState(defaultMonth);
   const [recycleConflict, setRecycleConflict] = useState<{
     id: string;
     year: number;
@@ -57,12 +71,10 @@ export function CreateReportForm({
   const allowReplaceSubmitRef = useRef(false);
 
   useEffect(() => {
-    setYear(suggestedCreateYear);
-    setMonth(suggestedCreateMonth);
-  }, [suggestedCreateYear, suggestedCreateMonth]);
+    setMonth(defaultMonth);
+  }, [defaultMonth]);
 
-  const normalizedYear =
-    Number.isInteger(year) && year >= 2000 && year <= 3000 ? year : suggestedCreateYear;
+  const normalizedYear = selectedYear;
   const monthOptions = useMemo(
     () => Array.from({ length: 12 }, (_, index) => index + 1),
     []
@@ -71,6 +83,7 @@ export function CreateReportForm({
     () => new Map(recycleBinItems.map(item => [`${item.year}-${item.month}`, item])),
     [recycleBinItems]
   );
+  const canCreateForYear = selectedYearSetup.canCreateReport;
   const isHorizontal = layout === 'horizontal';
 
   useEffect(() => {
@@ -78,11 +91,11 @@ export function CreateReportForm({
       return;
     }
 
-    if (recycleConflict.year !== year || recycleConflict.month !== month) {
+    if (recycleConflict.year !== selectedYear || recycleConflict.month !== month) {
       setRecycleConflict(null);
       setShowCreateEmptyConfirmation(false);
     }
-  }, [month, recycleConflict, year]);
+  }, [month, recycleConflict, selectedYear]);
 
   function submitCreateEmptyReport() {
     setReplaceDeleted(true);
@@ -98,15 +111,15 @@ export function CreateReportForm({
     <>
       <form
         action={createPeriodAction}
-        className={isHorizontal ? 'grid gap-3 lg:grid-cols-[140px_220px_max-content]' : 'space-y-4'}
-        key={`${suggestedCreateYear}-${suggestedCreateMonth}`}
+        className={isHorizontal ? 'grid gap-3 lg:grid-cols-[220px_max-content]' : 'space-y-4'}
+        key={`${selectedYear}-${suggestedCreateYear}-${suggestedCreateMonth}`}
         onSubmit={event => {
           if (allowReplaceSubmitRef.current) {
             allowReplaceSubmitRef.current = false;
             return;
           }
 
-          const matched = recycleItemByYearMonth.get(`${year}-${month}`);
+          const matched = recycleItemByYearMonth.get(`${selectedYear}-${month}`);
           if (!matched) {
             setReplaceDeleted(false);
             return;
@@ -120,21 +133,8 @@ export function CreateReportForm({
         ref={formRef}
       >
         <input name="brandId" type="hidden" value={brandId} />
+        <input name="year" type="hidden" value={selectedYear} />
         <input name="replaceDeleted" type="hidden" value={replaceDeleted ? 'true' : 'false'} />
-
-        <div className="space-y-2">
-          <label className="text-sm font-medium" htmlFor="report-year">
-            Year
-          </label>
-          <Input
-            id="report-year"
-            min={2020}
-            name="year"
-            onChange={(event) => setYear(Number(event.currentTarget.value))}
-            type="number"
-            value={year}
-          />
-        </div>
 
         <div className="space-y-2">
           <label className="text-sm font-medium" htmlFor="report-month">
@@ -157,13 +157,42 @@ export function CreateReportForm({
 
         <Button
           className={isHorizontal ? 'w-full self-end lg:w-auto lg:min-w-[170px]' : 'w-full'}
+          disabled={!canCreateForYear}
           size={isHorizontal ? 'default' : 'sm'}
           type="submit"
           variant="default"
         >
-          Create report
+          {canCreateForYear ? 'Create report' : 'Year setup required'}
         </Button>
       </form>
+
+      {!canCreateForYear ? (
+        <div className="rounded-[20px] border border-amber-500/30 bg-amber-500/8 px-4 py-4 text-sm text-muted-foreground">
+          <div className="font-medium text-foreground">
+            Year {normalizedYear} is not ready for report creation.
+          </div>
+          <div className="mt-1">
+            {selectedYearSetup.summary}
+          </div>
+          <ul className="mt-2 space-y-1 text-xs">
+            {selectedYearSetup.checks.map((check) => (
+              <li key={check.key}>
+                {check.passed ? 'Done' : 'Missing'} - {check.label}: {check.detail}
+              </li>
+            ))}
+          </ul>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Button asChild size="sm" variant="outline">
+              <Link href={`/app/brands/${brandId}?tab=year-setup&year=${normalizedYear}`}>
+                Open year setup
+              </Link>
+            </Button>
+          </div>
+          <div className="mt-2 text-xs">
+            Review KPI plan and competitor setup in Year Setup before creating reports.
+          </div>
+        </div>
+      ) : null}
 
       {recycleConflict && !showCreateEmptyConfirmation ? (
         <ModalShell
@@ -185,7 +214,7 @@ export function CreateReportForm({
               <form action={restoreReportingPeriodAction}>
                 <input name="brandId" type="hidden" value={brandId} />
                 <input name="periodId" type="hidden" value={recycleConflict.id} />
-                <input name="year" type="hidden" value={year} />
+                <input name="year" type="hidden" value={selectedYear} />
                 <RestoreReportSubmitButton />
               </form>
               <Button

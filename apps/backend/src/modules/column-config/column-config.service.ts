@@ -22,6 +22,8 @@ import {
 } from '../dataset/manual-source-rows-setting';
 import { readImportJobSnapshot } from '../imports/import-snapshot';
 import type {
+  ContentCountPolicyMode,
+  ContentCountPolicyResponse,
   ComputedFormulaPreviewResponse,
   ComputedFormulaResponse,
   CreateImportColumnMappingDraftFromHeadersInput,
@@ -44,6 +46,7 @@ import type {
   UpdateImportColumnMappingDraftInput,
   UpdateImportTableLayoutInput,
   UpdateComputedFormulaInput,
+  UpdateContentCountPolicyInput,
   UpdateEngagementFormulaInput,
   UpdateGlobalCompanyFormatOptionInput,
   UpdateTopContentDataSourcePolicyInput
@@ -98,8 +101,22 @@ const IMPORT_COLUMN_MAPPING_PUBLISHED_SETTING_KEY = 'import_column_mapping_publi
 const IMPORT_COLUMN_MAPPING_DRAFT_SETTING_KEY = 'import_column_mapping_draft_v1';
 const IMPORT_COLUMN_MAPPING_HISTORY_SETTING_KEY = 'import_column_mapping_history_v1';
 const IMPORT_COLUMN_MAPPING_HISTORY_LIMIT = 30;
+const CONTENT_COUNT_POLICY_SETTING_KEY = 'content_count_policy_v1';
 const TOP_CONTENT_DATA_SOURCE_POLICY_SETTING_KEY = 'top_content_data_source_policy_v1';
+const DEFAULT_CONTENT_COUNT_POLICY_MODE: ContentCountPolicyMode = 'csv_only';
 const DEFAULT_TOP_CONTENT_DATA_SOURCE_POLICY_MODE: TopContentDataSourcePolicyMode = 'csv_only';
+const DEFAULT_POLICY_UPDATED_BY = 'system default';
+const DEFAULT_TOP_CONTENT_EXCLUDED_CONTENT_STYLE_VALUE_KEYS = ['call-to-engage'];
+const DEFAULT_IMPORT_TABLE_VISIBLE_SOURCE_COLUMN_LABELS = [
+  '3-second video views',
+  'Total clicks',
+  'Reactions, comments and shares',
+  'Reach',
+  'Views',
+  'Post type',
+  'Permalink',
+  'Publish time'
+];
 
 const IMPORT_MAPPING_TARGET_CATALOG: Array<{
   key: MappingTargetField;
@@ -158,6 +175,12 @@ type TopContentDataSourcePolicySettingPayload = {
   updatedBy?: unknown;
   note?: unknown;
   excludedContentStyleValueKeys?: unknown;
+};
+
+type ContentCountPolicySettingPayload = {
+  mode?: unknown;
+  updatedBy?: unknown;
+  note?: unknown;
 };
 
 function normalizeLabel(value: string) {
@@ -695,7 +718,7 @@ export class ColumnConfigService {
 
     if (!raw) {
       return {
-        visibleSourceColumnLabels: []
+        visibleSourceColumnLabels: [...DEFAULT_IMPORT_TABLE_VISIBLE_SOURCE_COLUMN_LABELS]
       };
     }
 
@@ -712,7 +735,7 @@ export class ColumnConfigService {
       };
     } catch {
       return {
-        visibleSourceColumnLabels: []
+        visibleSourceColumnLabels: [...DEFAULT_IMPORT_TABLE_VISIBLE_SOURCE_COLUMN_LABELS]
       };
     }
   }
@@ -748,6 +771,56 @@ export class ColumnConfigService {
     };
   }
 
+  async getContentCountPolicy(): Promise<ContentCountPolicyResponse> {
+    await this.ensureUiSettingsStorage();
+    const setting = await this.prisma.globalUiSetting.findUnique({
+      where: {
+        settingKey: CONTENT_COUNT_POLICY_SETTING_KEY
+      }
+    });
+    const parsed = this.parseContentCountPolicyPayload(setting?.valueJson ?? null);
+    const mode = this.resolveContentCountPolicyMode(parsed?.mode);
+
+    return {
+      mode,
+      label: this.toContentCountPolicyLabel(mode),
+      excludeManualRows: mode === 'csv_only',
+      updatedAt: setting?.updatedAt ? setting.updatedAt.toISOString() : null,
+      updatedBy: parsed?.updatedBy ?? DEFAULT_POLICY_UPDATED_BY,
+      note: parsed?.note ?? null
+    };
+  }
+
+  async updateContentCountPolicy(input: UpdateContentCountPolicyInput) {
+    await this.ensureUiSettingsStorage();
+    if (input.mode !== 'csv_only' && input.mode !== 'csv_and_manual') {
+      throw new BadRequestException('Content count policy mode is invalid.');
+    }
+
+    const mode = input.mode;
+    const note = normalizeLabel(String(input.note ?? '')) || null;
+    const updatedBy = normalizeLabel(String(input.actorEmail ?? '')) || null;
+    const currentPolicy = await this.getContentCountPolicy();
+
+    if (
+      mode === 'csv_and_manual' &&
+      currentPolicy.mode !== 'csv_and_manual' &&
+      !note
+    ) {
+      throw new BadRequestException(
+        'Change note is required when enabling manual rows in Content count policy.'
+      );
+    }
+
+    await this.writeUiSettingJson(CONTENT_COUNT_POLICY_SETTING_KEY, {
+      mode,
+      updatedBy,
+      note
+    });
+
+    return this.getContentCountPolicy();
+  }
+
   async getTopContentDataSourcePolicy(): Promise<TopContentDataSourcePolicyResponse> {
     await this.ensureGlobalCompanyFormatDefaults();
     await this.ensureUiSettingsStorage();
@@ -774,7 +847,9 @@ export class ColumnConfigService {
       ])
     );
     const excludedContentStyleValueKeys = this.resolveExcludedContentStyleValueKeys(
-      parsed?.excludedContentStyleValueKeys ?? [],
+      parsed
+        ? parsed.excludedContentStyleValueKeys
+        : DEFAULT_TOP_CONTENT_EXCLUDED_CONTENT_STYLE_VALUE_KEYS,
       optionMap
     );
     const excludedContentStyleLabels = excludedContentStyleValueKeys.map(
@@ -793,7 +868,7 @@ export class ColumnConfigService {
         status: option.status
       })),
       updatedAt: setting?.updatedAt ? setting.updatedAt.toISOString() : null,
-      updatedBy: parsed?.updatedBy ?? null,
+      updatedBy: parsed?.updatedBy ?? DEFAULT_POLICY_UPDATED_BY,
       note: parsed?.note ?? null
     };
   }
@@ -1971,6 +2046,23 @@ export class ColumnConfigService {
     });
   }
 
+  private parseContentCountPolicyPayload(rawValueJson: string | null) {
+    if (!rawValueJson) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(rawValueJson) as ContentCountPolicySettingPayload;
+      return {
+        mode: this.resolveContentCountPolicyMode(parsed.mode),
+        updatedBy: normalizeLabel(String(parsed.updatedBy ?? '')) || null,
+        note: normalizeLabel(String(parsed.note ?? '')) || null
+      };
+    } catch {
+      return null;
+    }
+  }
+
   private parseTopContentPolicyPayload(rawValueJson: string | null) {
     if (!rawValueJson) {
       return null;
@@ -2018,6 +2110,20 @@ export class ColumnConfigService {
           .filter(valueKey => !!valueKey && optionsByValueKey.has(valueKey))
       )
     );
+  }
+
+  private toContentCountPolicyLabel(mode: ContentCountPolicyMode) {
+    return mode === 'csv_only'
+      ? 'CSV only (manual rows excluded)'
+      : 'CSV + manual rows';
+  }
+
+  private resolveContentCountPolicyMode(value: unknown): ContentCountPolicyMode {
+    if (value === 'csv_only' || value === 'csv_and_manual') {
+      return value;
+    }
+
+    return DEFAULT_CONTENT_COUNT_POLICY_MODE;
   }
 
   private toTopContentDataSourcePolicyLabel(mode: TopContentDataSourcePolicyMode) {

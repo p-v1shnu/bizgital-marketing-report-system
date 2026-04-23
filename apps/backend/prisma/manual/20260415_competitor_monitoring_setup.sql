@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS `competitor_monitoring` (
   `competitor_id` VARCHAR(191) NOT NULL,
   `status` ENUM('has_posts', 'no_activity') NULL,
   `follower_count` INT NULL,
+  `monthly_post_count` INT NULL,
   `no_activity_note` TEXT NULL,
   `no_activity_evidence_image_url` TEXT NULL,
   `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),

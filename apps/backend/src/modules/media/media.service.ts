@@ -1,9 +1,10 @@
-import { randomUUID } from 'node:crypto';
+import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { extname } from 'node:path';
 
 import {
   DeleteObjectCommand,
   DeleteObjectsCommand,
+  GetObjectCommand,
   HeadObjectCommand,
   paginateListObjectsV2,
   PutObjectCommand,
@@ -16,7 +17,8 @@ import {
   Logger,
   OnModuleDestroy,
   OnModuleInit,
-  ServiceUnavailableException
+  ServiceUnavailableException,
+  UnauthorizedException
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
@@ -24,6 +26,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import type {
   CleanupMediaOrphansInput,
   CleanupMediaOrphansResponse,
+  CreateMediaPresignReadInput,
+  CreateMediaPresignReadResponse,
   CreateMediaPresignUploadInput,
   CreateMediaPresignUploadResponse,
   DeleteMediaObjectInput,
@@ -40,6 +44,7 @@ type MediaStorageConfig = {
   publicBaseUrl: string;
   uploadMaxBytes: number;
   presignExpiresSeconds: number;
+  readPresignExpiresSeconds: number;
 };
 
 const DEFAULT_SCOPE = 'general';
@@ -47,6 +52,9 @@ const DEFAULT_UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
 const DEFAULT_PRESIGN_EXPIRES_SECONDS = 900;
 const MIN_PRESIGN_EXPIRES_SECONDS = 60;
 const MAX_PRESIGN_EXPIRES_SECONDS = 3600;
+const DEFAULT_READ_PRESIGN_EXPIRES_SECONDS = 120;
+const MIN_READ_PRESIGN_EXPIRES_SECONDS = 30;
+const MAX_READ_PRESIGN_EXPIRES_SECONDS = 600;
 const DEFAULT_ORPHAN_CLEANUP_ENABLED = false;
 const DEFAULT_ORPHAN_CLEANUP_INTERVAL_HOURS = 24;
 const DEFAULT_ORPHAN_CLEANUP_INITIAL_DELAY_MINUTES = 5;
@@ -57,10 +65,28 @@ const MAX_ORPHAN_CLEANUP_MIN_AGE_HOURS = 24 * 365;
 const MAX_DELETE_OBJECTS_PER_BATCH = 1000;
 const MANAGED_OBJECT_PREFIX = 'uploads/';
 const STANDARD_UPLOAD_MIME_TYPE = 'image/webp';
+const AUTH_SESSION_COOKIE_NAME = 'bizgital-marketing-report.user-email';
+const AUTH_SESSION_TOKEN_VERSION = 'v1';
+const AUTH_SESSION_DEV_FALLBACK_SECRET = 'dev-insecure-auth-session-secret';
+const UNREFERENCED_OBJECT_READ_GRACE_HOURS = 24;
 
 type ManagedObjectRecord = {
   key: string;
   lastModified: Date | null;
+};
+
+type AuthenticatedMediaUserContext = {
+  brandIds: string[];
+  hasAdminRole: boolean;
+};
+
+type AuthSessionPayload = {
+  e: string;
+  exp: number;
+};
+
+type BrandIdRow = {
+  brand_id: string;
 };
 
 @Injectable()
@@ -97,8 +123,12 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
   }
 
   async createPresignedUpload(
-    input: CreateMediaPresignUploadInput
+    input: CreateMediaPresignUploadInput,
+    sessionCookieHeader?: string | null
   ): Promise<CreateMediaPresignUploadResponse> {
+    if (sessionCookieHeader !== undefined) {
+      await this.assertCanManageManagedMedia(sessionCookieHeader);
+    }
     const config = this.resolveStorageConfig();
     const mimeType = this.normalizeMimeType(input.mimeType);
     this.normalizeSizeBytes(input.sizeBytes, config.uploadMaxBytes);
@@ -110,7 +140,7 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
       Bucket: config.bucket,
       Key: objectKey,
       ContentType: mimeType,
-      CacheControl: 'public, max-age=31536000, immutable'
+      CacheControl: 'private, max-age=31536000, immutable'
     });
     const uploadUrl = await getSignedUrl(client, command, {
       expiresIn: config.presignExpiresSeconds
@@ -129,7 +159,376 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  async deleteObject(input: DeleteMediaObjectInput): Promise<DeleteMediaObjectResponse> {
+  async createPresignedRead(
+    input: CreateMediaPresignReadInput,
+    sessionCookieHeader?: string | null
+  ): Promise<CreateMediaPresignReadResponse> {
+    const authContext = await this.resolveAuthenticatedMediaUser(sessionCookieHeader);
+    const config = this.resolveStorageConfig();
+    const objectKey = this.resolveDeleteTargetKey(input, config);
+
+    if (!objectKey) {
+      throw new BadRequestException(
+        'Media URL is not managed by this storage configuration.'
+      );
+    }
+
+    await this.assertCanReadManagedObject(authContext, objectKey, config);
+
+    const client = this.resolveS3Client(config);
+    const command = new GetObjectCommand({
+      Bucket: config.bucket,
+      Key: objectKey
+    });
+    const readUrl = await getSignedUrl(client, command, {
+      expiresIn: config.readPresignExpiresSeconds
+    });
+
+    return {
+      readUrl,
+      objectKey,
+      expiresInSeconds: config.readPresignExpiresSeconds
+    };
+  }
+
+  private extractSessionEmailFromCookieHeader(cookieHeader: string | null | undefined) {
+    const normalizedCookieHeader = this.normalizeOptionalString(cookieHeader);
+
+    if (!normalizedCookieHeader) {
+      return null;
+    }
+
+    const cookieValue = normalizedCookieHeader
+      .split(';')
+      .map((item) => item.trim())
+      .find((item) => item.startsWith(`${AUTH_SESSION_COOKIE_NAME}=`))
+      ?.slice(`${AUTH_SESSION_COOKIE_NAME}=`.length);
+
+    if (!cookieValue) {
+      return null;
+    }
+
+    const decodedValue = this.safeDecode(cookieValue).trim();
+    return this.parseAuthSessionCookieValue(decodedValue);
+  }
+
+  private resolveAuthSessionSecret() {
+    const configuredSecret = this.normalizeOptionalString(
+      this.configService.get<string>('AUTH_SESSION_SECRET')
+    );
+
+    if (configuredSecret) {
+      return configuredSecret;
+    }
+
+    const nodeEnv = this.normalizeOptionalString(this.configService.get<string>('NODE_ENV'));
+    if (nodeEnv === 'production') {
+      throw new ServiceUnavailableException('AUTH_SESSION_SECRET is required in production.');
+    }
+
+    return AUTH_SESSION_DEV_FALLBACK_SECRET;
+  }
+
+  private signAuthSessionPayload(payloadEncoded: string, secret: string) {
+    return createHmac('sha256', secret).update(payloadEncoded).digest('base64url');
+  }
+
+  private safeTimingEqual(left: string, right: string) {
+    const leftBuffer = Buffer.from(left);
+    const rightBuffer = Buffer.from(right);
+
+    if (leftBuffer.length !== rightBuffer.length) {
+      return false;
+    }
+
+    return timingSafeEqual(leftBuffer, rightBuffer);
+  }
+
+  private normalizeLegacySessionEmail(value: string | null | undefined) {
+    const normalized = this.normalizeOptionalString(value)?.toLowerCase() ?? null;
+
+    if (!normalized || !normalized.includes('@') || normalized.includes(' ')) {
+      return null;
+    }
+
+    return normalized;
+  }
+
+  private parseAuthSessionCookieValue(value: string | null | undefined) {
+    const raw = this.normalizeOptionalString(value);
+
+    if (!raw) {
+      return null;
+    }
+
+    if (!raw.startsWith(`${AUTH_SESSION_TOKEN_VERSION}.`)) {
+      return this.normalizeLegacySessionEmail(raw);
+    }
+
+    const parts = raw.split('.');
+    if (parts.length !== 3) {
+      return null;
+    }
+
+    const [version, payloadEncoded, signature] = parts;
+
+    if (
+      version !== AUTH_SESSION_TOKEN_VERSION ||
+      !payloadEncoded ||
+      !signature
+    ) {
+      return null;
+    }
+
+    const secret = this.resolveAuthSessionSecret();
+    const expectedSignature = this.signAuthSessionPayload(payloadEncoded, secret);
+
+    if (!this.safeTimingEqual(signature, expectedSignature)) {
+      return null;
+    }
+
+    let payload: AuthSessionPayload;
+    try {
+      payload = JSON.parse(Buffer.from(payloadEncoded, 'base64url').toString('utf8')) as AuthSessionPayload;
+    } catch {
+      return null;
+    }
+
+    if (!payload || typeof payload.e !== 'string' || typeof payload.exp !== 'number') {
+      return null;
+    }
+
+    if (payload.exp <= Math.floor(Date.now() / 1000)) {
+      return null;
+    }
+
+    return this.normalizeLegacySessionEmail(payload.e);
+  }
+
+  private async resolveAuthenticatedMediaUser(
+    cookieHeader: string | null | undefined
+  ): Promise<AuthenticatedMediaUserContext> {
+    const sessionEmail = this.extractSessionEmailFromCookieHeader(cookieHeader);
+
+    if (!sessionEmail) {
+      throw new UnauthorizedException('Authentication is required to access media files.');
+    }
+
+    const user = await this.prisma.user.findFirst({
+      where: {
+        email: sessionEmail,
+        status: 'active',
+        brandMemberships: {
+          some: {}
+        }
+      },
+      select: {
+        brandMemberships: {
+          select: {
+            brandId: true,
+            role: true
+          }
+        }
+      }
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Authentication is required to access media files.');
+    }
+
+    const brandIds = Array.from(
+      new Set(user.brandMemberships.map((membership) => membership.brandId))
+    );
+
+    return {
+      brandIds,
+      hasAdminRole: user.brandMemberships.some((membership) => membership.role === 'admin')
+    };
+  }
+
+  private async assertCanReadManagedMedia(cookieHeader: string | null | undefined) {
+    await this.resolveAuthenticatedMediaUser(cookieHeader);
+  }
+
+  private async assertCanManageManagedMedia(cookieHeader: string | null | undefined) {
+    await this.resolveAuthenticatedMediaUser(cookieHeader);
+  }
+
+  private async assertCanRunCleanup(cookieHeader: string | null | undefined) {
+    const context = await this.resolveAuthenticatedMediaUser(cookieHeader);
+
+    if (!context.hasAdminRole) {
+      throw new UnauthorizedException('Admin access is required to run media cleanup.');
+    }
+  }
+
+  private async assertCanReadManagedObject(
+    context: AuthenticatedMediaUserContext,
+    objectKey: string,
+    config: MediaStorageConfig
+  ) {
+    if (context.hasAdminRole) {
+      return;
+    }
+
+    const publicUrl = this.resolvePublicUrl(config.publicBaseUrl, objectKey);
+    const referencedBrandIds = await this.resolveReferencedBrandIdsByPublicUrl(publicUrl);
+
+    if (referencedBrandIds.length === 0) {
+      if (this.isObjectKeyWithinReadGracePeriod(objectKey)) {
+        return;
+      }
+
+      throw new UnauthorizedException(
+        'You do not have access to this media file.'
+      );
+    }
+
+    if (referencedBrandIds.some((brandId) => context.brandIds.includes(brandId))) {
+      return;
+    }
+
+    throw new UnauthorizedException('You do not have access to this media file.');
+  }
+
+  private isObjectKeyWithinReadGracePeriod(objectKey: string) {
+    const filename = objectKey.split('/').at(-1) ?? '';
+    const match = filename.match(/^(\d{13})-/);
+
+    if (!match) {
+      return false;
+    }
+
+    const createdAtMs = Number(match[1]);
+    if (!Number.isFinite(createdAtMs)) {
+      return false;
+    }
+
+    const ageMs = Date.now() - createdAtMs;
+    return ageMs >= 0 && ageMs <= UNREFERENCED_OBJECT_READ_GRACE_HOURS * 60 * 60 * 1000;
+  }
+
+  private async resolveReferencedBrandIdsByPublicUrl(publicUrl: string) {
+    const rowMapper = (rows: BrandIdRow[]) => rows.map((row) => row.brand_id);
+    const [
+      topContentRows,
+      competitorNoActivityRows,
+      competitorPostRows,
+      questionEvidenceRows,
+      questionHighlightRows,
+      competitorAssignmentRows,
+      competitorLegacyAssignmentRows,
+      brandLogoRows
+    ] = await Promise.all([
+      this.prisma.$queryRawUnsafe<BrandIdRow[]>(
+        `
+        SELECT DISTINCT rp.brand_id
+        FROM top_content_cards tc
+        INNER JOIN report_versions rv ON rv.id = tc.report_version_id
+        INNER JOIN reporting_periods rp ON rp.id = rv.reporting_period_id
+        WHERE tc.screenshot_url = ?
+        `,
+        publicUrl
+      ),
+      this.prisma.$queryRawUnsafe<BrandIdRow[]>(
+        `
+        SELECT DISTINCT rp.brand_id
+        FROM competitor_monitoring cm
+        INNER JOIN report_versions rv ON rv.id = cm.report_version_id
+        INNER JOIN reporting_periods rp ON rp.id = rv.reporting_period_id
+        WHERE cm.no_activity_evidence_image_url = ?
+        `,
+        publicUrl
+      ),
+      this.prisma.$queryRawUnsafe<BrandIdRow[]>(
+        `
+        SELECT DISTINCT rp.brand_id
+        FROM competitor_monitoring_posts cmp
+        INNER JOIN competitor_monitoring cm ON cm.id = cmp.competitor_monitoring_id
+        INNER JOIN report_versions rv ON rv.id = cm.report_version_id
+        INNER JOIN reporting_periods rp ON rp.id = rv.reporting_period_id
+        WHERE cmp.screenshot_url = ?
+        `,
+        publicUrl
+      ),
+      this.prisma.$queryRawUnsafe<BrandIdRow[]>(
+        `
+        SELECT DISTINCT rp.brand_id
+        FROM question_evidence_screenshots qes
+        INNER JOIN question_evidence qe ON qe.id = qes.question_evidence_id
+        INNER JOIN report_versions rv ON rv.id = qe.report_version_id
+        INNER JOIN reporting_periods rp ON rp.id = rv.reporting_period_id
+        WHERE qes.screenshot_url = ?
+        `,
+        publicUrl
+      ),
+      this.prisma.$queryRawUnsafe<BrandIdRow[]>(
+        `
+        SELECT DISTINCT rp.brand_id
+        FROM question_highlight_screenshots qhs
+        INNER JOIN report_versions rv ON rv.id = qhs.report_version_id
+        INNER JOIN reporting_periods rp ON rp.id = rv.reporting_period_id
+        WHERE qhs.screenshot_url = ?
+        `,
+        publicUrl
+      ),
+      this.prisma.$queryRawUnsafe<BrandIdRow[]>(
+        `
+        SELECT DISTINCT bca.brand_id
+        FROM competitors c
+        INNER JOIN brand_competitor_assignments bca ON bca.competitor_id = c.id
+        WHERE c.website_url = ?
+        `,
+        publicUrl
+      ),
+      this.prisma.$queryRawUnsafe<BrandIdRow[]>(
+        `
+        SELECT DISTINCT bc.brand_id
+        FROM competitors c
+        INNER JOIN brand_competitors bc ON bc.competitor_id = c.id
+        WHERE c.website_url = ?
+        `,
+        publicUrl
+      ),
+      this.readBrandLogoBrandIds(publicUrl)
+    ]);
+
+    return Array.from(
+      new Set([
+        ...rowMapper(topContentRows),
+        ...rowMapper(competitorNoActivityRows),
+        ...rowMapper(competitorPostRows),
+        ...rowMapper(questionEvidenceRows),
+        ...rowMapper(questionHighlightRows),
+        ...rowMapper(competitorAssignmentRows),
+        ...rowMapper(competitorLegacyAssignmentRows),
+        ...rowMapper(brandLogoRows)
+      ])
+    );
+  }
+
+  private async readBrandLogoBrandIds(publicUrl: string) {
+    try {
+      return await this.prisma.$queryRawUnsafe<BrandIdRow[]>(
+        `
+        SELECT DISTINCT brand_id
+        FROM brand_ui_settings
+        WHERE logo_url = ?
+        `,
+        publicUrl
+      );
+    } catch {
+      return [];
+    }
+  }
+
+  async deleteObject(
+    input: DeleteMediaObjectInput,
+    sessionCookieHeader?: string | null
+  ): Promise<DeleteMediaObjectResponse> {
+    if (sessionCookieHeader !== undefined) {
+      await this.assertCanManageManagedMedia(sessionCookieHeader);
+    }
     const config = this.resolveStorageConfig();
     const objectKey = this.resolveDeleteTargetKey(input, config);
 
@@ -251,6 +650,14 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
       maxDeleteApplied: maxDelete,
       minAgeHoursApplied: minAgeHours
     };
+  }
+
+  async cleanupOrphansViaHttp(
+    input: CleanupMediaOrphansInput = {},
+    sessionCookieHeader?: string | null
+  ) {
+    await this.assertCanRunCleanup(sessionCookieHeader);
+    return this.cleanupOrphans(input);
   }
 
   private setupCleanupSchedule() {
@@ -466,7 +873,7 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
   }
 
   private resolveDeleteTargetKey(
-    input: DeleteMediaObjectInput,
+    input: DeleteMediaObjectInput | CreateMediaPresignReadInput,
     config: MediaStorageConfig
   ) {
     const normalizedObjectKey = this.normalizeObjectKey(input.objectKey);
@@ -569,6 +976,14 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
       MAX_PRESIGN_EXPIRES_SECONDS,
       Math.max(MIN_PRESIGN_EXPIRES_SECONDS, expiresCandidate)
     );
+    const readExpiresCandidate = this.parsePositiveInteger(
+      this.configService.get<string>('MEDIA_READ_PRESIGN_EXPIRES_SECONDS'),
+      DEFAULT_READ_PRESIGN_EXPIRES_SECONDS
+    );
+    const readPresignExpiresSeconds = Math.min(
+      MAX_READ_PRESIGN_EXPIRES_SECONDS,
+      Math.max(MIN_READ_PRESIGN_EXPIRES_SECONDS, readExpiresCandidate)
+    );
     const publicBaseUrl =
       this.normalizeOptionalString(this.configService.get<string>('MEDIA_S3_PUBLIC_BASE_URL')) ??
       `${this.trimTrailingSlash(endpoint)}/${bucket}`;
@@ -582,7 +997,8 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
       forcePathStyle,
       publicBaseUrl,
       uploadMaxBytes,
-      presignExpiresSeconds
+      presignExpiresSeconds,
+      readPresignExpiresSeconds
     };
   }
 

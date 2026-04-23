@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
+import { toProtectedMediaUrl } from '@/lib/media-url';
 import type { CompetitorOverviewResponse } from '@/lib/reporting-api';
 import { cn } from '@/lib/utils';
 
@@ -25,7 +26,7 @@ type DashboardCompetitorAnalysisSectionProps = {
     name: string;
     logoUrl: string | null;
     pageFollowers: number | null;
-    capturedPosts: number | null;
+    monthlyPosts: number | null;
   } | null;
 };
 
@@ -102,7 +103,7 @@ function BoardLogoCell({
   fallbackFontPx: number;
 }) {
   const [imageLoadFailed, setImageLoadFailed] = useState(false);
-  const normalizedLogoUrl = logoUrl?.trim() ?? '';
+  const normalizedLogoUrl = toProtectedMediaUrl(logoUrl);
 
   if (normalizedLogoUrl && !imageLoadFailed) {
     return (
@@ -142,7 +143,7 @@ type CompetitorBoardRow = {
   brandName: string;
   logoUrl: string | null;
   pageFollowers: number | null;
-  capturedPosts: number | null;
+  monthlyPosts: number | null;
   isOwnBrand: boolean;
 };
 
@@ -271,7 +272,7 @@ export function DashboardCompetitorAnalysisSection({
         brandName: item.competitor.name,
         logoUrl: competitorLogoUrl,
         pageFollowers: item.monitoring.followerCount,
-        capturedPosts: item.monitoring.posts.length,
+        monthlyPosts: item.monitoring.monthlyPostCount,
         isOwnBrand: false
       };
     });
@@ -282,7 +283,7 @@ export function DashboardCompetitorAnalysisSection({
         brandName: ownBrandSummary.name,
         logoUrl: normalizeOptionalUrl(ownBrandSummary.logoUrl),
         pageFollowers: ownBrandSummary.pageFollowers,
-        capturedPosts: ownBrandSummary.capturedPosts,
+        monthlyPosts: ownBrandSummary.monthlyPosts,
         isOwnBrand: true
       });
     }
@@ -575,7 +576,7 @@ export function DashboardCompetitorAnalysisSection({
                           padding: `0 ${boardMetrics.cellPaddingX}px`
                         }}
                       >
-                        {formatMetricValue(row.capturedPosts)}
+                        {formatMetricValue(row.monthlyPosts)}
                       </td>
                     </tr>
                   ))}
@@ -663,9 +664,7 @@ export function DashboardCompetitorAnalysisSection({
                             lineHeight: `${captureMetricLabelLineHeightPx}px`
                           }}
                         >
-                          {previousVisiblePeriodLabel
-                            ? `Follower ${previousVisiblePeriodLabel}`
-                            : 'Follower previous visible month'}
+                          Follower previous month
                         </div>
                         <div
                           className="mt-1 font-bold tracking-tight text-slate-900"
@@ -729,22 +728,28 @@ export function DashboardCompetitorAnalysisSection({
                               width: `${Math.min(100, (filledPostSlotCount / 5) * 100)}%`
                             }}
                           >
-                            {filledPostSlots.map((slot) => (
-                              <div
-                                className={cn(
-                                  'min-h-0 min-w-0 overflow-hidden rounded-[16px] border border-slate-200 bg-white',
-                                  imageAspectClass
-                                )}
-                                key={slot.id}
-                              >
-                                <img
-                                  alt={`${item.competitor.name} post ${slot.displayOrder}`}
-                                  className="h-full w-full object-cover object-top"
-                                  loading="lazy"
-                                  src={slot.screenshotUrl}
-                                />
-                              </div>
-                            ))}
+                            {filledPostSlots.map((slot) => {
+                              const protectedScreenshotUrl = toProtectedMediaUrl(
+                                slot.screenshotUrl
+                              );
+
+                              return (
+                                <div
+                                  className={cn(
+                                    'min-h-0 min-w-0 overflow-hidden rounded-[16px] border border-slate-200 bg-white',
+                                    imageAspectClass
+                                  )}
+                                  key={slot.id}
+                                >
+                                  <img
+                                    alt={`${item.competitor.name} post ${slot.displayOrder}`}
+                                    className="h-full w-full object-cover object-top"
+                                    loading="lazy"
+                                    src={protectedScreenshotUrl ?? slot.screenshotUrl}
+                                  />
+                                </div>
+                              );
+                            })}
                           </div>
                         ) : (
                           <div className="flex h-full w-full items-center justify-center rounded-2xl border border-dashed border-slate-200 text-sm text-slate-500">

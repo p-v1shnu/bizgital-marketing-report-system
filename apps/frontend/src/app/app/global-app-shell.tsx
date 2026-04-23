@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
@@ -79,25 +80,37 @@ export function GlobalAppShell({
     <div className="min-h-screen bg-background lg:flex">
       <aside
         className={cn(
-          'border-b border-border/70 bg-card/45 transition-all duration-200 lg:sticky lg:top-0 lg:h-screen lg:border-r lg:border-b-0',
+          'border-b border-border/70 bg-card/45 transition-all duration-200 lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:border-r lg:border-b-0',
           collapsed ? 'lg:w-24' : 'lg:w-72'
         )}
       >
-        <div className="flex items-center justify-between gap-3 px-4 py-4 lg:px-5">
-          <Link className="min-w-0" href="/app">
-            <div className={cn('text-sm font-semibold', collapsed && 'lg:hidden')}>
-              BIZGITAL Marketing Report
-            </div>
-            <div
-              className={cn(
-                'text-xs uppercase tracking-[0.18em] text-muted-foreground',
-                collapsed && 'lg:hidden'
-              )}
-            >
-              Internal reporting platform
-            </div>
-            <div className={cn('hidden text-sm font-semibold lg:block', !collapsed && 'lg:hidden')}>
-              BMR
+        <div
+          className={cn(
+            'flex items-center justify-between gap-3 px-4 py-4 lg:px-5',
+            collapsed && 'lg:flex-col lg:justify-start'
+          )}
+        >
+          <Link
+            aria-label="BIZGITAL Marketing Report"
+            className={cn('min-w-0', collapsed && 'lg:mx-auto')}
+            href="/app"
+            title={collapsed ? 'BIZGITAL Marketing Report' : undefined}
+          >
+            <div className={cn('flex items-center gap-3', collapsed && 'lg:justify-center')}>
+              <Image
+                alt="BIZGITAL logo"
+                className="size-8 shrink-0"
+                height={32}
+                priority
+                src="/branding/bizgital-logo-2.png"
+                width={32}
+              />
+              <div className={cn('min-w-0', collapsed && 'lg:hidden')}>
+                <div className="text-sm font-semibold">BIZGITAL Marketing Report</div>
+                <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                  Internal reporting platform
+                </div>
+              </div>
             </div>
           </Link>
 
@@ -112,7 +125,7 @@ export function GlobalAppShell({
           </Button>
         </div>
 
-        <div className="space-y-5 px-4 pb-4 lg:px-5">
+        <div className="space-y-5 px-4 pb-4 lg:flex lg:flex-1 lg:flex-col lg:gap-5 lg:space-y-0 lg:px-5">
           <nav aria-label="Global navigation" className="grid gap-2">
             {visibleNavigation.map((item) => {
               const isActive = item.exact
@@ -163,12 +176,6 @@ export function GlobalAppShell({
                 </div>
               </div>
             </div>
-            <Button asChild className="mt-4 w-full" size="sm" variant="outline">
-              <Link href="/api/auth/logout">
-                <LogOut />
-                Sign out
-              </Link>
-            </Button>
           </div>
 
           <div
@@ -185,6 +192,20 @@ export function GlobalAppShell({
               admin layer.
             </div>
           </div>
+          <Link
+            aria-label="Sign out"
+            className={cn(
+              'rounded-[24px] border border-border/60 bg-background/60 text-muted-foreground transition hover:bg-background/80 hover:text-foreground lg:mt-auto',
+              collapsed
+                ? 'flex h-14 items-center justify-center'
+                : 'flex h-11 items-center justify-center gap-2 px-3 text-sm font-medium'
+            )}
+            href="/api/auth/logout"
+            title="Sign out"
+          >
+            <LogOut className="size-4 text-primary" />
+            {collapsed ? null : <span>Sign out</span>}
+          </Link>
         </div>
       </aside>
 

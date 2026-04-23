@@ -1,6 +1,7 @@
 'use client';
 
 import { Badge } from '@/components/ui/badge';
+import { toProtectedMediaUrl } from '@/lib/media-url';
 import type { TopContentOverviewResponse } from '@/lib/reporting-api';
 import { cn } from '@/lib/utils';
 
@@ -11,11 +12,16 @@ type DashboardTopPostsSectionProps = {
   overview: TopContentOverviewResponse | null;
 };
 
-const topSlotOrder = ['top_engagement', 'top_views', 'top_reach'] as const;
+const topSlotOrder = ['top_views', 'top_reach', 'top_engagement'] as const;
 const topSlotLabelFallbacks: Record<(typeof topSlotOrder)[number], string> = {
-  top_engagement: 'Top 3 Engagement',
   top_views: 'Top 3 Views',
-  top_reach: 'Top 3 Reach'
+  top_reach: 'Top 3 Viewers (Post)',
+  top_engagement: 'Top 3 Engagement'
+};
+const topSlotAnchorIds: Record<(typeof topSlotOrder)[number], string> = {
+  top_views: 'dashboard-content-top-3-views',
+  top_reach: 'dashboard-content-top-3-viewers-post',
+  top_engagement: 'dashboard-content-top-3-engagement'
 };
 const contentWhiteBadgeClassName =
   'border-slate-300 bg-slate-100 text-slate-800 dark:border-slate-300 dark:bg-slate-100 dark:text-slate-800';
@@ -52,7 +58,8 @@ export function DashboardTopPostsSection({ overview }: DashboardTopPostsSectionP
         const cards = overview.cards
           .filter((card) => card.slotKey === slotKey)
           .sort((left, right) => left.rankPosition - right.rankPosition);
-        const slotLabel = cards[0]?.slotLabel ?? topSlotLabelFallbacks[slotKey];
+        const slotLabel = topSlotLabelFallbacks[slotKey];
+        const slotAnchorId = topSlotAnchorIds[slotKey];
         const slotCaptureTargetId = `dashboard-content-top-posts-${slotKey}-cards`;
         const aspectClass =
           contentCardAspect === '1_1'
@@ -114,7 +121,7 @@ export function DashboardTopPostsSection({ overview }: DashboardTopPostsSectionP
           contentCaptureBackground === 'white' ? 'bg-white' : 'bg-white/80';
 
         return (
-          <section className="space-y-3" key={`top-slot-${slotKey}`}>
+          <section className="space-y-3" id={slotAnchorId} key={`top-slot-${slotKey}`}>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h3
                 className={cn(
@@ -141,137 +148,141 @@ export function DashboardTopPostsSection({ overview }: DashboardTopPostsSectionP
                 className={cn('grid md:grid-cols-2 2xl:grid-cols-3', gridGapClass)}
                 id={slotCaptureTargetId}
               >
-                {cards.map((card) => (
-                  <article
-                    className={cn(
-                      'rounded-2xl border border-slate-200',
-                      articlePaddingClass,
-                      presentationMode
-                        ? `${articleVerticalGapClass} ${captureCardBackgroundClass} shadow-sm`
-                        : 'space-y-3 bg-white'
-                    )}
-                    key={card.id}
-                  >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge
-                        className={cn(
-                          contentWhiteBadgeClassName,
-                          badgeScaleClass
-                        )}
-                        variant="outline"
-                      >
-                        Top #{card.rankPosition}
-                      </Badge>
-                      <Badge
-                        className={cn(
-                          contentWhiteBadgeClassName,
-                          badgeScaleClass
-                        )}
-                        variant="outline"
-                      >
-                        {card.metricLabel}
-                      </Badge>
-                    </div>
+                {cards.map((card) => {
+                  const protectedScreenshotUrl = toProtectedMediaUrl(card.screenshotUrl);
 
-                    {card.screenshotUrl ? (
-                      <img
-                        alt={`${card.slotLabel} rank ${card.rankPosition}`}
-                        className={cn(
-                          'w-full rounded-2xl border border-slate-200 bg-slate-50 object-contain',
-                          aspectClass
-                        )}
-                        loading="lazy"
-                        src={card.screenshotUrl}
-                      />
-                    ) : (
-                      <div
-                        className={cn(
-                          'flex w-full items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-100 text-sm text-slate-600',
-                          aspectClass
-                        )}
-                      >
-                        No screenshot
-                      </div>
-                    )}
-
-                    {presentationMode ? (
-                      <div
-                        className={cn(
-                          'rounded-2xl border border-slate-200 px-4 py-3 text-center',
-                          captureMetricBackgroundClass
-                        )}
-                      >
-                        <div className={cn('font-semibold tracking-tight text-slate-700', metricLabelClass)}>
-                          {card.metricLabel}
-                        </div>
-                        <div
+                  return (
+                    <article
+                      className={cn(
+                        'rounded-2xl border border-slate-200',
+                        articlePaddingClass,
+                        presentationMode
+                          ? `${articleVerticalGapClass} ${captureCardBackgroundClass} shadow-sm`
+                          : 'space-y-3 bg-white'
+                      )}
+                      key={card.id}
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge
                           className={cn(
-                            'mt-1 font-bold leading-none tracking-tight text-slate-900',
-                            metricValueClass
+                            contentWhiteBadgeClassName,
+                            badgeScaleClass
                           )}
+                          variant="outline"
                         >
-                          {formatMetricValue(card.headlineValue)}
-                        </div>
-                        {contentShowDatasetRow || contentShowSourceLink ? (
-                          <div className="mt-2 space-y-1 text-xs text-slate-600">
-                            {contentShowDatasetRow ? (
-                              <div>Dataset row: {card.datasetRow.rowNumber}</div>
-                            ) : null}
-                            {contentShowSourceLink && card.postUrl ? (
-                              <a
-                                className="text-primary hover:underline"
-                                href={card.postUrl}
-                                rel="noreferrer"
-                                target="_blank"
-                              >
-                                Open source post
-                              </a>
-                            ) : null}
-                          </div>
-                        ) : null}
-                      </div>
-                    ) : (
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-center">
-                        <div
+                          Top #{card.rankPosition}
+                        </Badge>
+                        <Badge
                           className={cn(
-                            'font-semibold tracking-tight text-slate-700',
-                            normalMetricLabelClass
+                            contentWhiteBadgeClassName,
+                            badgeScaleClass
                           )}
+                          variant="outline"
                         >
                           {card.metricLabel}
-                        </div>
+                        </Badge>
+                      </div>
+
+                      {card.screenshotUrl ? (
+                        <img
+                          alt={`${slotLabel} rank ${card.rankPosition}`}
+                          className={cn(
+                            'w-full rounded-2xl border border-slate-200 bg-slate-50 object-contain',
+                            aspectClass
+                          )}
+                          loading="lazy"
+                          src={protectedScreenshotUrl ?? card.screenshotUrl}
+                        />
+                      ) : (
                         <div
                           className={cn(
-                            'mt-1 font-bold leading-none tracking-tight text-slate-900',
-                            normalMetricValueClass
+                            'flex w-full items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-100 text-sm text-slate-600',
+                            aspectClass
                           )}
                         >
-                          {formatMetricValue(card.headlineValue)}
+                          No screenshot
                         </div>
-                        {contentShowDatasetRow || contentShowSourceLink ? (
-                          <div className="mt-2 space-y-1 text-xs text-slate-600">
-                            {contentShowDatasetRow ? (
-                              <div>Dataset row: {card.datasetRow.rowNumber}</div>
-                            ) : null}
-                            {contentShowSourceLink && card.postUrl ? (
-                              <a
-                                className="text-primary hover:underline"
-                                href={card.postUrl}
-                                rel="noreferrer"
-                                target="_blank"
-                              >
-                                Open source post
-                              </a>
-                            ) : null}
-                            {contentShowSourceLink && !card.postUrl ? (
-                              <div>No post URL from CSV source.</div>
-                            ) : null}
+                      )}
+
+                      {presentationMode ? (
+                        <div
+                          className={cn(
+                            'rounded-2xl border border-slate-200 px-4 py-3 text-center',
+                            captureMetricBackgroundClass
+                          )}
+                        >
+                          <div className={cn('font-semibold tracking-tight text-slate-700', metricLabelClass)}>
+                            {card.metricLabel}
                           </div>
-                        ) : null}
-                      </div>
-                    )}
-                  </article>
-                ))}
+                          <div
+                            className={cn(
+                              'mt-1 font-bold leading-none tracking-tight text-slate-900',
+                              metricValueClass
+                            )}
+                          >
+                            {formatMetricValue(card.headlineValue)}
+                          </div>
+                          {contentShowDatasetRow || contentShowSourceLink ? (
+                            <div className="mt-2 space-y-1 text-xs text-slate-600">
+                              {contentShowDatasetRow ? (
+                                <div>Dataset row: {card.datasetRow.rowNumber}</div>
+                              ) : null}
+                              {contentShowSourceLink && card.postUrl ? (
+                                <a
+                                  className="text-primary hover:underline"
+                                  href={card.postUrl}
+                                  rel="noreferrer"
+                                  target="_blank"
+                                >
+                                  Open source post
+                                </a>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-center">
+                          <div
+                            className={cn(
+                              'font-semibold tracking-tight text-slate-700',
+                              normalMetricLabelClass
+                            )}
+                          >
+                            {card.metricLabel}
+                          </div>
+                          <div
+                            className={cn(
+                              'mt-1 font-bold leading-none tracking-tight text-slate-900',
+                              normalMetricValueClass
+                            )}
+                          >
+                            {formatMetricValue(card.headlineValue)}
+                          </div>
+                          {contentShowDatasetRow || contentShowSourceLink ? (
+                            <div className="mt-2 space-y-1 text-xs text-slate-600">
+                              {contentShowDatasetRow ? (
+                                <div>Dataset row: {card.datasetRow.rowNumber}</div>
+                              ) : null}
+                              {contentShowSourceLink && card.postUrl ? (
+                                <a
+                                  className="text-primary hover:underline"
+                                  href={card.postUrl}
+                                  rel="noreferrer"
+                                  target="_blank"
+                                >
+                                  Open source post
+                                </a>
+                              ) : null}
+                              {contentShowSourceLink && !card.postUrl ? (
+                                <div>No post URL from CSV source.</div>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
               </div>
             )}
           </section>

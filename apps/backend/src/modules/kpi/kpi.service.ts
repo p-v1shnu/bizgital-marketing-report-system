@@ -5,6 +5,7 @@ import {
   NotFoundException
 } from '@nestjs/common';
 import {
+  ComputedColumnKey,
   KpiSourceType,
   MappingTargetField,
   Prisma,
@@ -15,6 +16,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { BrandsService } from '../brands/brands.service';
 import { METRIC_TARGET_FIELDS } from '../mapping/mapping-targets';
 import {
+  DEFAULT_NEW_BRAND_KPI_CATALOG_KEYS,
   NEW_BRAND_DEFAULT_KPI_SETTING_KEY,
   type NewBrandDefaultKpiSettingPayload
 } from './kpi-defaults.constants';
@@ -62,6 +64,56 @@ type ApprovedKpiUsageSummary = {
   usageByKpiCatalogId: Map<string, number>;
 };
 
+type DefaultKpiCatalogSeed = {
+  key: (typeof DEFAULT_NEW_BRAND_KPI_CATALOG_KEYS)[number];
+  label: string;
+  description: string | null;
+  sourceType: KpiSourceType;
+  canonicalMetricKey: MappingTargetField | null;
+  formulaId: 'engagement_formula' | null;
+};
+
+const DEFAULT_ENGAGEMENT_FORMULA = {
+  label: 'Engagement',
+  sourceLabelA: 'Reactions, comments and shares',
+  sourceLabelB: 'Total clicks'
+} as const;
+
+const DEFAULT_KPI_CATALOG_SEEDS: DefaultKpiCatalogSeed[] = [
+  {
+    key: 'views',
+    label: 'Views',
+    description: null,
+    sourceType: KpiSourceType.canonical_metric,
+    canonicalMetricKey: MappingTargetField.views,
+    formulaId: null
+  },
+  {
+    key: 'viewers',
+    label: 'Viewers',
+    description: null,
+    sourceType: KpiSourceType.canonical_metric,
+    canonicalMetricKey: MappingTargetField.viewers,
+    formulaId: null
+  },
+  {
+    key: 'engagement',
+    label: 'Engagement',
+    description: null,
+    sourceType: KpiSourceType.formula_column,
+    canonicalMetricKey: null,
+    formulaId: 'engagement_formula'
+  },
+  {
+    key: 'video_views_3s',
+    label: '3 Second Video Views',
+    description: null,
+    sourceType: KpiSourceType.canonical_metric,
+    canonicalMetricKey: MappingTargetField.video_views_3s,
+    formulaId: null
+  }
+];
+
 @Injectable()
 export class KpiService {
   constructor(
@@ -70,6 +122,8 @@ export class KpiService {
   ) {}
 
   async listCatalog(includeInactive = false): Promise<KpiCatalogListResponse> {
+    await this.ensureDefaultKpiBootstrap();
+
     const items = await this.prisma.globalKpiCatalog.findMany({
       where: includeInactive ? {} : { isActive: true },
       include: {
@@ -105,6 +159,8 @@ export class KpiService {
   }
 
   async getNewBrandDefaultKpiSelection(): Promise<NewBrandDefaultKpiSelectionResponse> {
+    await this.ensureDefaultKpiBootstrap();
+
     return {
       kpiCatalogIds: await this.readNewBrandDefaultKpiSelection()
     };
@@ -865,7 +921,162 @@ export class KpiService {
     };
   }
 
+  private async ensureDefaultKpiBootstrap() {
+    await this.prisma.$transaction(async client => {
+      await this.ensureGlobalUiSettingsStorageWithClient(client);
+      const engagementFormulaId = await this.ensureDefaultEngagementFormulaWithClient(client);
+      await this.ensureDefaultKpiCatalogRowsWithClient(client, engagementFormulaId);
+      await this.ensureDefaultNewBrandKpiSelectionWithClient(client);
+    });
+  }
+
+  private async ensureDefaultEngagementFormulaWithClient(
+    client: Prisma.TransactionClient
+  ) {
+    const setting = await client.globalComputedColumnSetting.upsert({
+      where: {
+        key: ComputedColumnKey.engagement
+      },
+      update: {},
+      create: {
+        key: ComputedColumnKey.engagement,
+        label: DEFAULT_ENGAGEMENT_FORMULA.label,
+        operation: 'sum',
+        sourceLabelA: DEFAULT_ENGAGEMENT_FORMULA.sourceLabelA,
+        sourceLabelB: DEFAULT_ENGAGEMENT_FORMULA.sourceLabelB
+      }
+    });
+    const expression = `{{${setting.sourceLabelA}}} + {{${setting.sourceLabelB}}}`;
+
+    const existingFormula = await client.globalComputedFormula.findFirst({
+      where: {
+        columnLabel: setting.label,
+        expression
+      },
+      orderBy: {
+        createdAt: 'asc'
+      },
+      select: {
+        id: true,
+        isActive: true
+      }
+    });
+
+    if (existingFormula) {
+      if (!existingFormula.isActive) {
+        await client.globalComputedFormula.update({
+          where: {
+            id: existingFormula.id
+          },
+          data: {
+            isActive: true
+          }
+        });
+      }
+
+      return existingFormula.id;
+    }
+
+    const createdFormula = await client.globalComputedFormula.create({
+      data: {
+        columnLabel: setting.label,
+        expression,
+        isActive: true
+      },
+      select: {
+        id: true
+      }
+    });
+
+    return createdFormula.id;
+  }
+
+  private async ensureDefaultKpiCatalogRowsWithClient(
+    client: Prisma.TransactionClient,
+    engagementFormulaId: string
+  ) {
+    const existingRows = await client.globalKpiCatalog.findMany({
+      where: {
+        key: {
+          in: [...DEFAULT_NEW_BRAND_KPI_CATALOG_KEYS]
+        }
+      },
+      select: {
+        key: true
+      }
+    });
+    const existingKeys = new Set(existingRows.map(row => row.key));
+    const missingSeeds = DEFAULT_KPI_CATALOG_SEEDS.filter(
+      seed => !existingKeys.has(seed.key)
+    );
+
+    if (missingSeeds.length === 0) {
+      return;
+    }
+
+    await client.globalKpiCatalog.createMany({
+      data: missingSeeds.map(seed => ({
+        key: seed.key,
+        label: seed.label,
+        description: seed.description,
+        sourceType: seed.sourceType,
+        canonicalMetricKey: seed.canonicalMetricKey,
+        formulaId: seed.formulaId === 'engagement_formula' ? engagementFormulaId : null,
+        isActive: true
+      }))
+    });
+  }
+
+  private async ensureDefaultNewBrandKpiSelectionWithClient(
+    client: Prisma.TransactionClient
+  ) {
+    const existingSetting = await client.globalUiSetting.findUnique({
+      where: {
+        settingKey: NEW_BRAND_DEFAULT_KPI_SETTING_KEY
+      },
+      select: {
+        settingKey: true
+      }
+    });
+
+    if (existingSetting) {
+      return;
+    }
+
+    const defaultCatalogRows = await client.globalKpiCatalog.findMany({
+      where: {
+        key: {
+          in: [...DEFAULT_NEW_BRAND_KPI_CATALOG_KEYS]
+        },
+        isActive: true
+      },
+      select: {
+        id: true,
+        key: true
+      }
+    });
+    const idByKey = new Map(defaultCatalogRows.map(row => [row.key, row.id] as const));
+    const orderedIds = DEFAULT_NEW_BRAND_KPI_CATALOG_KEYS.map(key => idByKey.get(key) ?? null)
+      .filter((id): id is string => !!id);
+
+    if (orderedIds.length === 0) {
+      return;
+    }
+
+    const payload: NewBrandDefaultKpiSettingPayload = {
+      kpiCatalogIds: orderedIds
+    };
+
+    await client.globalUiSetting.create({
+      data: {
+        settingKey: NEW_BRAND_DEFAULT_KPI_SETTING_KEY,
+        valueJson: JSON.stringify(payload)
+      }
+    });
+  }
+
   private async readNewBrandDefaultKpiSelection() {
+    await this.ensureDefaultKpiBootstrap();
     await this.ensureGlobalUiSettingsStorage();
     const rawSetting = await this.prisma.globalUiSetting.findUnique({
       where: {

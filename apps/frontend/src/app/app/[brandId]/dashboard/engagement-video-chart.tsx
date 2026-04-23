@@ -119,6 +119,7 @@ export function EngagementVideoChart({
     showLegend,
     showValueLabels,
     presentationMode,
+    chartLayoutPreset,
     fontScale
   } = useDashboardGlobalKpiControls();
   const fontScaleMultiplier = fontScale === 'xl' ? 1.28 : fontScale === 'l' ? 1.15 : 1;
@@ -139,10 +140,14 @@ export function EngagementVideoChart({
     );
   }, [latestPoint, points]);
 
+  const useWideFocusCapture = presentationMode && chartLayoutPreset === 'focus';
   const chartContainerClassName = presentationMode
-    ? 'w-full rounded-[24px] border border-slate-200 bg-white p-3'
+    ? useWideFocusCapture
+      ? 'h-[340px] w-full rounded-[24px] border border-slate-200 bg-white p-3 sm:h-[380px]'
+      : 'w-full rounded-[24px] border border-slate-200 bg-white p-3'
     : 'h-[340px] w-full rounded-[24px] border border-slate-200 bg-white p-3 sm:h-[380px]';
-  const chartContainerStyle = presentationMode ? { aspectRatio: '4 / 5' } : undefined;
+  const chartContainerStyle =
+    presentationMode && !useWideFocusCapture ? { aspectRatio: '4 / 5' } : undefined;
 
   return (
     <div className="space-y-3">

@@ -3,6 +3,7 @@
 import { useMemo } from 'react';
 
 import { cn } from '@/lib/utils';
+import { toProtectedMediaUrl } from '@/lib/media-url';
 import { DashboardChartCopyButton } from './dashboard-chart-copy-button';
 import { getDashboardContentCanvasAspectClass } from './dashboard-content-canvas-ratio';
 import { getDashboardContentNoteTypography } from './dashboard-content-note-typography';
@@ -58,8 +59,17 @@ export function DashboardQuestionHighlightsCanvas({
     () => [...screenshots].sort((left, right) => left.displayOrder - right.displayOrder),
     [screenshots]
   );
-  const visibleScreenshots = orderedScreenshots.slice(0, 6);
-  const hiddenCount = Math.max(0, orderedScreenshots.length - visibleScreenshots.length);
+  const hasDenseScreenshotGrid = orderedScreenshots.length > 6;
+  const denseGridLayout = useMemo(() => {
+    const count = orderedScreenshots.length;
+    if (count <= 6) {
+      return { columns: 0, rows: 0 };
+    }
+
+    const columns = Math.max(3, Math.min(6, Math.ceil(Math.sqrt(count))));
+    const rows = Math.max(1, Math.ceil(count / columns));
+    return { columns, rows };
+  }, [orderedScreenshots.length]);
   const normalizedHighlightNote = String(highlightNote ?? '').trim();
   const formattedHighlightNote = useMemo(() => {
     if (!normalizedHighlightNote) {
@@ -75,7 +85,7 @@ export function DashboardQuestionHighlightsCanvas({
     return normalizedHighlightNote;
   }, [normalizedHighlightNote]);
   const hasHighlightNote = normalizedHighlightNote.length > 0;
-  const shouldShowCanvas = visibleScreenshots.length > 0 || hasHighlightNote;
+  const shouldShowCanvas = orderedScreenshots.length > 0 || hasHighlightNote;
   const noteTypography = getDashboardContentNoteTypography(contentNoteScale);
 
   return (
@@ -105,25 +115,61 @@ export function DashboardQuestionHighlightsCanvas({
           >
             <div className="flex h-full flex-col gap-2">
               <div className="min-h-0 flex-1">
-                {visibleScreenshots.length > 0 ? (
-                  <div className="grid h-full grid-cols-12 grid-rows-8 gap-1">
-                    {visibleScreenshots.map((item, index) => (
-                      <div
-                        className={cn(
-                          'min-h-0 min-w-0 overflow-hidden rounded-[16px] bg-white',
-                          slotClassName(index, visibleScreenshots.length)
-                        )}
-                        key={item.id}
-                      >
-                        <img
-                          alt={`Question highlight screenshot ${item.displayOrder}`}
-                          className="h-full w-full object-contain object-top"
-                          loading="lazy"
-                          src={item.screenshotUrl}
-                        />
-                      </div>
-                    ))}
-                  </div>
+                {orderedScreenshots.length > 0 ? (
+                  hasDenseScreenshotGrid ? (
+                    <div
+                      className="grid h-full gap-1"
+                      style={{
+                        gridTemplateColumns: `repeat(${denseGridLayout.columns}, minmax(0, 1fr))`,
+                        gridTemplateRows: `repeat(${denseGridLayout.rows}, minmax(0, 1fr))`
+                      }}
+                    >
+                      {orderedScreenshots.map((item) => {
+                        const protectedScreenshotUrl = toProtectedMediaUrl(
+                          item.screenshotUrl
+                        );
+
+                        return (
+                          <div
+                            className="min-h-0 min-w-0 overflow-hidden rounded-[16px] bg-white"
+                            key={item.id}
+                          >
+                            <img
+                              alt={`Question highlight screenshot ${item.displayOrder}`}
+                              className="h-full w-full object-contain object-top"
+                              loading="lazy"
+                              src={protectedScreenshotUrl ?? item.screenshotUrl}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="grid h-full grid-cols-12 grid-rows-8 gap-1">
+                      {orderedScreenshots.map((item, index) => {
+                        const protectedScreenshotUrl = toProtectedMediaUrl(
+                          item.screenshotUrl
+                        );
+
+                        return (
+                          <div
+                            className={cn(
+                              'min-h-0 min-w-0 overflow-hidden rounded-[16px] bg-white',
+                              slotClassName(index, orderedScreenshots.length)
+                            )}
+                            key={item.id}
+                          >
+                            <img
+                              alt={`Question highlight screenshot ${item.displayOrder}`}
+                              className="h-full w-full object-contain object-top"
+                              loading="lazy"
+                              src={protectedScreenshotUrl ?? item.screenshotUrl}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )
                 ) : (
                   <div className="flex h-full items-center justify-center text-sm text-slate-500">
                     No highlight screenshot
@@ -157,12 +203,6 @@ export function DashboardQuestionHighlightsCanvas({
               ) : null}
             </div>
           </div>
-
-          {hiddenCount > 0 ? (
-            <div className="mt-2 text-right text-xs text-slate-500">
-              +{hiddenCount} more screenshot(s)
-            </div>
-          ) : null}
         </div>
       )}
     </article>

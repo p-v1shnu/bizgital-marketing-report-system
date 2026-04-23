@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Copy, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { Pencil, Plus, Search, Trash2 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,7 @@ import { ImageUploadField } from '@/components/ui/image-upload-field';
 import { Input } from '@/components/ui/input';
 import { ModalShell } from '@/components/ui/modal-shell';
 import { Select } from '@/components/ui/select';
+import { toProtectedMediaUrl } from '@/lib/media-url';
 import type {
   CompetitorCatalogResponse,
   CompetitorStatus,
@@ -22,6 +23,8 @@ type Props = {
   brandId: string;
   initialYear: number;
   initialSetup: CompetitorYearSetupResponse;
+  showYearPicker?: boolean;
+  onSetupChanged?: (setup: CompetitorYearSetupResponse) => void;
 };
 
 type CatalogDraft = {
@@ -73,9 +76,9 @@ function normalizeOptionalText(value: string) {
 
 function LogoAvatar({ name, logoUrl }: { name: string; logoUrl: string | null }) {
   const [imageLoadFailed, setImageLoadFailed] = useState(false);
-  const normalizedLogoUrl = logoUrl?.trim() ?? '';
+  const protectedLogoUrl = toProtectedMediaUrl(logoUrl);
 
-  if (normalizedLogoUrl && !imageLoadFailed) {
+  if (protectedLogoUrl && !imageLoadFailed) {
     return (
       <img
         alt={`${name} logo`}
@@ -83,7 +86,7 @@ function LogoAvatar({ name, logoUrl }: { name: string; logoUrl: string | null })
         onError={() => {
           setImageLoadFailed(true);
         }}
-        src={normalizedLogoUrl}
+        src={protectedLogoUrl}
       />
     );
   }
@@ -177,7 +180,9 @@ function CompetitorRow({
 export function CompetitorSetupManager({
   brandId,
   initialYear,
-  initialSetup
+  initialSetup,
+  showYearPicker = true,
+  onSetupChanged
 }: Props) {
   const router = useRouter();
   const currentYear = new Date().getUTCFullYear();
@@ -224,13 +229,14 @@ export function CompetitorSetupManager({
       .filter((item) => item.status === catalogTab);
   }, [setup.availableCompetitors, query, catalogTab]);
 
+  const maxSelectableYear = Math.max(maxVisitedYear, currentYear + 1, selectedYear + 1);
   const yearOptions = useMemo(() => {
     const years: number[] = [];
-    for (let year = maxVisitedYear; year >= 2000; year -= 1) {
+    for (let year = maxSelectableYear; year >= 2000; year -= 1) {
       years.push(year);
     }
     return years;
-  }, [maxVisitedYear]);
+  }, [maxSelectableYear]);
 
   function setStatus(options: { message?: string | null; error?: string | null }) {
     setStatusMessage(options.message ?? null);
@@ -268,6 +274,7 @@ export function CompetitorSetupManager({
       setSelectedYear(year);
       setMaxVisitedYear((currentMax) => Math.max(currentMax, year));
       setSetup(data);
+      onSetupChanged?.(data);
       router.replace(`/app/brands/${brandId}?tab=competitors&year=${year}`);
     } catch (error) {
       setStatus({
@@ -312,6 +319,7 @@ export function CompetitorSetupManager({
       const savedSetup = payload as CompetitorYearSetupResponse;
 
       setSetup(savedSetup);
+      onSetupChanged?.(savedSetup);
       setStatus({ message: successMessage });
     } catch {
       setStatus({ error: 'Failed to update assignments.' });
@@ -371,7 +379,9 @@ export function CompetitorSetupManager({
         return;
       }
 
-      setSetup(payload as CompetitorYearSetupResponse);
+      const refreshedSetup = payload as CompetitorYearSetupResponse;
+      setSetup(refreshedSetup);
+      onSetupChanged?.(refreshedSetup);
       setStatus({
         message:
           status === 'inactive'
@@ -380,53 +390,6 @@ export function CompetitorSetupManager({
       });
     } catch {
       setStatus({ error: 'Failed to update assignment status.' });
-    } finally {
-      setPendingKey(null);
-    }
-  }
-
-  async function copyToNextYear() {
-    const targetYear = selectedYear + 1;
-
-    setPendingKey('copy-year');
-    setStatus({ message: null, error: null });
-
-    try {
-      const copyResponse = await fetch(
-        `${apiBase}/brands/${brandId}/competitor-setup/${targetYear}/copy-from/${selectedYear}`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-      const copyPayload = (await copyResponse
-        .json()
-        .catch(() => null)) as { copiedCount?: number; message?: string | string[] } | null;
-
-      if (!copyResponse.ok) {
-        setStatus({
-          error: parseErrorMessage(
-            copyPayload,
-            `Failed to copy assignments from ${selectedYear} to ${targetYear}.`
-          )
-        });
-        return;
-      }
-
-      const targetSetup = await fetchYearSetup(targetYear);
-      setSelectedYear(targetYear);
-      setMaxVisitedYear((currentMax) => Math.max(currentMax, targetYear));
-      setSetup(targetSetup);
-      router.replace(`/app/brands/${brandId}?tab=competitors&year=${targetYear}`);
-      setStatus({
-        message: `Copied ${copyPayload?.copiedCount ?? 0} competitors to ${targetYear}.`
-      });
-    } catch {
-      setStatus({
-        error: `Failed to copy assignments from ${selectedYear} to ${targetYear}.`
-      });
     } finally {
       setPendingKey(null);
     }
@@ -510,6 +473,7 @@ export function CompetitorSetupManager({
 
       const refreshed = await fetchYearSetup(selectedYear);
       setSetup(refreshed);
+      onSetupChanged?.(refreshed);
       closeModal();
       setStatus({
         message:
@@ -556,6 +520,7 @@ export function CompetitorSetupManager({
 
       const refreshed = await fetchYearSetup(selectedYear);
       setSetup(refreshed);
+      onSetupChanged?.(refreshed);
       setDeleteTargetCatalogItem(null);
       closeModal();
       setStatus({ message: `Deleted "${item.name}".` });
@@ -602,49 +567,39 @@ export function CompetitorSetupManager({
         </Card>
       ) : null}
 
-      <Card>
-        <CardHeader className="gap-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <CardTitle>Year setup</CardTitle>
-            <Badge variant="outline">
-              {setup.summary.totalAssigned} assigned in {selectedYear}
-            </Badge>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-[minmax(0,220px)_auto] md:items-end">
-            <div className="space-y-2">
-              <label className="text-sm font-medium" htmlFor="competitor-setup-year-select">
-                Report year
-              </label>
-              <Select
-                data-testid="setup-year-select"
-                disabled={pendingKey !== null}
-                id="competitor-setup-year-select"
-                onChange={(event) => void loadYear(Number(event.currentTarget.value))}
-                value={String(selectedYear)}
-              >
-                {yearOptions.map((year) => (
-                  <option key={year} value={year}>
-                    {year}
-                  </option>
-                ))}
-              </Select>
+      {showYearPicker ? (
+        <Card>
+          <CardHeader className="gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <CardTitle>Year setup</CardTitle>
+              <Badge variant="outline">
+                {setup.summary.totalAssigned} assigned in {selectedYear}
+              </Badge>
             </div>
 
-            <Button
-              className="w-fit"
-              data-testid="copy-year-button"
-              disabled={pendingKey !== null || selectedYear >= 3000}
-              onClick={() => void copyToNextYear()}
-              type="button"
-              variant="outline"
-            >
-              <Copy />
-              Copy to {selectedYear + 1}
-            </Button>
-          </div>
-        </CardHeader>
-      </Card>
+            <div className="max-w-[220px] space-y-2">
+              <div className="space-y-2">
+                <label className="text-sm font-medium" htmlFor="competitor-setup-year-select">
+                  Report year
+                </label>
+                <Select
+                  data-testid="setup-year-select"
+                  disabled={pendingKey !== null}
+                  id="competitor-setup-year-select"
+                  onChange={(event) => void loadYear(Number(event.currentTarget.value))}
+                  value={String(selectedYear)}
+                >
+                  {yearOptions.map((year) => (
+                    <option key={year} value={year}>
+                      {year}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            </div>
+          </CardHeader>
+        </Card>
+      ) : null}
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <Card>

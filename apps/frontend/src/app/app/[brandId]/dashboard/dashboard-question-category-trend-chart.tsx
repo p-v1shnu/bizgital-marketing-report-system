@@ -46,17 +46,28 @@ export function DashboardQuestionCategoryTrendChart({
   points,
   series
 }: DashboardQuestionCategoryTrendChartProps) {
-  const { showGridLines, showLegend, showValueLabels, presentationMode, fontScale } =
+  const {
+    showGridLines,
+    showLegend,
+    showValueLabels,
+    presentationMode,
+    chartLayoutPreset,
+    fontScale
+  } =
     useDashboardGlobalKpiControls();
   const fontScaleMultiplier = fontScale === 'xl' ? 1.28 : fontScale === 'l' ? 1.15 : 1;
   const axisTickSize = Math.round((presentationMode ? 18 : 12) * fontScaleMultiplier);
   const legendTextSize = Math.round((presentationMode ? 16 : 12) * fontScaleMultiplier);
   const valueLabelFontSize = Math.round((presentationMode ? 15 : 11) * fontScaleMultiplier);
   const axisTickColor = presentationMode ? 'rgb(71 85 105)' : 'rgb(100 116 139)';
+  const useWideFocusCapture = presentationMode && chartLayoutPreset === 'focus';
   const chartContainerClassName = presentationMode
-    ? 'w-full rounded-[24px] border border-slate-200 bg-white p-3'
+    ? useWideFocusCapture
+      ? 'h-[340px] w-full rounded-[24px] border border-slate-200 bg-white p-3 sm:h-[380px]'
+      : 'w-full rounded-[24px] border border-slate-200 bg-white p-3'
     : 'h-[340px] w-full rounded-[24px] border border-slate-200 bg-white p-3 sm:h-[380px]';
-  const chartContainerStyle = presentationMode ? { aspectRatio: '4 / 5' } : undefined;
+  const chartContainerStyle =
+    presentationMode && !useWideFocusCapture ? { aspectRatio: '4 / 5' } : undefined;
 
   return (
     <div className={chartContainerClassName} style={chartContainerStyle}>

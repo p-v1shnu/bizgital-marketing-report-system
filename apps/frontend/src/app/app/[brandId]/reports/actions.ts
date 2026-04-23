@@ -9,6 +9,7 @@ import {
   getCompetitorOverview,
   getQuestionOverview,
   getTopContentOverview,
+  prepareReportingYearSetup,
   postReportingAction,
   saveCompetitorMonitoring,
   saveQuestionEntry,
@@ -124,6 +125,7 @@ async function resyncAutosaveSections(brandId: string, periodId: string) {
       saveCompetitorMonitoring(brandId, periodId, item.competitor.id, {
         status: item.monitoring.status ?? null,
         followerCount: item.monitoring.followerCount,
+        monthlyPostCount: item.monitoring.monthlyPostCount,
         highlightNote: item.monitoring.highlightNote,
         noActivityEvidenceImageUrl: item.monitoring.noActivityEvidenceImageUrl,
         posts: item.monitoring.posts
@@ -226,6 +228,49 @@ export async function createPeriodAction(formData: FormData) {
 
     redirectToReports(brandId, year, {
       error: error instanceof Error ? error.message : 'Failed to create period.'
+    });
+  }
+}
+
+export async function prepareYearSetupAction(formData: FormData) {
+  const brandId = String(formData.get('brandId') ?? '');
+  const targetYear = Number(formData.get('targetYear') ?? '');
+  const sourceYearValue = String(formData.get('sourceYear') ?? '').trim();
+  const parsedSourceYear = sourceYearValue ? Number(sourceYearValue) : NaN;
+  const sourceYear = Number.isFinite(parsedSourceYear) ? parsedSourceYear : undefined;
+  const redirectYear = Number.isFinite(targetYear) ? String(targetYear) : String(new Date().getUTCFullYear());
+
+  try {
+    await assertReportCapability(brandId, 'create');
+    const result = await prepareReportingYearSetup({
+      brandId,
+      targetYear,
+      sourceYear
+    });
+    revalidateBrandRealtimeSurfaces(brandId);
+
+    if (result.setup.canCreateReport) {
+      redirectToReports(brandId, redirectYear, {
+        message: `Year setup for ${result.targetYear} is ready. You can create reports now.`
+      });
+    }
+
+    const blockedSummary = result.setup.checks
+      .filter((check) => check.required && !check.passed)
+      .map((check) => check.label)
+      .join(', ');
+    redirectToReports(brandId, redirectYear, {
+      error: blockedSummary
+        ? `Year setup for ${result.targetYear} is still incomplete: ${blockedSummary}.`
+        : result.setup.summary
+    });
+  } catch (error) {
+    if (isRedirectError(error)) {
+      throw error;
+    }
+
+    redirectToReports(brandId, redirectYear, {
+      error: error instanceof Error ? error.message : 'Failed to prepare year setup.'
     });
   }
 }
