@@ -76,6 +76,11 @@ type ReportingListResponse = {
     isReady: boolean;
     hasReports: boolean;
   }>;
+  suggestedNextPeriod: {
+    year: number;
+    month: number;
+    label: string;
+  } | null;
   items: Array<{
     id: string;
     year: number;
@@ -360,8 +365,10 @@ async function main() {
   let periodId: string | null = null;
   let periodCreatedByTest = false;
 
-  const setupYear = args.setupYear;
-  const copyYear = setupYear + 1;
+  const requestedSetupYear = args.setupYear;
+  const requestedCopyYear = requestedSetupYear + 1;
+  let setupYear = requestedSetupYear;
+  let copyYear = requestedCopyYear;
   const originalAssignments = new Map<number, string[]>();
 
   function record(name: string, ok: boolean, detail: string) {
@@ -382,6 +389,48 @@ async function main() {
     }
 
     assertCondition(brandCode, 'Brand code is required.');
+
+    const setupYearContext = await requestJson<ReportingListResponse>(
+      args.baseUrl,
+      `/brands/${brandCode}/reporting-periods?year=${requestedSetupYear}`
+    );
+    const requestedYearIsReady =
+      setupYearContext.yearOptions.find((option) => option.year === requestedSetupYear)
+        ?.isReady ?? false;
+    const sourceYearForRequestedSetup = resolveReadySourceYear(
+      setupYearContext,
+      requestedSetupYear
+    );
+
+    if (!requestedYearIsReady && sourceYearForRequestedSetup === null) {
+      const suggestedYear = setupYearContext.suggestedNextPeriod?.year ?? null;
+      const fallbackReadyYear =
+        setupYearContext.yearOptions
+          .filter((option) => option.isReady)
+          .map((option) => option.year)
+          .sort((left, right) => right - left)[0] ?? null;
+      const fallbackYear = suggestedYear ?? fallbackReadyYear;
+
+      if (
+        fallbackYear !== null &&
+        Number.isInteger(fallbackYear) &&
+        fallbackYear >= 2000 &&
+        fallbackYear <= 3000 &&
+        fallbackYear !== requestedSetupYear
+      ) {
+        setupYear = fallbackYear;
+        copyYear = fallbackYear + 1;
+        record(
+          'Resolve setup year',
+          true,
+          `Requested ${requestedSetupYear} is not ready; using fallback year ${setupYear}.`
+        );
+      } else {
+        record('Resolve setup year', true, `Using requested year ${setupYear}.`);
+      }
+    } else {
+      record('Resolve setup year', true, `Using requested year ${setupYear}.`);
+    }
 
     const competitorName = `${TEST_COMPETITOR_NAME_PREFIX} (${brandCode})`;
     const catalog = await requestJson<CompetitorCatalogResponse>(
@@ -488,6 +537,9 @@ async function main() {
       `/brands/${brandCode}/reporting-periods?year=${setupYear}`
     );
     const sourceYearForSetup = resolveReadySourceYear(reportingForSetupYear, setupYear);
+    const setupYearIsReady =
+      reportingForSetupYear.yearOptions.find((option) => option.year === setupYear)
+        ?.isReady ?? false;
 
     if (sourceYearForSetup !== null) {
       await requestJson(
@@ -507,11 +559,19 @@ async function main() {
         `Prepared ${setupYear} from ${sourceYearForSetup}`
       );
     } else {
-      record(
-        'Prepare year setup',
-        true,
-        `Skipped: no ready source year available for ${setupYear}`
-      );
+      if (setupYearIsReady) {
+        record(
+          'Prepare year setup',
+          true,
+          `Skipped: year ${setupYear} is already ready.`
+        );
+      } else {
+        record(
+          'Prepare year setup',
+          true,
+          `Skipped: no ready source year available for ${setupYear}`
+        );
+      }
     }
 
     const existingPeriods = await requestJson<ReportingListResponse>(
@@ -852,6 +912,8 @@ async function main() {
         {
           baseUrl: args.baseUrl,
           brandCode,
+          requestedSetupYear,
+          requestedCopyYear,
           setupYear,
           copyYear,
           keepData: args.keepData,

@@ -89,7 +89,7 @@ jobs:
           exit 1
 
       - name: Run API E2E workflow
-        run: npm --workspace @bizgital-marketing-report/backend run qa:e2e-competitor-workflow -- --base-url=http://localhost:3003/api --setup-year=2096
+        run: npm --workspace @bizgital-marketing-report/backend run qa:e2e-competitor-workflow -- --base-url=http://localhost:3003/api
 
       - name: Upload backend log on failure
         if: failure()
