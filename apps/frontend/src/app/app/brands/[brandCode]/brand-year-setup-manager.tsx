@@ -15,6 +15,10 @@ import type {
   ReportingListResponse,
   ReportingYearSetupStatus
 } from '@/lib/reporting-api';
+import {
+  buildRollingYearValues,
+  REPORTING_YEAR_LOOKAHEAD
+} from '@/lib/year-options';
 
 import { CompetitorSetupManager } from '../../[brandId]/competitor-setup/competitor-setup-manager';
 import { BrandKpiPlanManager } from './brand-kpi-plan-manager';
@@ -91,14 +95,28 @@ export function BrandYearSetupManager({
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   const appliedDefaultYearRef = useRef(false);
+  const displayYearOptions = useMemo(() => {
+    const optionByYear = new Map(yearOptions.map((option) => [option.year, option]));
+    const years = buildRollingYearValues([...optionByYear.keys(), selectedYear]);
+
+    return years.map((year) => {
+      return (
+        optionByYear.get(year) ?? {
+          year,
+          isReady: false,
+          hasReports: false
+        }
+      );
+    });
+  }, [selectedYear, yearOptions]);
 
   const preferredDefaultYear = useMemo(() => {
-    const currentYearOption = yearOptions.find((option) => option.year === currentYear);
+    const currentYearOption = displayYearOptions.find((option) => option.year === currentYear);
     if (currentYearOption?.isReady) {
       return currentYear;
     }
 
-    const latestReadyYear = yearOptions
+    const latestReadyYear = displayYearOptions
       .filter((option) => option.isReady)
       .reduce<number | null>((max, option) => {
         if (max === null) {
@@ -108,22 +126,18 @@ export function BrandYearSetupManager({
       }, null);
 
     return latestReadyYear ?? currentYear;
-  }, [currentYear, yearOptions]);
+  }, [currentYear, displayYearOptions]);
 
   const copyTargetYearOptions = useMemo(() => {
-    const years = new Set<number>();
-    for (const option of yearOptions) {
-      years.add(option.year);
-    }
-    for (let year = currentYear; year <= currentYear + 10; year += 1) {
-      years.add(year);
-    }
-    years.add(selectedYear + 1);
-
-    return Array.from(years)
+    return buildRollingYearValues(
+      [...displayYearOptions.map((option) => option.year), selectedYear + 1],
+      {
+        lookahead: REPORTING_YEAR_LOOKAHEAD
+      }
+    )
       .filter((year) => year !== selectedYear)
       .sort((left, right) => right - left);
-  }, [currentYear, selectedYear, yearOptions]);
+  }, [displayYearOptions, selectedYear]);
 
   useEffect(() => {
     if (appliedDefaultYearRef.current) {
@@ -423,7 +437,7 @@ export function BrandYearSetupManager({
               onChange={(event) => void loadYear(Number(event.currentTarget.value))}
               value={String(selectedYear)}
             >
-              {yearOptions.map((option) => (
+              {displayYearOptions.map((option) => (
                 <option key={option.year} value={option.year}>
                   {buildYearOptionLabel(option)}
                 </option>

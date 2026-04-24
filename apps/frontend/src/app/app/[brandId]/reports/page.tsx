@@ -25,6 +25,7 @@ import {
   recommendedWorkflowAction,
   workflowProgress
 } from '@/lib/reporting-ui';
+import { buildRollingYearValues } from '@/lib/year-options';
 
 import { ApproveVersionButton } from './approve-version-button';
 import { CreateReportForm } from './create-report-form';
@@ -33,6 +34,7 @@ import { ReportActivityLogButton } from './report-activity-log-button';
 import { ReportActionsMenuButton } from './report-actions-menu-button';
 import { ReviseVersionMenuButton } from './revise-version-menu-button';
 import { ReopenReportButton } from './reopen-report-button';
+import { ReportsYearControls } from './reports-year-controls';
 import { RequestChangesButton } from './request-changes-button';
 import { RestoreReportButton } from './restore-report-button';
 import { SubmitVersionButton } from './submit-version-button';
@@ -409,7 +411,7 @@ export default async function ReportsPage({
   const submittedCount = items.filter(
     (item) => item.latestVersionState === 'submitted'
   ).length;
-  const yearDropdownOptions =
+  const baseYearOptions =
     yearOptions.length > 0
       ? yearOptions
       : [
@@ -419,6 +421,19 @@ export default async function ReportsPage({
             hasReports: items.length > 0
           }
         ];
+  const yearOptionByYear = new Map(baseYearOptions.map((option) => [option.year, option]));
+  const yearDropdownOptions = buildRollingYearValues([
+    ...yearOptionByYear.keys(),
+    selectedYear
+  ]).map((year) => {
+    return (
+      yearOptionByYear.get(year) ?? {
+        year,
+        isReady: false,
+        hasReports: false
+      }
+    );
+  });
 
   return (
     <section className="space-y-6">
@@ -447,32 +462,12 @@ export default async function ReportsPage({
             </Button>
           ) : null}
 
-          <form
-            action={`/app/${brandId}/reports`}
-            className="flex items-center gap-2"
-            key={`reports-year-jump-${selectedYear}`}
-            method="get"
-          >
-            <label className="sr-only" htmlFor="reports-year-jump-select">
-              Jump to year
-            </label>
-            <select
-              className="h-9 min-w-[112px] rounded-full border border-input bg-background/70 px-3 text-sm text-foreground"
-              defaultValue={String(selectedYear)}
-              id="reports-year-jump-select"
-              name="year"
-            >
-              {yearDropdownOptions.map((option) => (
-                <option key={option.year} value={option.year}>
-                  {option.year}
-                  {option.isReady ? '' : ' • setup required'}
-                </option>
-              ))}
-            </select>
-            <Button size="sm" type="submit" variant="outline">
-              Jump
-            </Button>
-          </form>
+          <ReportsYearControls
+            brandId={brandId}
+            currentYear={currentYear}
+            selectedYear={selectedYear}
+            yearOptions={yearDropdownOptions}
+          />
         </div>
       </div>
 

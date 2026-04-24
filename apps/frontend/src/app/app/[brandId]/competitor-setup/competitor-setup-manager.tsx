@@ -18,6 +18,7 @@ import type {
   CompetitorStatus,
   CompetitorYearSetupResponse
 } from '@/lib/reporting-api';
+import { REPORTING_YEAR_LOOKAHEAD } from '@/lib/year-options';
 
 type Props = {
   brandId: string;
@@ -229,7 +230,11 @@ export function CompetitorSetupManager({
       .filter((item) => item.status === catalogTab);
   }, [setup.availableCompetitors, query, catalogTab]);
 
-  const maxSelectableYear = Math.max(maxVisitedYear, currentYear + 1, selectedYear + 1);
+  const maxSelectableYear = Math.max(
+    maxVisitedYear,
+    currentYear + REPORTING_YEAR_LOOKAHEAD,
+    selectedYear + 1
+  );
   const yearOptions = useMemo(() => {
     const years: number[] = [];
     for (let year = maxSelectableYear; year >= 2000; year -= 1) {

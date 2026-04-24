@@ -10,6 +10,7 @@ import { ModalShell } from '@/components/ui/modal-shell';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import type { BrandKpiPlanResponse, KpiCatalogItem } from '@/lib/reporting-api';
+import { REPORTING_YEAR_LOOKAHEAD } from '@/lib/year-options';
 
 type Props = {
   brandCode: string;
@@ -101,7 +102,11 @@ export function BrandKpiPlanManager({
 
   const selectedCatalogIds = new Set(draftItems.map(item => item.kpi.id));
   const catalogById = useMemo(() => new Map(catalog.map(item => [item.id, item])), [catalog]);
-  const maxSelectableYear = Math.max(maxVisitedYear, currentYear + 1, selectedYear + 1);
+  const maxSelectableYear = Math.max(
+    maxVisitedYear,
+    currentYear + REPORTING_YEAR_LOOKAHEAD,
+    selectedYear + 1
+  );
   const yearOptions = useMemo(() => {
     const years: number[] = [];
     for (let year = maxSelectableYear; year >= 2000; year -= 1) {
