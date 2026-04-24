@@ -68,60 +68,37 @@ Expected smoke result:
 `-- README.md
 ```
 
-## Local development
+## Local development (Docker only)
 
-### Option A: Docker-first baseline
+This repository is standardized for Docker-only runtime.
 
-1. Copy the root env file:
+1. Copy the root env template:
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-2. Start the baseline stack:
+2. Start the local stack:
 
 ```powershell
 docker compose -f docker-compose.local.yml up --build
 ```
 
-3. Open the services:
+3. Initialize database (first run only):
+
+```powershell
+docker compose exec backend npm --workspace @bizgital-marketing-report/backend run db:generate
+docker compose exec backend npm --workspace @bizgital-marketing-report/backend run db:push
+docker compose exec backend npm --workspace @bizgital-marketing-report/backend run db:seed
+```
+
+4. Open the services:
 
 - frontend: `http://localhost:3200`
 - backend health: `http://localhost:3003/api/health`
 - mysql: `localhost:3306`
-
-### Option B: Run apps directly with Node.js
-
-1. Copy app env examples if you want local overrides:
-
-```powershell
-Copy-Item apps\\backend\\.env.example apps\\backend\\.env
-Copy-Item apps\\frontend\\.env.example apps\\frontend\\.env.local
-```
-
-2. Install workspace dependencies from the repo root:
-
-```powershell
-npm install
-```
-
-3. Generate the Prisma client, push the minimal schema, and seed the demo brand:
-
-```powershell
-npm --workspace @bizgital-marketing-report/backend run db:generate
-npm --workspace @bizgital-marketing-report/backend run db:push
-npm --workspace @bizgital-marketing-report/backend run db:seed
-```
-
-4. Run the apps in separate terminals:
-
-```powershell
-npm run dev:backend
-npm run dev:frontend
-```
-
-The current reporting core expects a reachable MySQL database before the NestJS
-app starts because Prisma connects on boot.
+- minio api: `http://localhost:9000`
+- minio console: `http://localhost:9001`
 
 Seed notes:
 
@@ -189,7 +166,7 @@ docker run --rm -e MC_HOST_local="http://minioadmin:minioadmin@host.docker.inter
 docker restart bizgital-marketing-report-minio
 ```
 
-6. Ensure backend env values are set (see `.env.example` / `apps/backend/.env.example`):
+6. Ensure env values are set in root `.env`:
 
 ```env
 AUTH_SESSION_SECRET=change-this-in-production
@@ -282,7 +259,7 @@ Recommended deployment shape (Caddy runs on host machine):
 1. Copy and set production env values:
 
 ```powershell
-Copy-Item deploy\\.env.prod.example .env
+Copy-Item .env.example .env
 ```
 
 Update at least these keys in `.env`:

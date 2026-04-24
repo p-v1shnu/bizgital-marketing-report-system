@@ -7,13 +7,11 @@
     "apps/frontend"
   ],
   "scripts": {
-    "dev:backend": "npm --workspace @bizgital-marketing-report/backend run dev",
-    "dev:backend:restart": "npm --workspace @bizgital-marketing-report/backend run dev:restart",
-    "dev:backend:watch": "npm --workspace @bizgital-marketing-report/backend run start:dev",
-    "dev:frontend": "npm --workspace @bizgital-marketing-report/frontend run dev",
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "docker:up": "docker compose up --build",
-    "docker:local": "docker compose -f docker-compose.local.yml up --build"
+    "docker:prod": "docker compose up -d --build",
+    "docker:local": "docker compose -f docker-compose.local.yml up --build",
+    "docker:local:detached": "docker compose -f docker-compose.local.yml up -d --build"
   }
 }
