@@ -27,6 +27,7 @@ type Props = {
   initialKpiCatalog: KpiCatalogItem[];
   initialKpiPlan: BrandKpiPlanResponse;
   initialCompetitorSetup: CompetitorYearSetupResponse;
+  initialEditorTab?: EditorTab;
   hasExplicitYear: boolean;
 };
 
@@ -71,6 +72,7 @@ export function BrandYearSetupManager({
   initialKpiCatalog,
   initialKpiPlan,
   initialCompetitorSetup,
+  initialEditorTab = 'kpi',
   hasExplicitYear
 }: Props) {
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3003/api';
@@ -81,7 +83,7 @@ export function BrandYearSetupManager({
   const [setup, setSetup] = useState(initialSetup);
   const [kpiPlan, setKpiPlan] = useState(initialKpiPlan);
   const [competitorSetup, setCompetitorSetup] = useState(initialCompetitorSetup);
-  const [editorTab, setEditorTab] = useState<EditorTab>('kpi');
+  const [editorTab, setEditorTab] = useState<EditorTab>(initialEditorTab);
   const [copyMode, setCopyMode] = useState<CopyMode>(null);
   const [copyTargetYear, setCopyTargetYear] = useState<number | null>(null);
   const [pendingKey, setPendingKey] = useState<string | null>(null);

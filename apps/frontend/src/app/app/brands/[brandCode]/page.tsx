@@ -337,6 +337,9 @@ export default async function BrandAdminDetailPage({
                 brandCode={brand.code}
                 hasExplicitYear={Boolean(resolvedSearchParams.year)}
                 initialCompetitorSetup={yearSetupResult.data.competitorSetup}
+                initialEditorTab={
+                  resolvedSearchParams.tab === 'competitors' ? 'competitors' : 'kpi'
+                }
                 initialKpiCatalog={yearSetupResult.data.kpiCatalog.items}
                 initialKpiPlan={yearSetupResult.data.kpiPlan}
                 initialSetup={yearSetupResult.data.reportingYear.selectedYearSetup}

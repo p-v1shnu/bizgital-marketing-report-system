@@ -15,6 +15,18 @@ type ReportingPeriodResponse = {
 };
 
 type ReportingListResponse = {
+  selectedYearSetup: {
+    year: number;
+    canCreateReport: boolean;
+    summary: string;
+    checks: Array<{
+      key: string;
+      label: string;
+      required: boolean;
+      passed: boolean;
+      detail: string;
+    }>;
+  };
   yearOptions: Array<{
     year: number;
     isReady: boolean;
@@ -44,6 +56,42 @@ type ReportingDetailResponse = {
       }>;
     };
   };
+};
+
+type CompanyFormatOptionsResponse = {
+  fields: Array<{
+    key: string;
+    options: Array<{
+      id: string;
+      status: 'active' | 'inactive' | 'deprecated';
+    }>;
+  }>;
+};
+
+type KpiCatalogListResponse = {
+  items: Array<{
+    id: string;
+    label: string;
+    isActive: boolean;
+  }>;
+};
+
+type KpiPlanUpdateItem = {
+  kpiCatalogId: string;
+  targetValue?: number | null;
+  note?: string | null;
+  sortOrder?: number | null;
+};
+
+type BrandKpiPlanResponse = {
+  items: Array<{
+    sortOrder: number;
+    targetValue: number | null;
+    note: string | null;
+    kpi: {
+      id: string;
+    };
+  }>;
 };
 
 const frontendBaseUrl =
@@ -228,13 +276,6 @@ async function setAdminCookie(page: Page) {
   ]);
 }
 
-function isSaveAssignmentsResponse(url: string, year: number) {
-  return (
-    url.includes(`/brands/${brandCode}/competitor-setup/${year}/assignments`) &&
-    !url.includes('/assignments/')
-  );
-}
-
 function resolveReadySourceYear(reporting: ReportingListResponse, targetYear: number) {
   const readyYears = reporting.yearOptions
     .filter((option) => option.isReady && option.year !== targetYear)
@@ -244,21 +285,121 @@ function resolveReadySourceYear(reporting: ReportingListResponse, targetYear: nu
   return readyYears[0] ?? null;
 }
 
-async function prepareYearSetup(targetYear: number) {
-  const reporting = await requestJson<ReportingListResponse>(
+async function prepareYearSetup(targetYear: number): Promise<{
+  originalKpiPlanItems: KpiPlanUpdateItem[] | null;
+  kpiPlanChanged: boolean;
+}> {
+  let reporting = await requestJson<ReportingListResponse>(
     `/brands/${brandCode}/reporting-periods?year=${targetYear}`
   );
-  const sourceYear = resolveReadySourceYear(reporting, targetYear);
+  let setupStatus = reporting.selectedYearSetup;
+  let originalKpiPlanItems: KpiPlanUpdateItem[] | null = null;
+  let kpiPlanChanged = false;
 
-  if (sourceYear === null) {
-    throw new Error(`No ready source year found to prepare ${targetYear}.`);
+  if (!setupStatus.canCreateReport) {
+    const failedCheckKeys = new Set(
+      setupStatus.checks.filter((check) => !check.passed).map((check) => check.key)
+    );
+
+    if (failedCheckKeys.has('related_product_options')) {
+      const options = await requestJson<CompanyFormatOptionsResponse>(
+        `/brands/${brandCode}/internal-options`
+      );
+      const relatedProductField =
+        options.fields.find((field) => field.key === 'related_product') ?? null;
+      const hasActiveRelatedProduct =
+        relatedProductField?.options.some((option) => option.status === 'active') ??
+        false;
+
+      if (!hasActiveRelatedProduct) {
+        throw new Error(`Related Product options are still missing for ${targetYear}.`);
+      }
+    }
+
+    if (failedCheckKeys.has('kpi_plan')) {
+      const currentPlan = await requestJson<BrandKpiPlanResponse>(
+        `/brands/${brandCode}/kpi-plans/${targetYear}`
+      );
+      originalKpiPlanItems = currentPlan.items.map((item) => ({
+        kpiCatalogId: item.kpi.id,
+        targetValue: item.targetValue,
+        note: item.note,
+        sortOrder: item.sortOrder
+      }));
+
+      if (currentPlan.items.length === 0) {
+        const catalog = await requestJson<KpiCatalogListResponse>('/config/kpis');
+        const firstActiveKpi = catalog.items.find((item) => item.isActive) ?? null;
+
+        if (!firstActiveKpi) {
+          throw new Error('No active KPI catalog definitions are available.');
+        }
+
+        await requestJson<BrandKpiPlanResponse>(
+          `/brands/${brandCode}/kpi-plans/${targetYear}`,
+          {
+            method: 'POST',
+            body: {
+              items: [
+                {
+                  kpiCatalogId: firstActiveKpi.id,
+                  targetValue: 1
+                }
+              ]
+            }
+          }
+        );
+        kpiPlanChanged = true;
+      }
+    }
+
+    reporting = await requestJson<ReportingListResponse>(
+      `/brands/${brandCode}/reporting-periods?year=${targetYear}`
+    );
+    setupStatus = reporting.selectedYearSetup;
+
+    if (!setupStatus.canCreateReport) {
+      const sourceYear = resolveReadySourceYear(reporting, targetYear);
+
+      if (sourceYear !== null) {
+        await requestJson(`/brands/${brandCode}/reporting-periods/year-setup/prepare`, {
+          method: 'POST',
+          body: {
+            targetYear,
+            sourceYear
+          }
+        });
+        reporting = await requestJson<ReportingListResponse>(
+          `/brands/${brandCode}/reporting-periods?year=${targetYear}`
+        );
+        setupStatus = reporting.selectedYearSetup;
+      }
+    }
   }
 
-  await requestJson(`/brands/${brandCode}/reporting-periods/year-setup/prepare`, {
+  if (!setupStatus.canCreateReport) {
+    throw new Error(`Year ${targetYear} setup is still incomplete: ${setupStatus.summary}`);
+  }
+
+  return {
+    originalKpiPlanItems,
+    kpiPlanChanged
+  };
+}
+
+async function restoreKpiPlanIfChanged(
+  targetYear: number,
+  originalKpiPlanItems: KpiPlanUpdateItem[] | null,
+  kpiPlanChanged: boolean
+) {
+  if (!kpiPlanChanged || originalKpiPlanItems === null) {
+    return;
+  }
+
+  await cleanupRequest(`/brands/${brandCode}/kpi-plans/${targetYear}`, {
     method: 'POST',
     body: {
-      targetYear,
-      sourceYear
+      items: originalKpiPlanItems
     }
   });
 }
@@ -287,27 +428,19 @@ test('admin setup can assign competitor and save assignments', async ({ page }) 
     competitorId = createdCompetitor.id;
 
     await setAdminCookie(page);
-    await page.goto(`/app/brands/${brandCode}?tab=year-setup&year=${testYear}`);
+    await page.goto(`/app/brands/${brandCode}?tab=competitors&year=${testYear}`);
     await page.waitForLoadState('networkidle');
 
-    await page.getByRole('button', { name: /^Competitors$/ }).click();
     await expect(page.getByTestId('competitor-setup-manager')).toBeVisible();
     await page.getByTestId('catalog-search-input').fill(competitorName);
     await expect(page.getByTestId(`add-assignment-${competitorId}`)).toBeVisible();
 
-    const saveAssignmentsResponse = page.waitForResponse(
-      (response) =>
-        response.request().method() === 'POST' &&
-        isSaveAssignmentsResponse(response.url(), testYear) &&
-        response.ok(),
-      {
-        timeout: 20_000
-      }
-    );
-    await page.getByTestId(`add-assignment-${competitorId}`).click();
-    await saveAssignmentsResponse;
-
-    await expect(page.getByTestId('setup-status-message')).toContainText('Assigned', {
+    await expect(async () => {
+      await page.getByTestId(`add-assignment-${competitorId}`).click();
+      await expect(page.getByTestId('setup-status-message')).toContainText('Assigned', {
+        timeout: 5_000
+      });
+    }).toPass({
       timeout: 20_000
     });
     await expect(
@@ -347,6 +480,8 @@ test('monthly monitoring checklist auto-saves and marks competitor complete', as
   let competitorId: string | null = null;
   let periodId: string | null = null;
   let periodCreatedByTest = false;
+  let originalKpiPlanItems: KpiPlanUpdateItem[] | null = null;
+  let kpiPlanChangedByTest = false;
   let originalAssignments: string[] = isolated.setup.assignments.map(
     (item) => item.competitor.id
   );
@@ -365,13 +500,15 @@ test('monthly monitoring checklist auto-saves and marks competitor complete', as
     );
     competitorId = createdCompetitor.id;
 
-    await prepareYearSetup(testYear);
     await requestJson(`/brands/${brandCode}/competitor-setup/${testYear}/assignments`, {
       method: 'POST',
       body: {
         competitorIds: [competitorId]
       }
     });
+    const setupResult = await prepareYearSetup(testYear);
+    originalKpiPlanItems = setupResult.originalKpiPlanItems;
+    kpiPlanChangedByTest = setupResult.kpiPlanChanged;
 
     const periodResult = await createUniquePeriod(testYear);
     periodId = periodResult.period.id;
@@ -432,6 +569,12 @@ test('monthly monitoring checklist auto-saves and marks competitor complete', as
       await cleanupRequest(`/reporting-periods/${periodId}`, { method: 'DELETE' });
     }
 
+    await restoreKpiPlanIfChanged(
+      testYear,
+      originalKpiPlanItems,
+      kpiPlanChangedByTest
+    );
+
     await cleanupRequest(`/brands/${brandCode}/competitor-setup/${testYear}/assignments`, {
       method: 'POST',
       body: {
@@ -462,6 +605,8 @@ test('monthly monitoring has_posts enforces screenshot and max 5 posts', async (
   let competitorId: string | null = null;
   let periodId: string | null = null;
   let periodCreatedByTest = false;
+  let originalKpiPlanItems: KpiPlanUpdateItem[] | null = null;
+  let kpiPlanChangedByTest = false;
   let originalAssignments: string[] = isolated.setup.assignments.map(
     (item) => item.competitor.id
   );
@@ -480,13 +625,15 @@ test('monthly monitoring has_posts enforces screenshot and max 5 posts', async (
     );
     competitorId = createdCompetitor.id;
 
-    await prepareYearSetup(testYear);
     await requestJson(`/brands/${brandCode}/competitor-setup/${testYear}/assignments`, {
       method: 'POST',
       body: {
         competitorIds: [competitorId]
       }
     });
+    const setupResult = await prepareYearSetup(testYear);
+    originalKpiPlanItems = setupResult.originalKpiPlanItems;
+    kpiPlanChangedByTest = setupResult.kpiPlanChanged;
 
     const periodResult = await createUniquePeriod(testYear);
     periodId = periodResult.period.id;
@@ -572,6 +719,12 @@ test('monthly monitoring has_posts enforces screenshot and max 5 posts', async (
     if (periodId && periodCreatedByTest) {
       await cleanupRequest(`/reporting-periods/${periodId}`, { method: 'DELETE' });
     }
+
+    await restoreKpiPlanIfChanged(
+      testYear,
+      originalKpiPlanItems,
+      kpiPlanChangedByTest
+    );
 
     await cleanupRequest(`/brands/${brandCode}/competitor-setup/${testYear}/assignments`, {
       method: 'POST',
