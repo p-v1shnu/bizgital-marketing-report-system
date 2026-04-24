@@ -75,21 +75,5 @@ services:
     ports:
       - "127.0.0.1:${FRONTEND_PORT:-3200}:3000"
 
-  minio:
-    image: minio/minio:latest
-    container_name: ${PROJECT_NAME:-bizgital-marketing-report}-minio
-    restart: unless-stopped
-    profiles: [ "with-minio" ]
-    environment:
-      MINIO_ROOT_USER: ${MEDIA_S3_ACCESS_KEY}
-      MINIO_ROOT_PASSWORD: ${MEDIA_S3_SECRET_KEY}
-    command: server /data --console-address ":9001"
-    volumes:
-      - minio-data:/data
-    ports:
-      - "127.0.0.1:9000:9000"
-      - "127.0.0.1:9001:9001"
-
 volumes:
   mysql-data:
-  minio-data:

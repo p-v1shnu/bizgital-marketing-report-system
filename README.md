@@ -297,12 +297,6 @@ Update at least these keys in `.env`:
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-If production uses local MinIO instead of external S3/Spaces:
-
-```powershell
-docker compose -f docker-compose.prod.yml --profile with-minio up -d --build
-```
-
 3. Install Caddy route on host (example file: `deploy/Caddyfile.example`):
 
 ```caddyfile
