@@ -100,6 +100,12 @@ docker compose exec backend npm --workspace @bizgital-marketing-report/backend r
 - minio api: `http://localhost:9000`
 - minio console: `http://localhost:9001`
 
+Super Admin first-time setup mode:
+
+- set `SUPER_ADMIN_SETUP_MODE=force` in root `.env` when you want to require the setup UI
+- complete setup from `/setup/super-admin`
+- then switch back to `SUPER_ADMIN_SETUP_MODE=auto` (or `disabled`) and restart the stack
+
 Seed notes:
 
 - the seed creates `demo-brand`

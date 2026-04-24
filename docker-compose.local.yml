@@ -52,6 +52,7 @@ services:
       APP_ORIGIN: http://localhost:${FRONTEND_PORT:-3200}
       AUTH_SESSION_SECRET: ${AUTH_SESSION_SECRET}
       INTERNAL_API_AUTH_SECRET: ${INTERNAL_API_AUTH_SECRET}
+      SUPER_ADMIN_SETUP_MODE: ${SUPER_ADMIN_SETUP_MODE:-auto}
       DATABASE_URL: mysql://${MYSQL_USER:-marketing}:${MYSQL_PASSWORD:-marketing}@mysql:3306/${MYSQL_DATABASE:-bizgital_marketing_report}
       IMPORT_STORAGE_DIR: /workspace/storage/imports
       MEDIA_S3_ENDPOINT: ${MEDIA_S3_ENDPOINT:-http://minio:9000}
