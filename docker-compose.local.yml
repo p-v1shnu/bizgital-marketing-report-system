@@ -4,10 +4,12 @@ services:
     container_name: ${PROJECT_NAME:-bizgital-marketing-report}-mysql
     restart: unless-stopped
     environment:
-      MYSQL_DATABASE: ${MYSQL_DATABASE}
-      MYSQL_USER: ${MYSQL_USER}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-bizgital_marketing_report}
+      MYSQL_USER: ${MYSQL_USER:-marketing}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-marketing}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
     volumes:
       - mysql-data:/var/lib/mysql
     healthcheck:
@@ -19,6 +21,20 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+
+  minio:
+    image: minio/minio:latest
+    container_name: ${PROJECT_NAME:-bizgital-marketing-report}-minio
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MEDIA_S3_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MEDIA_S3_SECRET_KEY:-minioadmin}
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
 
   backend:
     build:
@@ -33,17 +49,17 @@ services:
       NODE_ENV: production
       PORT: 3003
       API_PREFIX: ${API_PREFIX:-api}
-      APP_ORIGIN: ${APP_ORIGIN}
+      APP_ORIGIN: http://localhost:${FRONTEND_PORT:-3200}
       AUTH_SESSION_SECRET: ${AUTH_SESSION_SECRET}
-      DATABASE_URL: mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE}
+      DATABASE_URL: mysql://${MYSQL_USER:-marketing}:${MYSQL_PASSWORD:-marketing}@mysql:3306/${MYSQL_DATABASE:-bizgital_marketing_report}
       IMPORT_STORAGE_DIR: /workspace/storage/imports
-      MEDIA_S3_ENDPOINT: ${MEDIA_S3_ENDPOINT}
-      MEDIA_S3_REGION: ${MEDIA_S3_REGION}
-      MEDIA_S3_BUCKET: ${MEDIA_S3_BUCKET}
-      MEDIA_S3_ACCESS_KEY: ${MEDIA_S3_ACCESS_KEY}
-      MEDIA_S3_SECRET_KEY: ${MEDIA_S3_SECRET_KEY}
-      MEDIA_S3_FORCE_PATH_STYLE: ${MEDIA_S3_FORCE_PATH_STYLE}
-      MEDIA_S3_PUBLIC_BASE_URL: ${MEDIA_S3_PUBLIC_BASE_URL}
+      MEDIA_S3_ENDPOINT: ${MEDIA_S3_ENDPOINT:-http://minio:9000}
+      MEDIA_S3_REGION: ${MEDIA_S3_REGION:-us-east-1}
+      MEDIA_S3_BUCKET: ${MEDIA_S3_BUCKET:-report-media}
+      MEDIA_S3_ACCESS_KEY: ${MEDIA_S3_ACCESS_KEY:-minioadmin}
+      MEDIA_S3_SECRET_KEY: ${MEDIA_S3_SECRET_KEY:-minioadmin}
+      MEDIA_S3_FORCE_PATH_STYLE: ${MEDIA_S3_FORCE_PATH_STYLE:-true}
+      MEDIA_S3_PUBLIC_BASE_URL: ${MEDIA_S3_PUBLIC_BASE_URL:-http://localhost:9000/report-media}
       MEDIA_UPLOAD_MAX_BYTES: ${MEDIA_UPLOAD_MAX_BYTES:-10485760}
       MEDIA_PRESIGN_EXPIRES_SECONDS: ${MEDIA_PRESIGN_EXPIRES_SECONDS:-900}
       MEDIA_READ_PRESIGN_EXPIRES_SECONDS: ${MEDIA_READ_PRESIGN_EXPIRES_SECONDS:-120}
@@ -51,9 +67,8 @@ services:
       MEDIA_ORPHAN_CLEANUP_INTERVAL_HOURS: ${MEDIA_ORPHAN_CLEANUP_INTERVAL_HOURS:-24}
       MEDIA_ORPHAN_CLEANUP_INITIAL_DELAY_MINUTES: ${MEDIA_ORPHAN_CLEANUP_INITIAL_DELAY_MINUTES:-5}
       MEDIA_ORPHAN_CLEANUP_MAX_DELETE_PER_RUN: ${MEDIA_ORPHAN_CLEANUP_MAX_DELETE_PER_RUN:-500}
-      MEDIA_ORPHAN_CLEANUP_MIN_AGE_HOURS: ${MEDIA_ORPHAN_CLEANUP_MIN_AGE_HOURS:-168}
     ports:
-      - "127.0.0.1:${BACKEND_PORT:-3003}:3003"
+      - "${BACKEND_PORT:-3003}:3003"
     volumes:
       - ./storage:/workspace/storage
 
@@ -70,10 +85,11 @@ services:
       PORT: 3000
       NEXT_PUBLIC_APP_NAME: BIZGITAL Marketing Report
       INTERNAL_API_BASE_URL: http://backend:3003/${API_PREFIX:-api}
-      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:${BACKEND_PORT:-3003}/${API_PREFIX:-api}}
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:${BACKEND_PORT:-3003}/${API_PREFIX:-api}
       AUTH_SESSION_SECRET: ${AUTH_SESSION_SECRET}
     ports:
-      - "127.0.0.1:${FRONTEND_PORT:-3200}:3000"
+      - "${FRONTEND_PORT:-3200}:3000"
 
 volumes:
   mysql-data:
+  minio-data:

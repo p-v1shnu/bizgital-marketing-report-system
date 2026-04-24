@@ -63,7 +63,7 @@ Expected smoke result:
 |-- deploy/
 |-- docs/
 |-- docker-compose.yml
-|-- docker-compose.prod.yml
+|-- docker-compose.local.yml
 |-- LICENSE
 `-- README.md
 ```
@@ -81,7 +81,7 @@ Copy-Item .env.example .env
 2. Start the baseline stack:
 
 ```powershell
-docker compose up --build
+docker compose -f docker-compose.local.yml up --build
 ```
 
 3. Open the services:
@@ -164,7 +164,7 @@ Media upload notes (S3-compatible):
 1. Start MinIO:
 
 ```powershell
-docker compose up -d minio
+docker compose -f docker-compose.local.yml up -d minio
 ```
 
 2. Open MinIO console: `http://localhost:9001`  
@@ -294,7 +294,7 @@ Update at least these keys in `.env`:
 2. Start production compose (loopback-only service ports):
 
 ```powershell
-docker compose -f docker-compose.prod.yml up -d --build
+docker compose up -d --build
 ```
 
 3. Install Caddy route on host (example file: `deploy/Caddyfile.example`):

@@ -350,7 +350,7 @@ Frontend boundaries:
 
 ## 9. Containerization And Environments
 
-- provide a `docker-compose.yml` as the default local orchestration entrypoint after scaffolding
+- provide `docker-compose.yml` as the default production orchestration entrypoint and `docker-compose.local.yml` for local services
 - backend and frontend should run as separate app containers
 - MySQL should run in its own container with named volume persistence
 - optional worker container should handle async import parsing and projection jobs
