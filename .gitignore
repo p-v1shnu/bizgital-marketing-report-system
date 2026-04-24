@@ -3,6 +3,7 @@ node_modules/
 dist/
 coverage/
 *.log
+*.xlsm
 .DS_Store
 .npm-cache/
 .tmp/

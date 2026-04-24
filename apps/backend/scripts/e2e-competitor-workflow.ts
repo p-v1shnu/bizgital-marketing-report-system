@@ -71,6 +71,18 @@ type CreatePeriodResponse = {
 };
 
 type ReportingListResponse = {
+  selectedYearSetup: {
+    year: number;
+    canCreateReport: boolean;
+    summary: string;
+    checks: Array<{
+      key: string;
+      label: string;
+      required: boolean;
+      passed: boolean;
+      detail: string;
+    }>;
+  };
   yearOptions: Array<{
     year: number;
     isReady: boolean;
@@ -92,6 +104,42 @@ type ReportingListResponse = {
 
 type DraftResponse = {
   id: string;
+};
+
+type CompanyFormatOptionsResponse = {
+  fields: Array<{
+    key: string;
+    options: Array<{
+      id: string;
+      status: 'active' | 'inactive' | 'deprecated';
+    }>;
+  }>;
+};
+
+type KpiCatalogListResponse = {
+  items: Array<{
+    id: string;
+    label: string;
+    isActive: boolean;
+  }>;
+};
+
+type KpiPlanUpdateItem = {
+  kpiCatalogId: string;
+  targetValue?: number | null;
+  note?: string | null;
+  sortOrder?: number | null;
+};
+
+type BrandKpiPlanResponse = {
+  items: Array<{
+    sortOrder: number;
+    targetValue: number | null;
+    note: string | null;
+    kpi: {
+      id: string;
+    };
+  }>;
 };
 
 type ReportingDetailResponse = {
@@ -364,6 +412,8 @@ async function main() {
   let originalCompetitorStatus: 'active' | 'inactive' | null = null;
   let periodId: string | null = null;
   let periodCreatedByTest = false;
+  let originalKpiPlanItems: KpiPlanUpdateItem[] | null = null;
+  let kpiPlanChangedByTest = false;
 
   const requestedSetupYear = args.setupYear;
   const requestedCopyYear = requestedSetupYear + 1;
@@ -536,42 +586,125 @@ async function main() {
       args.baseUrl,
       `/brands/${brandCode}/reporting-periods?year=${setupYear}`
     );
-    const sourceYearForSetup = resolveReadySourceYear(reportingForSetupYear, setupYear);
-    const setupYearIsReady =
-      reportingForSetupYear.yearOptions.find((option) => option.year === setupYear)
-        ?.isReady ?? false;
+    let setupStatus = reportingForSetupYear.selectedYearSetup;
 
-    if (sourceYearForSetup !== null) {
-      await requestJson(
-        args.baseUrl,
-        `/brands/${brandCode}/reporting-periods/year-setup/prepare`,
-        {
-          method: 'POST',
-          body: {
-            targetYear: setupYear,
-            sourceYear: sourceYearForSetup
-          }
+    if (!setupStatus.canCreateReport) {
+      const setupActions: string[] = [];
+      const failedCheckKeys = new Set(
+        setupStatus.checks.filter((check) => !check.passed).map((check) => check.key)
+      );
+
+      if (failedCheckKeys.has('related_product_options')) {
+        const options = await requestJson<CompanyFormatOptionsResponse>(
+          args.baseUrl,
+          `/brands/${brandCode}/internal-options`
+        );
+        const relatedProductField =
+          options.fields.find((field) => field.key === 'related_product') ?? null;
+        const hasActiveRelatedProduct =
+          relatedProductField?.options.some((option) => option.status === 'active') ??
+          false;
+        assertCondition(
+          hasActiveRelatedProduct,
+          `Related Product options are still missing for ${setupYear}.`
+        );
+        setupActions.push('Ensured Related Product options are available.');
+      }
+
+      if (failedCheckKeys.has('kpi_plan')) {
+        const currentPlan = await requestJson<BrandKpiPlanResponse>(
+          args.baseUrl,
+          `/brands/${brandCode}/kpi-plans/${setupYear}`
+        );
+        originalKpiPlanItems = currentPlan.items.map((item) => ({
+          kpiCatalogId: item.kpi.id,
+          targetValue: item.targetValue,
+          note: item.note,
+          sortOrder: item.sortOrder
+        }));
+
+        if (currentPlan.items.length === 0) {
+          const catalog = await requestJson<KpiCatalogListResponse>(
+            args.baseUrl,
+            '/config/kpis'
+          );
+          const firstActiveKpi = catalog.items.find((item) => item.isActive) ?? null;
+          assertCondition(
+            firstActiveKpi,
+            'No active KPI catalog definitions are available for setup-year bootstrap.'
+          );
+          await requestJson<BrandKpiPlanResponse>(
+            args.baseUrl,
+            `/brands/${brandCode}/kpi-plans/${setupYear}`,
+            {
+              method: 'POST',
+              body: {
+                items: [
+                  {
+                    kpiCatalogId: firstActiveKpi.id,
+                    targetValue: 1
+                  }
+                ]
+              }
+            }
+          );
+          kpiPlanChangedByTest = true;
+          setupActions.push(
+            `Seeded KPI plan for ${setupYear} using "${firstActiveKpi.label}".`
+          );
+        } else {
+          setupActions.push(
+            `KPI plan for ${setupYear} already has ${currentPlan.items.length} item(s).`
+          );
         }
+      }
+
+      let refreshedSetup = await requestJson<ReportingListResponse>(
+        args.baseUrl,
+        `/brands/${brandCode}/reporting-periods?year=${setupYear}`
+      );
+      setupStatus = refreshedSetup.selectedYearSetup;
+
+      if (!setupStatus.canCreateReport) {
+        const sourceYearForSetup = resolveReadySourceYear(refreshedSetup, setupYear);
+        if (sourceYearForSetup !== null) {
+          await requestJson(
+            args.baseUrl,
+            `/brands/${brandCode}/reporting-periods/year-setup/prepare`,
+            {
+              method: 'POST',
+              body: {
+                targetYear: setupYear,
+                sourceYear: sourceYearForSetup
+              }
+            }
+          );
+          setupActions.push(`Prepared ${setupYear} from ${sourceYearForSetup}.`);
+          refreshedSetup = await requestJson<ReportingListResponse>(
+            args.baseUrl,
+            `/brands/${brandCode}/reporting-periods?year=${setupYear}`
+          );
+          setupStatus = refreshedSetup.selectedYearSetup;
+        }
+      }
+
+      assertCondition(
+        setupStatus.canCreateReport,
+        `Year ${setupYear} setup is still incomplete: ${setupStatus.summary}`
       );
       record(
         'Prepare year setup',
         true,
-        `Prepared ${setupYear} from ${sourceYearForSetup}`
+        setupActions.length > 0
+          ? setupActions.join(' ')
+          : `Year ${setupYear} is ready.`
       );
     } else {
-      if (setupYearIsReady) {
-        record(
-          'Prepare year setup',
-          true,
-          `Skipped: year ${setupYear} is already ready.`
-        );
-      } else {
-        record(
-          'Prepare year setup',
-          true,
-          `Skipped: no ready source year available for ${setupYear}`
-        );
-      }
+      record(
+        'Prepare year setup',
+        true,
+        `Skipped: year ${setupYear} is already ready.`
+      );
     }
 
     const existingPeriods = await requestJson<ReportingListResponse>(
@@ -845,6 +978,27 @@ async function main() {
     );
   } finally {
     if (!args.keepData && brandCode) {
+      if (kpiPlanChangedByTest && originalKpiPlanItems !== null) {
+        try {
+          await requestJson(
+            args.baseUrl,
+            `/brands/${brandCode}/kpi-plans/${setupYear}`,
+            {
+              method: 'POST',
+              body: {
+                items: originalKpiPlanItems
+              }
+            }
+          );
+        } catch (error) {
+          cleanupWarnings.push(
+            `Failed to restore KPI plan for year ${setupYear}: ${
+              error instanceof Error ? error.message : 'Unknown error'
+            }`
+          );
+        }
+      }
+
       if (periodId && periodCreatedByTest) {
         try {
           await requestJson(args.baseUrl, `/reporting-periods/${periodId}`, {

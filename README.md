@@ -60,12 +60,12 @@ Expected smoke result:
 |-- apps/
 |   |-- backend/
 |   `-- frontend/
+|-- deploy/
+|-- docs/
 |-- docker-compose.yml
-|-- PRODUCT_BLUEPRINT.md
-|-- DOMAIN_MODEL.md
-|-- DATABASE_SCHEMA.md
-|-- ARCHITECTURE.md
-`-- IMPLEMENTATION_PLAN.md
+|-- docker-compose.prod.yml
+|-- LICENSE
+`-- README.md
 ```
 
 ## Local development
