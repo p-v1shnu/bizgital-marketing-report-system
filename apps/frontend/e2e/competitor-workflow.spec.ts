@@ -1,3 +1,5 @@
+import { createHmac } from 'node:crypto';
+
 import { expect, test, type Page } from '@playwright/test';
 
 type CompetitorSetupResponse = {
@@ -100,6 +102,8 @@ const backendBaseUrl =
   process.env.E2E_BACKEND_BASE_URL ?? 'http://localhost:3003/api';
 const brandCode = process.env.E2E_BRAND_CODE ?? 'demo-brand';
 const adminEmail = process.env.E2E_ADMIN_EMAIL ?? 'admin@demo-brand.local';
+const authSessionSecret =
+  process.env.AUTH_SESSION_SECRET ?? 'dev-insecure-auth-session-secret';
 
 function randomSuffix() {
   return `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
@@ -118,6 +122,21 @@ function buildRequestHeaders(hasBody: boolean) {
   }
 
   return Object.keys(headers).length > 0 ? headers : undefined;
+}
+
+function createAuthSessionCookieValue(email: string) {
+  const payload = {
+    e: email.trim().toLowerCase(),
+    exp: Math.floor(Date.now() / 1000) + 60 * 60
+  };
+  const payloadEncoded = Buffer.from(JSON.stringify(payload), 'utf8').toString(
+    'base64url'
+  );
+  const signature = createHmac('sha256', authSessionSecret)
+    .update(payloadEncoded)
+    .digest('base64url');
+
+  return `v1.${payloadEncoded}.${signature}`;
 }
 
 async function requestJson<T>(
@@ -279,7 +298,7 @@ async function setAdminCookie(page: Page) {
   await page.context().addCookies([
     {
       name: 'bizgital-marketing-report.user-email',
-      value: adminEmail,
+      value: createAuthSessionCookieValue(adminEmail),
       url: frontendBaseUrl
     }
   ]);
