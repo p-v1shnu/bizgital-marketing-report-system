@@ -272,6 +272,67 @@ export type BrandSummary = {
   }>;
 };
 
+export type BrandCampaignStatus = 'active' | 'inactive';
+export type BrandCampaignChannel =
+  | 'facebook'
+  | 'instagram'
+  | 'tiktok'
+  | 'youtube'
+  | 'x'
+  | 'line'
+  | 'website'
+  | 'other';
+export type BrandCampaignObjective = 'awareness' | 'engagement' | 'conversion';
+
+export type BrandCampaignItem = {
+  id: string;
+  year: number;
+  name: string;
+  status: BrandCampaignStatus;
+  channel: BrandCampaignChannel | null;
+  objective: BrandCampaignObjective | null;
+  startDate: string | null;
+  endDate: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type BrandCampaignListResponse = {
+  brand: {
+    id: string;
+    code: string;
+    name: string;
+  };
+  year: number;
+  yearOptions: Array<{
+    year: number;
+    hasCampaigns: boolean;
+  }>;
+  items: BrandCampaignItem[];
+};
+
+export type CreateBrandCampaignPayload = {
+  year: number;
+  name: string;
+  status?: BrandCampaignStatus;
+  channel?: BrandCampaignChannel | null;
+  objective?: BrandCampaignObjective | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  notes?: string | null;
+};
+
+export type UpdateBrandCampaignPayload = {
+  name?: string;
+  status?: BrandCampaignStatus;
+  channel?: BrandCampaignChannel | null;
+  objective?: BrandCampaignObjective | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  notes?: string | null;
+};
+
 export type CompanyFormatFieldKey =
   | 'content_style'
   | 'related_product'
@@ -1311,6 +1372,65 @@ export async function updateBrand(
 
 export async function deleteBrand(brandCode: string) {
   return deleteReportingAction(`/brands/${brandCode}`);
+}
+
+export async function getBrandCampaigns(
+  brandCode: string,
+  options?: {
+    year?: number;
+    includeInactive?: boolean;
+  }
+): Promise<BrandCampaignListResponse> {
+  const searchParams = new URLSearchParams();
+
+  if (typeof options?.year === 'number' && Number.isInteger(options.year)) {
+    searchParams.set('year', String(options.year));
+  }
+
+  if (options?.includeInactive) {
+    searchParams.set('includeInactive', 'true');
+  }
+
+  const query = searchParams.toString();
+  const response = await fetch(
+    `${getBackendApiBaseUrl()}/brands/${brandCode}/campaigns${query ? `?${query}` : ''}`,
+    {
+      cache: 'no-store'
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      await readResponseErrorMessage(
+        response,
+        `Failed to load campaigns for brand ${brandCode}.`
+      )
+    );
+  }
+
+  return response.json();
+}
+
+export async function createBrandCampaign(
+  brandCode: string,
+  payload: CreateBrandCampaignPayload
+): Promise<{ item: BrandCampaignItem }> {
+  return postReportingAction(`/brands/${brandCode}/campaigns`, payload);
+}
+
+export async function updateBrandCampaign(
+  brandCode: string,
+  campaignId: string,
+  payload: UpdateBrandCampaignPayload
+): Promise<{ item: BrandCampaignItem }> {
+  return postReportingAction(`/brands/${brandCode}/campaigns/${campaignId}`, payload);
+}
+
+export async function deleteBrandCampaign(
+  brandCode: string,
+  campaignId: string
+): Promise<{ deleted: boolean }> {
+  return deleteReportingAction(`/brands/${brandCode}/campaigns/${campaignId}`);
 }
 
 export async function getUsers(): Promise<UserSummary[]> {
