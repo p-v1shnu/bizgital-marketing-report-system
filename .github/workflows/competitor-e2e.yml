@@ -68,7 +68,7 @@ jobs:
       - name: Prepare database
         run: |
           npm --workspace @bizgital-marketing-report/backend run db:generate
-          npm --workspace @bizgital-marketing-report/backend run db:push
+          npm --workspace @bizgital-marketing-report/backend run db:push -- --accept-data-loss
           npm --workspace @bizgital-marketing-report/backend run db:seed
           npm --workspace @bizgital-marketing-report/backend run db:backfill-competitor-assignments
 
@@ -158,7 +158,7 @@ jobs:
       - name: Prepare database
         run: |
           npm --workspace @bizgital-marketing-report/backend run db:generate
-          npm --workspace @bizgital-marketing-report/backend run db:push
+          npm --workspace @bizgital-marketing-report/backend run db:push -- --accept-data-loss
           npm --workspace @bizgital-marketing-report/backend run db:seed
           npm --workspace @bizgital-marketing-report/backend run db:backfill-competitor-assignments
 
