@@ -1,5 +1,9 @@
 import { Body, Controller, Delete, Get, Param, Post, Query } from '@nestjs/common';
 
+import {
+  CurrentUser,
+  type AuthenticatedRequestUser
+} from '../auth/current-user.decorator';
 import { BrandsService } from './brands.service';
 import type {
   CreateBrandInput,
@@ -15,8 +19,8 @@ export class BrandsController {
   constructor(private readonly brandsService: BrandsService) {}
 
   @Get()
-  listBrands() {
-    return this.brandsService.listBrands();
+  listBrands(@CurrentUser() user: AuthenticatedRequestUser) {
+    return this.brandsService.listBrands(user);
   }
 
   @Post()
@@ -25,8 +29,11 @@ export class BrandsController {
   }
 
   @Get(':brandCode')
-  getBrand(@Param('brandCode') brandCode: string) {
-    return this.brandsService.getBrandByCodeOrThrow(brandCode);
+  getBrand(
+    @Param('brandCode') brandCode: string,
+    @CurrentUser() user: AuthenticatedRequestUser
+  ) {
+    return this.brandsService.getBrandByCodeOrThrow(brandCode, user);
   }
 
   @Post(':brandCode')
@@ -40,8 +47,11 @@ export class BrandsController {
   }
 
   @Get(':brandCode/memberships')
-  async getBrandMemberships(@Param('brandCode') brandCode: string) {
-    const brand = await this.brandsService.getBrandByCodeOrThrow(brandCode);
+  async getBrandMemberships(
+    @Param('brandCode') brandCode: string,
+    @CurrentUser() user: AuthenticatedRequestUser
+  ) {
+    const brand = await this.brandsService.getBrandByCodeOrThrow(brandCode, user);
 
     return {
       brand: {

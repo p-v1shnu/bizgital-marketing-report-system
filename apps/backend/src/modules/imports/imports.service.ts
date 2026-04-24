@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { ImportJobStatus, Prisma, ReportWorkflowState } from '@prisma/client';
+import { readFile, unlink } from 'node:fs/promises';
 import { extname } from 'node:path';
 
 import { PrismaService } from '../../prisma/prisma.service';
@@ -147,7 +148,7 @@ export class ImportsService {
       );
     }
 
-    this.assertAllowedFile(file.originalname);
+    await this.assertAllowedFile(file);
 
     const created = await this.prisma.importJob.create({
       data: {
@@ -365,14 +366,75 @@ export class ImportsService {
     };
   }
 
-  private assertAllowedFile(filename: string) {
-    const extension = extname(filename).toLowerCase();
+  private async assertAllowedFile(file: Express.Multer.File) {
+    const extension = extname(file.originalname).toLowerCase();
 
     if (!ALLOWED_IMPORT_EXTENSIONS.has(extension)) {
+      await this.deleteRejectedUpload(file.path);
       throw new BadRequestException(
         'Only CSV, XLS, and XLSX files are allowed for import.'
       );
     }
+
+    const header = await readFile(file.path).then(buffer => buffer.subarray(0, 8192));
+    const isValid =
+      (extension === '.csv' && this.isCsvLike(header)) ||
+      (extension === '.xlsx' && this.isZipDocument(header)) ||
+      (extension === '.xls' && this.isOleCompoundDocument(header));
+
+    if (!isValid) {
+      await this.deleteRejectedUpload(file.path);
+      throw new BadRequestException(
+        'Import file content does not match the selected CSV, XLS, or XLSX format.'
+      );
+    }
+  }
+
+  private isCsvLike(header: Buffer) {
+    if (header.length === 0) {
+      return false;
+    }
+
+    if (header.includes(0)) {
+      return false;
+    }
+
+    return !header.toString('utf8').includes('\uFFFD');
+  }
+
+  private isZipDocument(header: Buffer) {
+    return (
+      header.length >= 4 &&
+      header[0] === 0x50 &&
+      header[1] === 0x4b &&
+      (
+        (header[2] === 0x03 && header[3] === 0x04) ||
+        (header[2] === 0x05 && header[3] === 0x06) ||
+        (header[2] === 0x07 && header[3] === 0x08)
+      )
+    );
+  }
+
+  private isOleCompoundDocument(header: Buffer) {
+    return (
+      header.length >= 8 &&
+      header[0] === 0xd0 &&
+      header[1] === 0xcf &&
+      header[2] === 0x11 &&
+      header[3] === 0xe0 &&
+      header[4] === 0xa1 &&
+      header[5] === 0xb1 &&
+      header[6] === 0x1a &&
+      header[7] === 0xe1
+    );
+  }
+
+  private async deleteRejectedUpload(filePath: string | undefined) {
+    if (!filePath) {
+      return;
+    }
+
+    await unlink(filePath).catch(() => undefined);
   }
 
   private async profileImportJob(importJobId: string, file: Express.Multer.File) {

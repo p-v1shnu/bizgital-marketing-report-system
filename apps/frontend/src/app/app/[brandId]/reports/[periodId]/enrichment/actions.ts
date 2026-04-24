@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
-import { getBackendApiBaseUrl } from '@/lib/reporting-api';
+import { backendFetch, getBackendApiBaseUrl } from '@/lib/reporting-api';
 
 function redirectToEnrichment(
   brandId: string,
@@ -62,7 +62,7 @@ export async function saveEnrichmentAction(formData: FormData) {
     });
   }
 
-  const response = await fetch(
+  const response = await backendFetch(
     `${getBackendApiBaseUrl()}/brands/${brandId}/reporting-periods/${periodId}/dataset`,
     {
       method: 'POST',

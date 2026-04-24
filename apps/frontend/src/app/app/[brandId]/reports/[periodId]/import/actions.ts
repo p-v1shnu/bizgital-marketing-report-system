@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
 import {
+  backendFetch,
   getBackendApiBaseUrl
 } from '@/lib/reporting-api';
 
@@ -17,7 +18,7 @@ function redirectToImport(
 }
 
 async function autoMapLatestImportJob(brandId: string, periodId: string) {
-  const response = await fetch(
+  const response = await backendFetch(
     `${getBackendApiBaseUrl()}/brands/${brandId}/reporting-periods/${periodId}/mapping/auto`,
     {
       method: 'POST',
@@ -57,7 +58,7 @@ export async function uploadImportJobAction(formData: FormData) {
   const uploadFormData = new FormData();
   uploadFormData.set('file', file, file.name);
 
-  const response = await fetch(
+  const response = await backendFetch(
     `${getBackendApiBaseUrl()}/brands/${brandId}/reporting-periods/${periodId}/import-jobs`,
     {
       method: 'POST',

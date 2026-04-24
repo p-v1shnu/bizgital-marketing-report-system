@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 
+import { ApiFetchCredentials } from '@/components/api-fetch-credentials';
+
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -20,7 +22,10 @@ type RootLayoutProps = {
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang="en">
-      <body suppressHydrationWarning>{children}</body>
+      <body suppressHydrationWarning>
+        <ApiFetchCredentials />
+        {children}
+      </body>
     </html>
   );
 }

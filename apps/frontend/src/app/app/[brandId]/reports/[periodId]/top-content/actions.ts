@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { isRedirectError } from 'next/dist/client/components/redirect-error';
 
-import { getBackendApiBaseUrl } from '@/lib/reporting-api';
+import { backendFetch, getBackendApiBaseUrl } from '@/lib/reporting-api';
 
 function redirectToTopContent(
   brandId: string,
@@ -20,7 +20,7 @@ export async function saveTopContentCardAction(formData: FormData) {
   const periodId = String(formData.get('periodId') ?? '');
   const cardId = String(formData.get('cardId') ?? '');
 
-  const response = await fetch(
+  const response = await backendFetch(
     `${getBackendApiBaseUrl()}/brands/${brandId}/reporting-periods/${periodId}/top-content/${cardId}`,
     {
       method: 'POST',
@@ -64,7 +64,7 @@ export async function regenerateTopContentAction(formData: FormData) {
   const periodId = String(formData.get('periodId') ?? '');
 
   try {
-    const payload = (await fetch(
+    const payload = (await backendFetch(
       `${getBackendApiBaseUrl()}/brands/${brandId}/reporting-periods/${periodId}/top-content/regenerate`,
       {
         method: 'POST',

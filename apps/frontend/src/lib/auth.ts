@@ -139,15 +139,26 @@ export function getMembershipReportAccess(
 export function sanitizeNextPath(value: string | null | undefined) {
   const raw = (value ?? '').trim();
 
-  if (!raw.startsWith('/')) {
+  if (!raw || raw.includes('\\') || /[\u0000-\u001f]/.test(raw)) {
     return '/app';
   }
 
-  if (raw.startsWith('//')) {
+  let parsed: URL;
+  try {
+    parsed = new URL(raw, 'https://app.local');
+  } catch {
     return '/app';
   }
 
-  return raw;
+  if (parsed.origin !== 'https://app.local') {
+    return '/app';
+  }
+
+  if (parsed.pathname !== '/app' && !parsed.pathname.startsWith('/app/')) {
+    return '/app';
+  }
+
+  return `${parsed.pathname}${parsed.search}${parsed.hash}`;
 }
 
 async function readSessionEmail() {

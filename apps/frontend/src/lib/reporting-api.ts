@@ -1128,6 +1128,7 @@ export type AdminAuditLogListResponse = {
 };
 
 const AUTH_USER_EMAIL_COOKIE_NAME = 'bizgital-marketing-report.user-email';
+const INTERNAL_API_SECRET_HEADER = 'X-Internal-Api-Secret';
 
 export function getBackendApiBaseUrl() {
   return (
@@ -1136,6 +1137,67 @@ export function getBackendApiBaseUrl() {
     'http://localhost:3003/api'
   );
 }
+
+function resolveInternalApiSecret() {
+  if (typeof window !== 'undefined') {
+    return null;
+  }
+
+  const configuredSecret = (process.env.INTERNAL_API_AUTH_SECRET ?? '').trim();
+
+  if (configuredSecret) {
+    return configuredSecret;
+  }
+
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('INTERNAL_API_AUTH_SECRET is required in production.');
+  }
+
+  return null;
+}
+
+async function readServerCookieHeader() {
+  if (typeof window !== 'undefined') {
+    return null;
+  }
+
+  try {
+    const { cookies } = await import('next/headers');
+    const cookieStore = await cookies();
+    return cookieStore
+      .getAll()
+      .map(cookie => `${cookie.name}=${encodeURIComponent(cookie.value)}`)
+      .join('; ') || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function backendFetch(
+  input: Parameters<typeof globalThis.fetch>[0],
+  init?: Parameters<typeof globalThis.fetch>[1]
+) {
+  const headers = new Headers(init?.headers);
+  const serverCookieHeader = await readServerCookieHeader();
+
+  if (serverCookieHeader && !headers.has('Cookie')) {
+    headers.set('Cookie', serverCookieHeader);
+  }
+
+  const internalApiSecret = serverCookieHeader ? null : resolveInternalApiSecret();
+
+  if (internalApiSecret && !headers.has(INTERNAL_API_SECRET_HEADER)) {
+    headers.set(INTERNAL_API_SECRET_HEADER, internalApiSecret);
+  }
+
+  return globalThis.fetch(input, {
+    ...init,
+    headers,
+    credentials: init?.credentials ?? 'include'
+  });
+}
+
+const fetch = backendFetch;
 
 function readActorEmailFromClientCookie() {
   if (typeof document === 'undefined') {

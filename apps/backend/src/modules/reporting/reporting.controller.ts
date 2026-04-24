@@ -6,10 +6,26 @@ import {
   Param,
   ParseIntPipe,
   Post,
-  Query
+  Query,
+  UnauthorizedException
 } from '@nestjs/common';
 
+import {
+  CurrentUser,
+  type AuthenticatedRequestUser
+} from '../auth/current-user.decorator';
 import { ReportingService } from './reporting.service';
+
+function actorFromUser(user: AuthenticatedRequestUser | undefined) {
+  if (!user || user.internal) {
+    throw new UnauthorizedException('Authenticated user context is required.');
+  }
+
+  return {
+    actorName: user.displayName,
+    actorEmail: user.email
+  };
+}
 
 @Controller()
 export class ReportingController {
@@ -53,16 +69,16 @@ export class ReportingController {
     @Body('year', ParseIntPipe) year: number,
     @Body('month', ParseIntPipe) month: number,
     @Body('replaceDeleted') replaceDeleted?: boolean,
-    @Body('actorName') actorName?: string,
-    @Body('actorEmail') actorEmail?: string
+    @CurrentUser() user?: AuthenticatedRequestUser
   ) {
+    const actor = actorFromUser(user);
+
     return this.reportingService.createReportingPeriod({
       brandCode,
       year,
       month,
       replaceDeleted,
-      actorName,
-      actorEmail
+      ...actor
     });
   }
 
@@ -85,90 +101,76 @@ export class ReportingController {
   @Post('reporting-periods/:periodId/drafts')
   createOrResumeDraft(
     @Param('periodId') periodId: string,
-    @Body('actorName') actorName?: string,
-    @Body('actorEmail') actorEmail?: string
+    @CurrentUser() user?: AuthenticatedRequestUser
   ) {
-    return this.reportingService.createOrResumeDraft(periodId, {
-      actorName,
-      actorEmail
-    });
+    return this.reportingService.createOrResumeDraft(periodId, actorFromUser(user));
   }
 
   @Post('report-versions/:versionId/submit')
   submitVersion(
     @Param('versionId') versionId: string,
-    @Body('actorName') actorName?: string,
-    @Body('actorEmail') actorEmail?: string
+    @CurrentUser() user?: AuthenticatedRequestUser
   ) {
-    return this.reportingService.submitVersion(versionId, {
-      actorName,
-      actorEmail
-    });
+    return this.reportingService.submitVersion(versionId, actorFromUser(user));
   }
 
   @Post('report-versions/:versionId/approve')
   approveVersion(
     @Param('versionId') versionId: string,
-    @Body('actorName') actorName?: string,
-    @Body('actorEmail') actorEmail?: string
+    @CurrentUser() user?: AuthenticatedRequestUser
   ) {
-    return this.reportingService.approveVersion(versionId, {
-      actorName,
-      actorEmail
-    });
+    return this.reportingService.approveVersion(versionId, actorFromUser(user));
   }
 
   @Post('report-versions/:versionId/reject')
   rejectVersion(
     @Param('versionId') versionId: string,
     @Body('reason') reason: string,
-    @Body('actorName') actorName?: string,
-    @Body('actorEmail') actorEmail?: string
+    @CurrentUser() user?: AuthenticatedRequestUser
   ) {
-    return this.reportingService.rejectVersion(versionId, { reason, actorName, actorEmail });
+    return this.reportingService.rejectVersion(versionId, {
+      reason,
+      ...actorFromUser(user)
+    });
   }
 
   @Post('report-versions/:versionId/revise')
   reviseVersion(
     @Param('versionId') versionId: string,
     @Body('reason') reason?: string,
-    @Body('actorName') actorName?: string,
-    @Body('actorEmail') actorEmail?: string
+    @CurrentUser() user?: AuthenticatedRequestUser
   ) {
-    return this.reportingService.reviseVersion(versionId, { reason, actorName, actorEmail });
+    return this.reportingService.reviseVersion(versionId, {
+      reason,
+      ...actorFromUser(user)
+    });
   }
 
   @Post('report-versions/:versionId/reopen')
   reopenVersion(
     @Param('versionId') versionId: string,
     @Body('reason') reason?: string,
-    @Body('actorName') actorName?: string,
-    @Body('actorEmail') actorEmail?: string
+    @CurrentUser() user?: AuthenticatedRequestUser
   ) {
-    return this.reportingService.reopenVersion(versionId, { reason, actorName, actorEmail });
+    return this.reportingService.reopenVersion(versionId, {
+      reason,
+      ...actorFromUser(user)
+    });
   }
 
   @Delete('reporting-periods/:periodId')
   deleteReportingPeriod(
     @Param('periodId') periodId: string,
-    @Body('actorName') actorName?: string,
-    @Body('actorEmail') actorEmail?: string
+    @CurrentUser() user?: AuthenticatedRequestUser
   ) {
-    return this.reportingService.deleteReportingPeriod(periodId, {
-      actorName,
-      actorEmail
-    });
+    return this.reportingService.deleteReportingPeriod(periodId, actorFromUser(user));
   }
 
   @Post('reporting-periods/:periodId/restore')
   restoreReportingPeriod(
     @Param('periodId') periodId: string,
-    @Body('actorName') actorName?: string,
-    @Body('actorEmail') actorEmail?: string
+    @CurrentUser() user?: AuthenticatedRequestUser
   ) {
-    return this.reportingService.restoreReportingPeriod(periodId, {
-      actorName,
-      actorEmail
-    });
+    return this.reportingService.restoreReportingPeriod(periodId, actorFromUser(user));
   }
 }

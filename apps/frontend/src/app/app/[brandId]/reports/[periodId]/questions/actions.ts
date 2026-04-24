@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
-import { getBackendApiBaseUrl } from '@/lib/reporting-api';
+import { backendFetch, getBackendApiBaseUrl } from '@/lib/reporting-api';
 
 function redirectToQuestions(
   brandId: string,
@@ -19,7 +19,7 @@ export async function saveQuestionEvidenceAction(formData: FormData) {
   const periodId = String(formData.get('periodId') ?? '');
   const activationId = String(formData.get('activationId') ?? '');
 
-  const response = await fetch(
+  const response = await backendFetch(
     `${getBackendApiBaseUrl()}/brands/${brandId}/reporting-periods/${periodId}/questions/${activationId}`,
     {
       method: 'POST',

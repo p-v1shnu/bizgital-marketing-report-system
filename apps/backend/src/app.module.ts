@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
 
 import { AuditLogModule } from './modules/audit-log/audit-log.module';
 import { BrandsModule } from './modules/brands/brands.module';
@@ -16,6 +17,7 @@ import { QuestionsModule } from './modules/questions/questions.module';
 import { ReportingModule } from './modules/reporting/reporting.module';
 import { TopContentModule } from './modules/top-content/top-content.module';
 import { UsersModule } from './modules/users/users.module';
+import { SessionAuthGuard } from './modules/auth/session-auth.guard';
 import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
@@ -37,6 +39,12 @@ import { PrismaModule } from './prisma/prisma.module';
     TopContentModule,
     UsersModule
   ],
-  controllers: [HealthController]
+  controllers: [HealthController],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: SessionAuthGuard
+    }
+  ]
 })
 export class AppModule {}

@@ -6,7 +6,9 @@ import { isRedirectError } from 'next/dist/client/components/redirect-error';
 
 import { getAuthContext, getMembershipReportAccess } from '@/lib/auth';
 import {
+  backendFetch,
   getCompetitorOverview,
+  getBackendApiBaseUrl,
   getQuestionOverview,
   getTopContentOverview,
   prepareReportingYearSetup,
@@ -505,8 +507,8 @@ export async function deleteReportingPeriodAction(formData: FormData) {
   try {
     await assertReportCapability(brandId, 'create');
     const actor = await getActionActorPayload();
-    const response = await fetch(
-      `${process.env.INTERNAL_API_BASE_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3003/api'}/reporting-periods/${periodId}`,
+    const response = await backendFetch(
+      `${getBackendApiBaseUrl()}/reporting-periods/${periodId}`,
       {
         method: 'DELETE',
         headers: {
@@ -560,8 +562,8 @@ export async function restoreReportingPeriodAction(formData: FormData) {
   try {
     await assertReportCapability(brandId, 'create');
     const actor = await getActionActorPayload();
-    const response = await fetch(
-      `${process.env.INTERNAL_API_BASE_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3003/api'}/reporting-periods/${periodId}/restore`,
+    const response = await backendFetch(
+      `${getBackendApiBaseUrl()}/reporting-periods/${periodId}/restore`,
       {
         method: 'POST',
         headers: {

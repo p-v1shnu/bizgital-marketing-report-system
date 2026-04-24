@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException
@@ -17,6 +18,7 @@ import {
 
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
+import type { AuthenticatedRequestUser } from '../auth/current-user.decorator';
 import {
   parseManualSourceRowsSettingPayload,
   toManualSourceRowsSettingKey
@@ -215,9 +217,18 @@ export class BrandsService {
     private readonly auditLogService: AuditLogService
   ) {}
 
-  async listBrands() {
+  async listBrands(user?: AuthenticatedRequestUser) {
     await this.ensureMembershipPermissionStorage();
+    const allowedBrandIds = this.resolveReadableBrandIds(user);
     const brands = await this.prisma.brand.findMany({
+      where:
+        allowedBrandIds === null
+          ? undefined
+          : {
+              id: {
+                in: allowedBrandIds
+              }
+            },
       include: {
         memberships: {
           include: {
@@ -258,7 +269,10 @@ export class BrandsService {
     }));
   }
 
-  async getBrandByCodeOrThrow(brandCode: string) {
+  async getBrandByCodeOrThrow(
+    brandCode: string,
+    user?: AuthenticatedRequestUser
+  ) {
     await this.ensureMembershipPermissionStorage();
     const brand = await this.prisma.brand.findUnique({
       where: {
@@ -277,6 +291,8 @@ export class BrandsService {
     if (!brand) {
       throw new NotFoundException(`Brand ${brandCode} was not found.`);
     }
+
+    this.assertCanReadBrand(user, brand.id);
 
     const logoByBrandId = await this.getBrandLogoMap([brand.id]);
     const permissionByMembershipKey = await this.getMembershipPermissionByPairs(
@@ -302,6 +318,29 @@ export class BrandsService {
       })),
       logoUrl: logoByBrandId.get(brand.id) ?? null
     };
+  }
+
+  private resolveReadableBrandIds(user: AuthenticatedRequestUser | undefined) {
+    if (!user || user.internal || user.hasAdminRole) {
+      return null;
+    }
+
+    return Array.from(
+      new Set(user.brandMemberships.map((membership) => membership.brandId))
+    );
+  }
+
+  private assertCanReadBrand(
+    user: AuthenticatedRequestUser | undefined,
+    brandId: string
+  ) {
+    if (!user || user.internal || user.hasAdminRole) {
+      return;
+    }
+
+    if (!user.brandMemberships.some((membership) => membership.brandId === brandId)) {
+      throw new ForbiddenException('You do not have access to this brand.');
+    }
   }
 
   async createBrand(input: CreateBrandInput) {

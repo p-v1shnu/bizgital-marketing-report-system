@@ -51,6 +51,7 @@ services:
       API_PREFIX: ${API_PREFIX:-api}
       APP_ORIGIN: http://localhost:${FRONTEND_PORT:-3200}
       AUTH_SESSION_SECRET: ${AUTH_SESSION_SECRET}
+      INTERNAL_API_AUTH_SECRET: ${INTERNAL_API_AUTH_SECRET}
       DATABASE_URL: mysql://${MYSQL_USER:-marketing}:${MYSQL_PASSWORD:-marketing}@mysql:3306/${MYSQL_DATABASE:-bizgital_marketing_report}
       IMPORT_STORAGE_DIR: /workspace/storage/imports
       MEDIA_S3_ENDPOINT: ${MEDIA_S3_ENDPOINT:-http://minio:9000}
@@ -87,6 +88,7 @@ services:
       INTERNAL_API_BASE_URL: http://backend:3003/${API_PREFIX:-api}
       NEXT_PUBLIC_API_BASE_URL: http://localhost:${BACKEND_PORT:-3003}/${API_PREFIX:-api}
       AUTH_SESSION_SECRET: ${AUTH_SESSION_SECRET}
+      INTERNAL_API_AUTH_SECRET: ${INTERNAL_API_AUTH_SECRET}
     ports:
       - "127.0.0.1:${FRONTEND_PORT:-3200}:3000"
 

@@ -19,11 +19,35 @@ for (const candidate of [
   }
 }
 
+function assertRequiredProductionSecrets() {
+  if (process.env.NODE_ENV !== 'production') {
+    return;
+  }
+
+  if (!process.env.INTERNAL_API_AUTH_SECRET?.trim()) {
+    throw new Error('INTERNAL_API_AUTH_SECRET is required in production.');
+  }
+}
+
 async function bootstrap() {
+  assertRequiredProductionSecrets();
+
   const app = await NestFactory.create(AppModule);
   const apiPrefix = process.env.API_PREFIX ?? 'api';
   const appOrigin = process.env.APP_ORIGIN ?? 'http://localhost:3200';
   const port = Number(process.env.PORT ?? 3003);
+
+  app.use((_request: unknown, response: {
+    setHeader: (name: string, value: string) => void;
+  }, next: () => void) => {
+    response.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'");
+    response.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+    response.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    response.setHeader('Referrer-Policy', 'no-referrer');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    response.setHeader('X-Frame-Options', 'DENY');
+    next();
+  });
 
   app.setGlobalPrefix(apiPrefix);
   app.enableCors({

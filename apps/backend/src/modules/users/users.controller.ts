@@ -1,5 +1,7 @@
-import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, UseGuards } from '@nestjs/common';
 
+import { AuthRateLimitGuard } from '../auth/auth-rate-limit.guard';
+import { Public } from '../auth/public.decorator';
 import type {
   BootstrapSuperAdminInput,
   CreateUserInput,
@@ -20,11 +22,13 @@ export class UsersController {
   }
 
   @Get('bootstrap/status')
+  @Public()
   getBootstrapStatus() {
     return this.usersService.getBootstrapStatus();
   }
 
   @Post('bootstrap/super-admin')
+  @Public()
   bootstrapSuperAdmin(@Body() body: BootstrapSuperAdminInput) {
     return this.usersService.bootstrapSuperAdmin(body);
   }
@@ -35,11 +39,15 @@ export class UsersController {
   }
 
   @Post('auth/password-login')
+  @Public()
+  @UseGuards(AuthRateLimitGuard)
   passwordLogin(@Body() body: PasswordLoginInput) {
     return this.usersService.passwordLogin(body);
   }
 
   @Post('auth/microsoft-login')
+  @Public()
+  @UseGuards(AuthRateLimitGuard)
   microsoftLogin(@Body() body: MicrosoftLoginInput) {
     return this.usersService.microsoftLogin(body);
   }

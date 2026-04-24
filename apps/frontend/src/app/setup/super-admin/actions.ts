@@ -62,7 +62,7 @@ export async function bootstrapSuperAdminAction(formData: FormData) {
     createAuthSessionCookieValue(response.user.email),
     {
       httpOnly: true,
-      sameSite: 'lax',
+      sameSite: 'strict',
       secure: process.env.NODE_ENV === 'production',
       path: '/',
       maxAge: AUTH_SESSION_TTL_SECONDS
