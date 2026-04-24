@@ -34,6 +34,7 @@ jobs:
       IMPORT_STORAGE_DIR: storage/imports
       APP_ORIGIN: http://localhost:3200
       INTERNAL_API_BASE_URL: http://localhost:3003/api
+      INTERNAL_API_AUTH_SECRET: e2e-internal-api-secret
       NEXT_PUBLIC_API_BASE_URL: http://localhost:3003/api
       MEDIA_S3_ENDPOINT: http://localhost:9000
       MEDIA_S3_REGION: us-east-1
@@ -122,6 +123,7 @@ jobs:
       IMPORT_STORAGE_DIR: storage/imports
       APP_ORIGIN: http://localhost:3200
       INTERNAL_API_BASE_URL: http://localhost:3003/api
+      INTERNAL_API_AUTH_SECRET: e2e-internal-api-secret
       NEXT_PUBLIC_API_BASE_URL: http://localhost:3003/api
       E2E_BACKEND_BASE_URL: http://localhost:3003/api
       E2E_FRONTEND_BASE_URL: http://localhost:3200

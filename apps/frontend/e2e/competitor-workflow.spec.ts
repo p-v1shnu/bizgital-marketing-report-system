@@ -105,6 +105,21 @@ function randomSuffix() {
   return `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 }
 
+function buildRequestHeaders(hasBody: boolean) {
+  const headers: Record<string, string> = {};
+  const internalApiSecret = process.env.INTERNAL_API_AUTH_SECRET?.trim();
+
+  if (hasBody) {
+    headers['Content-Type'] = 'application/json';
+  }
+
+  if (internalApiSecret) {
+    headers['x-internal-api-secret'] = internalApiSecret;
+  }
+
+  return Object.keys(headers).length > 0 ? headers : undefined;
+}
+
 async function requestJson<T>(
   path: string,
   options?: {
@@ -116,11 +131,7 @@ async function requestJson<T>(
   const timeoutMs = options?.timeoutMs ?? 15_000;
   const response = await fetch(`${backendBaseUrl}${path}`, {
     method: options?.method ?? 'GET',
-    headers: options?.body
-      ? {
-          'Content-Type': 'application/json'
-        }
-      : undefined,
+    headers: buildRequestHeaders(!!options?.body),
     body: options?.body ? JSON.stringify(options.body) : undefined,
     signal: AbortSignal.timeout(timeoutMs)
   });
@@ -149,9 +160,7 @@ async function createUniquePeriod(
       `${backendBaseUrl}/brands/${brandCode}/reporting-periods`,
       {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: buildRequestHeaders(true),
         body: JSON.stringify({ year, month })
       }
     );

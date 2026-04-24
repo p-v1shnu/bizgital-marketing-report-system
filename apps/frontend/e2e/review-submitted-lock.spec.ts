@@ -16,9 +16,20 @@ const backendBaseUrl =
 const brandCode = process.env.E2E_BRAND_CODE ?? 'demo-brand';
 const adminEmail = process.env.E2E_ADMIN_EMAIL ?? 'admin@demo-brand.local';
 
+function buildRequestHeaders() {
+  const internalApiSecret = process.env.INTERNAL_API_AUTH_SECRET?.trim();
+
+  return internalApiSecret
+    ? {
+        'x-internal-api-secret': internalApiSecret
+      }
+    : undefined;
+}
+
 async function requestJson<T>(path: string): Promise<T> {
   const response = await fetch(`${backendBaseUrl}${path}`, {
     method: 'GET',
+    headers: buildRequestHeaders(),
     signal: AbortSignal.timeout(15_000)
   });
   const payload = await response.json().catch(() => null);
