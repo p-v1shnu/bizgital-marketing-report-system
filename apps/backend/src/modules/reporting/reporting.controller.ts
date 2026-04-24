@@ -17,8 +17,16 @@ import {
 import { ReportingService } from './reporting.service';
 
 function actorFromUser(user: AuthenticatedRequestUser | undefined) {
-  if (!user || user.internal) {
+  if (!user) {
     throw new UnauthorizedException('Authenticated user context is required.');
+  }
+
+  if (user.internal) {
+    return {
+      actorName: process.env.INTERNAL_API_ACTOR_NAME?.trim() || 'Internal API',
+      actorEmail:
+        process.env.INTERNAL_API_ACTOR_EMAIL?.trim() || 'internal-api@bizgital.local'
+    };
   }
 
   return {
