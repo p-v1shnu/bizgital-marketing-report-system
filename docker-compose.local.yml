@@ -9,7 +9,7 @@ services:
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-marketing}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
     ports:
-      - "${MYSQL_PORT:-3306}:3306"
+      - "127.0.0.1:${MYSQL_PORT:-3306}:3306"
     volumes:
       - mysql-data:/var/lib/mysql
     healthcheck:
@@ -23,7 +23,7 @@ services:
       retries: 10
 
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     container_name: ${PROJECT_NAME:-bizgital-marketing-report}-minio
     restart: unless-stopped
     environment:
@@ -31,8 +31,8 @@ services:
       MINIO_ROOT_PASSWORD: ${MEDIA_S3_SECRET_KEY:-minioadmin}
     command: server /data --console-address ":9001"
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
     volumes:
       - minio-data:/data
 
@@ -68,7 +68,7 @@ services:
       MEDIA_ORPHAN_CLEANUP_INITIAL_DELAY_MINUTES: ${MEDIA_ORPHAN_CLEANUP_INITIAL_DELAY_MINUTES:-5}
       MEDIA_ORPHAN_CLEANUP_MAX_DELETE_PER_RUN: ${MEDIA_ORPHAN_CLEANUP_MAX_DELETE_PER_RUN:-500}
     ports:
-      - "${BACKEND_PORT:-3003}:3003"
+      - "127.0.0.1:${BACKEND_PORT:-3003}:3003"
     volumes:
       - ./storage:/workspace/storage
 
@@ -88,7 +88,7 @@ services:
       NEXT_PUBLIC_API_BASE_URL: http://localhost:${BACKEND_PORT:-3003}/${API_PREFIX:-api}
       AUTH_SESSION_SECRET: ${AUTH_SESSION_SECRET}
     ports:
-      - "${FRONTEND_PORT:-3200}:3000"
+      - "127.0.0.1:${FRONTEND_PORT:-3200}:3000"
 
 volumes:
   mysql-data:
