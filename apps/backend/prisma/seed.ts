@@ -11,6 +11,12 @@ import { randomBytes, scryptSync } from 'node:crypto';
 const prisma = new PrismaClient();
 const PASSWORD_HASH_PREFIX = 's1';
 
+function assertDemoSeedAllowed() {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('Refusing to run demo seed while NODE_ENV=production.');
+  }
+}
+
 function hashPassword(plainPassword: string) {
   const salt = randomBytes(16).toString('hex');
   const derived = scryptSync(plainPassword, salt, 64).toString('hex');
@@ -53,6 +59,7 @@ async function ensureAuthStorage() {
 }
 
 async function main() {
+  assertDemoSeedAllowed();
   await ensureAuthStorage();
 
   const demoBrand = await prisma.brand.upsert({

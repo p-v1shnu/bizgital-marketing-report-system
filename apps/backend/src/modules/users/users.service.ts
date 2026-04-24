@@ -67,6 +67,11 @@ type BootstrapStatusSnapshot = {
 
 const PASSWORD_HASH_PREFIX = 's1';
 const MIN_PASSWORD_LENGTH = 8;
+const LOCAL_SEED_EMAILS = new Set([
+  'admin@demo-brand.local',
+  'content@demo-brand.local',
+  'approver@demo-brand.local'
+]);
 
 function normalizeEmail(value: string) {
   return value.trim().toLowerCase();
@@ -79,6 +84,14 @@ function normalizeText(value: string) {
 function isTrueFlag(value: string | undefined) {
   const normalized = String(value ?? '').trim().toLowerCase();
   return normalized === '1' || normalized === 'true' || normalized === 'yes';
+}
+
+function isProductionRuntime() {
+  return process.env.NODE_ENV === 'production';
+}
+
+function isLocalSeedEmail(email: string) {
+  return LOCAL_SEED_EMAILS.has(normalizeEmail(email));
 }
 
 function assertAllowedStatus(value: string | undefined): UserStatus | undefined {
@@ -924,6 +937,10 @@ export class UsersService {
       throw new BadRequestException('Email and password are required.');
     }
 
+    if (isProductionRuntime() && isLocalSeedEmail(email)) {
+      throw new UnauthorizedException('Invalid email or password.');
+    }
+
     const user = await this.prisma.user.findUnique({
       where: { email }
     });
@@ -980,6 +997,10 @@ export class UsersService {
       throw new BadRequestException('Microsoft OID is required.');
     }
 
+    if (isProductionRuntime() && email && isLocalSeedEmail(email)) {
+      throw new UnauthorizedException('This Microsoft account is not linked yet.');
+    }
+
     const linkedRows = await this.prisma.$queryRawUnsafe<RawAuthCredentialRow[]>(
       `
       SELECT user_id, password_hash, microsoft_oid, allow_password, allow_microsoft
@@ -998,6 +1019,10 @@ export class UsersService {
 
       if (!user) {
         throw new UnauthorizedException('Linked user account no longer exists.');
+      }
+
+      if (isProductionRuntime() && isLocalSeedEmail(user.email)) {
+        throw new UnauthorizedException('This Microsoft account is not linked yet.');
       }
 
       if (user.status !== UserStatus.active) {
