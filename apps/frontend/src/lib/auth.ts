@@ -212,8 +212,11 @@ export async function getAuthContext(): Promise<AuthContext> {
     }
   }
   let hasBootstrapSuperAdminAccess = false;
+  const hasAdminMembershipFromBrandLoop = memberships.some(
+    (membership) => membership.role === 'admin'
+  );
 
-  if (!user) {
+  if (!user || !hasAdminMembershipFromBrandLoop) {
     const users = await getUsers().catch(() => []);
     const matchedUser = users.find(
       (candidate) =>
@@ -227,16 +230,18 @@ export async function getAuthContext(): Promise<AuthContext> {
         email: normalizeEmail(matchedUser.email),
         status: matchedUser.status
       };
-      hasBootstrapSuperAdminAccess = matchedUser.isBootstrapSuperAdmin;
+      hasBootstrapSuperAdminAccess = matchedUser.isBootstrapSuperAdmin === true;
 
-      for (const membership of matchedUser.memberships) {
-        const role = normalizeBrandRole(String(membership.role ?? ''));
-        memberships.push({
-          brandCode: membership.brand.code,
-          brandName: membership.brand.name,
-          role,
-          permissions: resolveMembershipPermissions(role, membership.permissions)
-        });
+      if (memberships.length === 0) {
+        for (const membership of matchedUser.memberships) {
+          const role = normalizeBrandRole(String(membership.role ?? ''));
+          memberships.push({
+            brandCode: membership.brand.code,
+            brandName: membership.brand.name,
+            role,
+            permissions: resolveMembershipPermissions(role, membership.permissions)
+          });
+        }
       }
     }
   }
@@ -252,13 +257,20 @@ export async function getAuthContext(): Promise<AuthContext> {
   const hasAdminMembership = memberships.some(
     (membership) => membership.role === 'admin'
   );
-  const resolvedMemberships = hasAdminMembership
-    ? brands.map((brand) => ({
-        brandCode: brand.code,
-        brandName: brand.name,
-        role: 'admin' as const,
-        permissions: defaultMembershipPermissions('admin')
-      }))
+  const hasGlobalAdminAccess = hasAdminMembership || hasBootstrapSuperAdminAccess;
+  const resolvedMemberships = hasGlobalAdminAccess
+    ? (brands.length > 0
+        ? brands.map((brand) => ({
+            brandCode: brand.code,
+            brandName: brand.name,
+            role: 'admin' as const,
+            permissions: defaultMembershipPermissions('admin')
+          }))
+        : memberships.map((membership) => ({
+            ...membership,
+            role: 'admin' as const,
+            permissions: defaultMembershipPermissions('admin')
+          })))
     : memberships;
 
   return {
@@ -267,7 +279,7 @@ export async function getAuthContext(): Promise<AuthContext> {
       ...user,
       memberships: resolvedMemberships
     },
-    canAccessAdmin: hasAdminMembership || hasBootstrapSuperAdminAccess
+    canAccessAdmin: hasGlobalAdminAccess
   };
 }
 
@@ -300,6 +312,20 @@ export async function requireBrandAccess(brandCode: string, nextPath = '/app') {
   const brandMemberships = context.user.memberships.filter(
     (membership) => membership.brandCode === brandCode
   );
+
+  if (brandMemberships.length === 0 && context.canAccessAdmin) {
+    return {
+      ...context,
+      brandMemberships: [
+        {
+          brandCode,
+          brandName: brandCode,
+          role: 'admin' as const,
+          permissions: defaultMembershipPermissions('admin')
+        }
+      ]
+    };
+  }
 
   if (brandMemberships.length === 0) {
     redirect('/app');
