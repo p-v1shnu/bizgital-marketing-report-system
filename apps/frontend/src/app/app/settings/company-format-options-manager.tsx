@@ -69,7 +69,7 @@ export function CompanyFormatOptionsManager({
   scope
 }: Props) {
   const router = useRouter();
-  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3003/api';
+  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? '/api';
   const orderedOptions = useMemo(() => sortOptions(options), [options]);
   const activeOptions = orderedOptions.filter(option => option.status === 'active');
   const inactiveOptions = orderedOptions.filter(option => option.status === 'deprecated');
@@ -461,3 +461,4 @@ export function CompanyFormatOptionsManager({
     </div>
   );
 }
+

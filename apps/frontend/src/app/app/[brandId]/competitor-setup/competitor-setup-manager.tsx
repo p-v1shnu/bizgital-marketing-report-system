@@ -37,7 +37,7 @@ type CatalogDraft = {
 
 type CatalogTab = 'active' | 'inactive';
 
-const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3003/api';
+const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? '/api';
 
 function emptyCatalogDraft(): CatalogDraft {
   return {
@@ -900,3 +900,4 @@ export function CompetitorSetupManager({
     </div>
   );
 }
+

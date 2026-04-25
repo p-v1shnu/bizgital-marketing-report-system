@@ -79,7 +79,7 @@ export function KpiCatalogManager({
   newBrandDefaultKpiCatalogIds
 }: Props) {
   const router = useRouter();
-  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3003/api';
+  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? '/api';
   const [modalMode, setModalMode] = useState<'create' | 'edit' | null>(null);
   const [defaultModalOpen, setDefaultModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -672,3 +672,4 @@ export function KpiCatalogManager({
     </div>
   );
 }
+

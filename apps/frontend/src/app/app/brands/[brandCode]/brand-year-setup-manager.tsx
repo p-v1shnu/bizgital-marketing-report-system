@@ -79,7 +79,7 @@ export function BrandYearSetupManager({
   initialEditorTab = 'kpi',
   hasExplicitYear
 }: Props) {
-  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3003/api';
+  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? '/api';
   const currentYear = new Date().getUTCFullYear();
 
   const [selectedYear, setSelectedYear] = useState(initialYear);
@@ -618,3 +618,4 @@ export function BrandYearSetupManager({
     </div>
   );
 }
+

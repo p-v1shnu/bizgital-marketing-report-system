@@ -99,7 +99,7 @@ function formatLifecycleTimestamp(value: string | null | undefined) {
 
 export function BrandsManager({ brands, users, actorName, actorEmail }: Props) {
   const router = useRouter();
-  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3003/api';
+  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? '/api';
   const [modalMode, setModalMode] = useState<'create' | 'edit' | null>(null);
   const [editingBrandCode, setEditingBrandCode] = useState<string | null>(null);
   const [draft, setDraft] = useState<BrandDraft>(createEmptyDraft);
@@ -744,3 +744,4 @@ export function BrandsManager({ brands, users, actorName, actorEmail }: Props) {
     </div>
   );
 }
+

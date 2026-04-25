@@ -172,7 +172,7 @@ function requiresPassword(signInMethod: SignInMethod) {
 
 export function UsersAccessManager({ users, brands, actorName, actorEmail }: Props) {
   const router = useRouter();
-  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3003/api';
+  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? '/api';
   const [modalMode, setModalMode] = useState<'create' | 'edit' | null>(null);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [draft, setDraft] = useState<UserDraft>(createEmptyDraft);
@@ -981,3 +981,4 @@ export function UsersAccessManager({ users, brands, actorName, actorEmail }: Pro
     </div>
   );
 }
+

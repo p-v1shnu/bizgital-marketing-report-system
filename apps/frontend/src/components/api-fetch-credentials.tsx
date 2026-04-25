@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 
 function getApiOrigin() {
-  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3003/api';
+  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? '/api';
 
   try {
     return new URL(apiBase).origin;
@@ -55,3 +55,4 @@ export function ApiFetchCredentials() {
 
   return null;
 }
+

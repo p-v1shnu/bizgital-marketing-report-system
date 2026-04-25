@@ -74,7 +74,7 @@ export function ImportColumnLayoutManager({
   initialSelectedLabels
 }: Props) {
   const router = useRouter();
-  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3003/api';
+  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? '/api';
   const [selectedLabels, setSelectedLabels] = useState<string[]>(() =>
     resolveInitialSelection(metaColumns, initialSelectedLabels)
   );
@@ -300,3 +300,4 @@ export function ImportColumnLayoutManager({
     </div>
   );
 }
+

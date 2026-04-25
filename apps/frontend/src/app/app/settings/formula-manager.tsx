@@ -68,7 +68,7 @@ function createEmptyDraft(): FormulaDraft {
 
 export function FormulaManager({ formulas, metaColumns }: FormulaManagerProps) {
   const router = useRouter();
-  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3003/api';
+  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? '/api';
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [pendingKey, setPendingKey] = useState<string | null>(null);
@@ -586,3 +586,4 @@ export function FormulaManager({ formulas, metaColumns }: FormulaManagerProps) {
     </div>
   );
 }
+

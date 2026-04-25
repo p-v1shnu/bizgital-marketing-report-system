@@ -66,7 +66,7 @@ type Completion = {
   isComplete: boolean;
 };
 
-const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3003/api';
+const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? '/api';
 const MAX_POSTS = 5;
 const MIN_POSTS = 1;
 const AUTOSAVE_MS = 1000;
@@ -1051,3 +1051,4 @@ export function CompetitorMonitoringWorkspace({
     </div>
   );
 }
+
