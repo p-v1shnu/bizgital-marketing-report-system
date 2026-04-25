@@ -87,10 +87,14 @@ docker compose -f docker-compose.local.yml up --build
 3. Initialize database (first run only):
 
 ```powershell
-docker compose exec backend npm --workspace @bizgital-marketing-report/backend run db:generate
-docker compose exec backend npm --workspace @bizgital-marketing-report/backend run db:push
-docker compose exec backend npm --workspace @bizgital-marketing-report/backend run db:seed
+docker compose run --rm backend npm --workspace @bizgital-marketing-report/backend run db:generate
+docker compose run --rm backend npm --workspace @bizgital-marketing-report/backend run db:push
+docker compose run --rm backend npm --workspace @bizgital-marketing-report/backend run db:seed
 ```
+
+Notes:
+- `db:seed` is for local demo data only.
+- `db:seed` will fail intentionally when `NODE_ENV=production`.
 
 4. Open the services:
 
@@ -105,6 +109,21 @@ Super Admin first-time setup mode:
 - set `SUPER_ADMIN_SETUP_MODE=force` in root `.env` when you want to require the setup UI
 - complete setup from `/setup/super-admin`
 - then switch back to `SUPER_ADMIN_SETUP_MODE=auto` (or `disabled`) and restart the stack
+- quick status check: `curl http://localhost:3003/api/users/bootstrap/status`
+- Super Admin can be created even when there are no brands yet; create brands after setup
+
+Microsoft sign-in callback URLs:
+
+- Local redirect URI (for Microsoft Entra app registration):
+  - `http://localhost:3200/api/auth/microsoft/callback`
+- Production redirect URI:
+  - `https://report.bizgital.com/api/auth/microsoft/callback`
+
+Important:
+- Keep `APP_ORIGIN` aligned with the frontend domain for each environment.
+- Example:
+  - Local: `APP_ORIGIN=http://localhost:3200`
+  - Production: `APP_ORIGIN=https://report.bizgital.com`
 
 Seed notes:
 
@@ -196,10 +215,10 @@ Important:
 - `AUTH_SESSION_SECRET` must use the same value in both frontend and backend environments.
 - Production must use a long random secret (do not keep the development fallback value).
 
-7. Restart backend after env changes:
+7. Restart local app services after env changes:
 
 ```powershell
-npm run dev:backend
+docker compose -f docker-compose.local.yml restart backend frontend
 ```
 
 8. Quick verification:
@@ -272,15 +291,47 @@ Update at least these keys in `.env`:
 - `APP_ORIGIN=https://report.example.com`
 - `NEXT_PUBLIC_API_BASE_URL=https://report.example.com/api`
 - `AUTH_SESSION_SECRET=<long-random-secret>`
+- `INTERNAL_API_AUTH_SECRET=<different-long-random-secret>`
 - database and media storage keys (`MYSQL_*`, `MEDIA_*`)
 
+Important:
+- avoid `$` in secrets unless properly escaped; safest is hex/base64url-style random strings
+- `AUTH_SESSION_SECRET` and `INTERNAL_API_AUTH_SECRET` must be different values
 2. Start production compose (loopback-only service ports):
 
 ```powershell
 docker compose up -d --build
 ```
 
-3. Install Caddy route on host (example file: `deploy/Caddyfile.example`):
+3. Initialize database schema (first deploy):
+
+```powershell
+docker compose run --rm backend npm --workspace @bizgital-marketing-report/backend run db:generate
+docker compose run --rm backend npm --workspace @bizgital-marketing-report/backend run db:push
+```
+
+Do not run this in production:
+
+```powershell
+docker compose run --rm backend npm --workspace @bizgital-marketing-report/backend run db:seed
+```
+
+4. Enable first-time Super Admin setup:
+
+- set `SUPER_ADMIN_SETUP_MODE=force` in `.env`
+- apply env and restart:
+
+```powershell
+docker compose up -d --build
+```
+
+- open `https://report.example.com/setup/super-admin`
+- after setup is complete, set `SUPER_ADMIN_SETUP_MODE=auto` (or `disabled`) and run:
+
+```powershell
+docker compose up -d --build
+```
+5. Install Caddy route on host (example file: `deploy/Caddyfile.example`):
 
 ```caddyfile
 report.example.com {
@@ -297,9 +348,16 @@ report.example.com {
 }
 ```
 
-4. Reload Caddy and verify:
+6. Reload Caddy and verify:
 - `https://report.example.com/api/health` returns OK
 - app login works
 - media endpoints block anonymous requests (run `qa:production-smoke`)
+
+Troubleshooting (`/setup/super-admin` shows "unable to load setup status"):
+- check backend health: `curl https://report.example.com/api/health`
+- check bootstrap status API: `curl https://report.example.com/api/users/bootstrap/status`
+- verify frontend secret env: `docker compose exec frontend printenv INTERNAL_API_AUTH_SECRET`
+- verify backend secret env: `docker compose exec backend printenv INTERNAL_API_AUTH_SECRET`
+- verify backend setup mode env: `docker compose exec backend printenv SUPER_ADMIN_SETUP_MODE`
 
 That keeps Caddy as the only public entrypoint while app containers stay private behind loopback bindings.
