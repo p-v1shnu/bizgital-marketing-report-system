@@ -39,10 +39,9 @@ import { UsersAccessManager } from './users-access-manager';
 type SettingsTab =
   | 'users'
   | 'brands'
+  | 'data-setup'
   | 'columns'
-  | 'import-mapping'
   | 'content-policy'
-  | 'formulas'
   | 'kpis'
   | 'questions'
   | 'audit-log';
@@ -67,10 +66,9 @@ const tabs: Array<{
 }> = [
   { key: 'users', label: 'Users & Access', icon: Users },
   { key: 'brands', label: 'Brands', icon: Building2 },
-  { key: 'columns', label: 'Table Display', icon: Columns3 },
-  { key: 'import-mapping', label: 'Import Mapping', icon: Link2 },
+  { key: 'data-setup', label: 'Data Setup', icon: Link2 },
+  { key: 'columns', label: 'Company Format', icon: Columns3 },
   { key: 'content-policy', label: 'Content Policy', icon: Image },
-  { key: 'formulas', label: 'Formula Manager', icon: Calculator },
   { key: 'kpis', label: 'KPI Catalog', icon: Target },
   { key: 'questions', label: 'Question Catalog', icon: BadgeCheck },
   { key: 'audit-log', label: 'Audit Log', icon: History }
@@ -85,6 +83,10 @@ const fieldLabelFallback = new Map<GlobalFieldTab, string>([
 function parseSettingsTab(value?: string): SettingsTab {
   if (value === 'top-content') {
     return 'content-policy';
+  }
+
+  if (value === 'import-mapping' || value === 'formulas') {
+    return 'data-setup';
   }
 
   return tabs.some(tab => tab.key === value) ? (value as SettingsTab) : 'users';
@@ -134,10 +136,10 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
 
   const shouldLoadBrands = activeTab === 'users' || activeTab === 'brands';
   const shouldLoadUsers = activeTab === 'users' || activeTab === 'brands';
-  const shouldLoadColumns = activeTab === 'columns';
-  const shouldLoadImportMapping = activeTab === 'import-mapping';
+  const shouldLoadColumns = activeTab === 'columns' || activeTab === 'data-setup';
+  const shouldLoadImportMapping = activeTab === 'data-setup';
   const shouldLoadContentPolicy = activeTab === 'content-policy';
-  const shouldLoadFormulas = activeTab === 'formulas' || activeTab === 'kpis';
+  const shouldLoadFormulas = activeTab === 'data-setup' || activeTab === 'kpis';
   const shouldLoadKpis = activeTab === 'kpis';
   const shouldLoadQuestionCatalog = activeTab === 'questions';
   const shouldLoadAuditLog = activeTab === 'audit-log';
@@ -436,30 +438,93 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         </Card>
       ) : null}
 
+      {activeTab === 'data-setup' ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-3">
+              <Link2 className="text-primary" />
+              Data setup
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="rounded-[20px] border border-border/60 bg-background/55 px-4 py-3 text-sm text-muted-foreground">
+              Configure CSV schema once, then continue with table layout and formula logic in the same flow.
+            </div>
+
+            <section className="space-y-3">
+              <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                <Link2 className="size-4 text-primary" />
+                Step 1: Import mapping baseline
+              </div>
+              {importMappingConfigResult.error ? (
+                <div className="rounded-[24px] border border-rose-500/25 bg-rose-500/8 px-4 py-4 text-sm text-rose-700 dark:text-rose-300">
+                  {importMappingConfigResult.error}
+                </div>
+              ) : importMappingConfigResult.data ? (
+                <ImportMappingManager
+                  config={importMappingConfigResult.data}
+                  returnPath={settingsHref('data-setup')}
+                />
+              ) : null}
+            </section>
+
+            <section className="space-y-3">
+              <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                <Columns3 className="size-4 text-primary" />
+                Step 2: Table display layout
+              </div>
+              {metaColumnsResult.error ? (
+                <div className="rounded-[18px] border border-rose-500/25 bg-rose-500/8 px-3 py-3 text-sm text-rose-700 dark:text-rose-300">
+                  {metaColumnsResult.error}
+                </div>
+              ) : importLayoutResult.error ? (
+                <div className="rounded-[18px] border border-rose-500/25 bg-rose-500/8 px-3 py-3 text-sm text-rose-700 dark:text-rose-300">
+                  {importLayoutResult.error}
+                </div>
+              ) : (
+                <ImportColumnLayoutManager
+                  initialSelectedLabels={importLayoutResult.data.visibleSourceColumnLabels}
+                  metaColumns={metaColumnsResult.data.columns}
+                />
+              )}
+            </section>
+
+            <section className="space-y-3">
+              <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                <Calculator className="size-4 text-primary" />
+                Step 3: Formula manager
+              </div>
+              {formulasResult.error ? (
+                <div className="rounded-[24px] border border-rose-500/25 bg-rose-500/8 px-4 py-4 text-sm text-rose-700 dark:text-rose-300">
+                  {formulasResult.error}
+                </div>
+              ) : metaColumnsResult.error ? (
+                <div className="rounded-[24px] border border-rose-500/25 bg-rose-500/8 px-4 py-4 text-sm text-rose-700 dark:text-rose-300">
+                  {metaColumnsResult.error}
+                </div>
+              ) : (
+                <FormulaManager
+                  formulas={formulasResult.data.items}
+                  metaColumns={metaColumnsResult.data.columns}
+                />
+              )}
+              <div className="text-sm text-muted-foreground">
+                Use expression format like <code>{'{{Views}} / {{Viewers}}'}</code>. Active formulas appear in Import content table after upload.
+              </div>
+            </section>
+          </CardContent>
+        </Card>
+      ) : null}
+
       {activeTab === 'columns' ? (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-3">
               <Columns3 className="text-primary" />
-              Table display / layout
+              Company format options
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {metaColumnsResult.error ? (
-              <div className="rounded-[18px] border border-rose-500/25 bg-rose-500/8 px-3 py-3 text-sm text-rose-700 dark:text-rose-300">
-                {metaColumnsResult.error}
-              </div>
-            ) : importLayoutResult.error ? (
-              <div className="rounded-[18px] border border-rose-500/25 bg-rose-500/8 px-3 py-3 text-sm text-rose-700 dark:text-rose-300">
-                {importLayoutResult.error}
-              </div>
-            ) : (
-              <ImportColumnLayoutManager
-                initialSelectedLabels={importLayoutResult.data.visibleSourceColumnLabels}
-                metaColumns={metaColumnsResult.data.columns}
-              />
-            )}
-
             <nav className="flex flex-wrap gap-2" aria-label="Column field tabs">
               {(['content_style', 'media_format', 'content_objective'] as GlobalFieldTab[]).map(
                 field => (
@@ -499,37 +564,6 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         </Card>
       ) : null}
 
-      {activeTab === 'formulas' ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-3">
-              <Calculator className="text-primary" />
-              Formula manager
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {formulasResult.error ? (
-              <div className="rounded-[24px] border border-rose-500/25 bg-rose-500/8 px-4 py-4 text-sm text-rose-700 dark:text-rose-300">
-                {formulasResult.error}
-              </div>
-            ) : metaColumnsResult.error ? (
-              <div className="rounded-[24px] border border-rose-500/25 bg-rose-500/8 px-4 py-4 text-sm text-rose-700 dark:text-rose-300">
-                {metaColumnsResult.error}
-              </div>
-            ) : (
-              <FormulaManager
-                formulas={formulasResult.data.items}
-                metaColumns={metaColumnsResult.data.columns}
-              />
-            )}
-            <div className="text-sm text-muted-foreground">
-              Use expression format like <code>{'{{Views}} / {{Viewers}}'}</code>.
-              Active formulas appear in Import content table after upload.
-            </div>
-          </CardContent>
-        </Card>
-      ) : null}
-
       {activeTab === 'content-policy' ? (
         <Card>
           <CardHeader>
@@ -546,29 +580,6 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
               topContentPolicy={topContentPolicyResult.data}
               topContentPolicyError={topContentPolicyResult.error}
             />
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {activeTab === 'import-mapping' ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-3">
-              <Link2 className="text-primary" />
-              Import mapping
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {importMappingConfigResult.error ? (
-              <div className="rounded-[24px] border border-rose-500/25 bg-rose-500/8 px-4 py-4 text-sm text-rose-700 dark:text-rose-300">
-                {importMappingConfigResult.error}
-              </div>
-            ) : importMappingConfigResult.data ? (
-              <ImportMappingManager
-                config={importMappingConfigResult.data}
-                returnPath={settingsHref('import-mapping')}
-              />
-            ) : null}
           </CardContent>
         </Card>
       ) : null}

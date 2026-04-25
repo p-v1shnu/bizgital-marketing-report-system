@@ -473,6 +473,12 @@ export class ColumnConfigService {
       take: 500
     });
 
+    await this.ensureUiSettingsStorage();
+    const [draftMapping, publishedMapping] = await Promise.all([
+      this.readImportColumnMappingDraft(),
+      this.readImportColumnMappingPublished()
+    ]);
+
     const deduped = new Map<
       string,
       {
@@ -481,18 +487,50 @@ export class ColumnConfigService {
         lastSeenAt: string;
       }
     >();
-
-    for (const profile of latestProfiles) {
-      const label = normalizeLabel(profile.sourceColumnName);
-      if (!label || deduped.has(label)) {
-        continue;
+    const upsertCandidate = (
+      labelCandidate: string | null | undefined,
+      sampleValue: string | null,
+      lastSeenAt: string
+    ) => {
+      const normalizedLabel = normalizeLabel(String(labelCandidate ?? ''));
+      if (!normalizedLabel || deduped.has(normalizedLabel)) {
+        return;
       }
 
-      deduped.set(label, {
-        label: profile.sourceColumnName,
-        sampleValue: profile.sampleValue,
-        lastSeenAt: profile.updatedAt.toISOString()
+      deduped.set(normalizedLabel, {
+        label: String(labelCandidate ?? ''),
+        sampleValue,
+        lastSeenAt
       });
+    };
+
+    for (const profile of latestProfiles) {
+      upsertCandidate(
+        profile.sourceColumnName,
+        profile.sampleValue,
+        profile.updatedAt.toISOString()
+      );
+    }
+
+    const appendRuleHeaders = (
+      rules: ImportColumnMappingRule[],
+      lastSeenAt: string
+    ) => {
+      for (const rule of this.sanitizeImportColumnMappingRules(rules)) {
+        upsertCandidate(rule.baselineHeader, null, lastSeenAt);
+      }
+    };
+
+    if (draftMapping) {
+      for (const header of draftMapping.uploadedHeaders) {
+        upsertCandidate(header, null, draftMapping.updatedAt);
+      }
+
+      appendRuleHeaders(draftMapping.rules, draftMapping.updatedAt);
+    }
+
+    if (publishedMapping) {
+      appendRuleHeaders(publishedMapping.rules, publishedMapping.publishedAt);
     }
 
     return {
@@ -925,13 +963,18 @@ export class ColumnConfigService {
 
   async getImportColumnMappingConfig(): Promise<ImportColumnMappingConfigResponse> {
     await this.ensureUiSettingsStorage();
-    const published = await this.getOrCreatePublishedImportColumnMappingVersion();
+    const published = await this.readImportColumnMappingPublished();
     const draft = await this.readImportColumnMappingDraft();
     const history = await this.readImportColumnMappingHistory();
 
     return {
       targetCatalog: IMPORT_MAPPING_TARGET_CATALOG,
-      published,
+      published: published
+        ? {
+            ...published,
+            rules: this.sanitizeImportColumnMappingRules(published.rules)
+          }
+        : null,
       draft,
       history
     };
@@ -952,8 +995,10 @@ export class ColumnConfigService {
       throw new BadRequestException('CSV header row is required to create mapping draft.');
     }
 
-    const published = await this.getOrCreatePublishedImportColumnMappingVersion();
-    const sanitizedPublishedRules = this.sanitizeImportColumnMappingRules(published.rules);
+    const published = await this.readImportColumnMappingPublished();
+    const sanitizedPublishedRules = this.sanitizeImportColumnMappingRules(
+      published?.rules ?? []
+    );
     const publishedRuleByTarget = new Map(
       sanitizedPublishedRules.map((rule) => [rule.targetField, rule])
     );
@@ -1190,14 +1235,22 @@ export class ColumnConfigService {
   }
 
   async getPublishedImportColumnMappingRules(): Promise<ImportColumnMappingRule[]> {
-    const published = await this.getOrCreatePublishedImportColumnMappingVersion();
+    const published = await this.readImportColumnMappingPublished();
+    if (!published) {
+      return [];
+    }
+
     return this.sanitizeImportColumnMappingRules(published.rules).filter((rule) =>
       this.isCanonicalImportMappingTargetField(rule.targetField)
     );
   }
 
   async getPublishedImportColumnHeaderRules(): Promise<ImportColumnMappingRule[]> {
-    const published = await this.getOrCreatePublishedImportColumnMappingVersion();
+    const published = await this.readImportColumnMappingPublished();
+    if (!published) {
+      return [];
+    }
+
     return this.sanitizeImportColumnMappingRules(published.rules);
   }
 
@@ -1902,30 +1955,6 @@ export class ColumnConfigService {
     return IMPORT_MAPPING_TARGET_CATALOG.some((target) => target.key === value);
   }
 
-  private async getOrCreatePublishedImportColumnMappingVersion() {
-    const existing = await this.readImportColumnMappingPublished();
-    if (existing) {
-      return {
-        ...existing,
-        rules: this.sanitizeImportColumnMappingRules(existing.rules)
-      };
-    }
-
-    const initialVersion: ImportColumnMappingVersion = {
-      versionId: randomUUID(),
-      sourceFilename: null,
-      publishedAt: new Date().toISOString(),
-      publishedBy: 'system',
-      note: 'Initial baseline seed',
-      rules: this.sanitizeImportColumnMappingRules(DEFAULT_IMPORT_MAPPING_RULES)
-    };
-
-    await this.writeUiSettingJson(IMPORT_COLUMN_MAPPING_PUBLISHED_SETTING_KEY, initialVersion);
-    await this.writeUiSettingJson(IMPORT_COLUMN_MAPPING_HISTORY_SETTING_KEY, [initialVersion]);
-
-    return initialVersion;
-  }
-
   private async readImportColumnMappingPublished() {
     const parsed = await this.readUiSettingJson<ImportColumnMappingVersion>(
       IMPORT_COLUMN_MAPPING_PUBLISHED_SETTING_KEY
@@ -1935,12 +1964,18 @@ export class ColumnConfigService {
       return null;
     }
 
-    return {
+    const version: ImportColumnMappingVersion = {
       ...parsed,
       sourceFilename: parsed.sourceFilename ?? null,
       publishedBy: parsed.publishedBy ?? null,
       note: parsed.note ?? null
     };
+
+    if (this.isLegacyInitialBaselineMapping(version)) {
+      return null;
+    }
+
+    return version;
   }
 
   private async readImportColumnMappingDraft() {
@@ -1996,10 +2031,41 @@ export class ColumnConfigService {
         note: item.note ?? null,
         rules: this.sanitizeImportColumnMappingRules(item.rules)
       }))
+      .filter((item) => !this.isLegacyInitialBaselineMapping(item))
       .sort(
         (left, right) =>
           new Date(right.publishedAt).getTime() - new Date(left.publishedAt).getTime()
       );
+  }
+
+  private isLegacyInitialBaselineMapping(version: ImportColumnMappingVersion) {
+    if (
+      version.sourceFilename !== null ||
+      version.publishedBy !== 'system' ||
+      version.note !== 'Initial baseline seed'
+    ) {
+      return false;
+    }
+
+    const comparableVersionRules = this.toComparableImportMappingRules(version.rules);
+    const comparableDefaultRules = this.toComparableImportMappingRules(
+      DEFAULT_IMPORT_MAPPING_RULES
+    );
+
+    return JSON.stringify(comparableVersionRules) === JSON.stringify(comparableDefaultRules);
+  }
+
+  private toComparableImportMappingRules(rules: ImportColumnMappingRule[]) {
+    return this.sanitizeImportColumnMappingRules(rules).map((rule) => ({
+      targetField: rule.targetField,
+      baselineHeader: this.normalizeHeaderKey(rule.baselineHeader),
+      displayLabel: this.normalizeHeaderKey(rule.displayLabel),
+      aliases: rule.aliases
+        .map((alias) => this.normalizeHeaderKey(alias))
+        .filter((alias) => !!alias)
+        .sort(),
+      required: !!rule.required
+    }));
   }
 
   private async readUiSettingJson<T>(settingKey: string): Promise<T | null> {

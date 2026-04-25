@@ -46,7 +46,11 @@ function parseErrorMessage(payload: unknown, fallback: string) {
   return fallback;
 }
 
-function previewLabel(preview: ComputedFormulaPreviewResponse | null) {
+function previewLabel(preview: ComputedFormulaPreviewResponse | null, hasMetaColumns: boolean) {
+  if (!hasMetaColumns) {
+    return 'Preview pending CSV schema setup';
+  }
+
   if (!preview) {
     return 'No preview yet';
   }
@@ -84,6 +88,7 @@ export function FormulaManager({ formulas, metaColumns }: FormulaManagerProps) {
     () => metaColumns.map(column => column.label),
     [metaColumns]
   );
+  const hasMetaColumns = fieldPickerColumns.length > 0;
 
   const isModalOpen = modalMode !== null;
   const currentEditingFormula = editingFormulaId
@@ -331,12 +336,17 @@ export function FormulaManager({ formulas, metaColumns }: FormulaManagerProps) {
 
   return (
     <div className="space-y-4">
-      {statusError ? (
+      {!hasMetaColumns ? (
+        <div className="rounded-2xl border border-sky-500/25 bg-sky-500/8 px-4 py-3 text-sm text-sky-700 dark:text-sky-300">
+          Formula preview will be available after CSV schema is prepared from Data Setup.
+        </div>
+      ) : null}
+      {statusError && !isModalOpen ? (
         <div className="rounded-2xl border border-rose-500/25 bg-rose-500/8 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">
           {statusError}
         </div>
       ) : null}
-      {statusMessage ? (
+      {statusMessage && !isModalOpen ? (
         <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/8 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300">
           {statusMessage}
         </div>
@@ -377,7 +387,7 @@ export function FormulaManager({ formulas, metaColumns }: FormulaManagerProps) {
             ) : (
               formulas.map(formula => {
                 const preview = previewById[formula.id] ?? formula.preview;
-                const hasPreviewError = !preview.isValid;
+                const hasPreviewError = hasMetaColumns && !preview.isValid;
 
                 return (
                   <tr className="border-b border-border/50 last:border-b-0" key={formula.id}>
@@ -386,7 +396,7 @@ export function FormulaManager({ formulas, metaColumns }: FormulaManagerProps) {
                       <div className="truncate">{formula.expression}</div>
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
-                      <div>{previewLabel(preview)}</div>
+                      <div>{previewLabel(preview, hasMetaColumns)}</div>
                       {hasPreviewError ? (
                         <div className="mt-1 text-xs text-rose-700 dark:text-rose-300">
                           {preview.issues[0]?.message ?? 'Invalid expression'}
@@ -416,7 +426,7 @@ export function FormulaManager({ formulas, metaColumns }: FormulaManagerProps) {
                       <>
                         <div className="flex flex-wrap gap-2">
                           <Button
-                            disabled={pendingKey === `preview:${formula.id}`}
+                            disabled={!hasMetaColumns || pendingKey === `preview:${formula.id}`}
                             onClick={() => previewFormula(formula.id, formula.expression)}
                             size="sm"
                             type="button"
@@ -455,6 +465,8 @@ export function FormulaManager({ formulas, metaColumns }: FormulaManagerProps) {
       {isModalOpen ? (
         <ModalShell
           description="Use {{Column Name}} in expressions."
+          error={statusError}
+          message={statusMessage}
           onClose={closeModal}
           title={modalMode === 'create' ? 'Create formula' : 'Edit formula'}
           widthClassName="max-w-4xl"
@@ -513,24 +525,30 @@ export function FormulaManager({ formulas, metaColumns }: FormulaManagerProps) {
               <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                 Field picker
               </div>
-              <div className="flex max-h-36 flex-wrap gap-2 overflow-y-auto pr-1">
-                {fieldPickerColumns.map(column => (
-                  <Button
-                    key={`${modalMode}-${column}`}
-                    onClick={() => appendToken(column)}
-                    size="sm"
-                    type="button"
-                    variant="outline"
-                  >
-                    {column}
-                  </Button>
-                ))}
-              </div>
+              {hasMetaColumns ? (
+                <div className="flex max-h-36 flex-wrap gap-2 overflow-y-auto pr-1">
+                  {fieldPickerColumns.map(column => (
+                    <Button
+                      key={`${modalMode}-${column}`}
+                      onClick={() => appendToken(column)}
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                    >
+                      {column}
+                    </Button>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-xl border border-dashed border-border/60 px-3 py-3 text-sm text-muted-foreground">
+                  No CSV headers available yet. Upload a CSV in Data Setup to unlock field picker.
+                </div>
+              )}
             </div>
 
             <div className="mt-4 flex flex-wrap gap-2">
               <Button
-                disabled={pendingKey === 'preview'}
+                disabled={!hasMetaColumns || pendingKey === 'preview'}
                 onClick={() => runPreview(draft.expression)}
                 type="button"
                 variant="outline"
@@ -542,8 +560,8 @@ export function FormulaManager({ formulas, metaColumns }: FormulaManagerProps) {
               </Button>
             </div>
 
-            <div className="mt-3 text-sm text-muted-foreground">{previewLabel(draftPreview)}</div>
-            {draftPreview && !draftPreview.isValid ? (
+            <div className="mt-3 text-sm text-muted-foreground">{previewLabel(draftPreview, hasMetaColumns)}</div>
+            {hasMetaColumns && draftPreview && !draftPreview.isValid ? (
               <div className="mt-2 space-y-1 text-sm text-rose-700 dark:text-rose-300">
                 {draftPreview.issues.map((issue, index) => (
                   <div key={`draft-issue-${index}`}>{issue.message}</div>

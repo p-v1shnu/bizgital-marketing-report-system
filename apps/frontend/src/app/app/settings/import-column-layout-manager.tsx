@@ -84,6 +84,7 @@ export function ImportColumnLayoutManager({
   const [statusError, setStatusError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const hasMetaColumns = metaColumns.length > 0;
 
   const filtered = useMemo(() => {
     const keyword = normalizeLabel(query);
@@ -100,6 +101,11 @@ export function ImportColumnLayoutManager({
   const selectedPreview = selectedLabels.slice(0, 8);
 
   function openEditor() {
+    if (!hasMetaColumns) {
+      setStatusError('Upload a CSV in Data Setup first to configure table display columns.');
+      return;
+    }
+
     setEditSelectedLabels(selectedLabels);
     setQuery('');
     setIsEditOpen(true);
@@ -184,11 +190,17 @@ export function ImportColumnLayoutManager({
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button onClick={openEditor} size="sm" type="button">
+          <Button disabled={!hasMetaColumns} onClick={openEditor} size="sm" type="button">
             Edit columns
           </Button>
         </div>
       </div>
+
+      {!hasMetaColumns ? (
+        <div className="rounded-2xl border border-sky-500/25 bg-sky-500/8 px-4 py-3 text-sm text-sky-700 dark:text-sky-300">
+          No CSV schema yet. Upload a CSV in Data Setup to choose visible columns.
+        </div>
+      ) : null}
 
       {statusError ? (
         <div className="rounded-2xl border border-rose-500/25 bg-rose-500/8 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">
