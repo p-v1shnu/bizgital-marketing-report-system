@@ -50,12 +50,14 @@ type GlobalAppShellProps = {
     email: string;
   };
   canAccessAdmin: boolean;
+  showSuperAdminSetupModeWarning?: boolean;
 };
 
 export function GlobalAppShell({
   children,
   currentUser,
-  canAccessAdmin
+  canAccessAdmin,
+  showSuperAdminSetupModeWarning = false
 }: GlobalAppShellProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
@@ -209,7 +211,15 @@ export function GlobalAppShell({
         </div>
       </aside>
 
-      <main className="min-w-0 flex-1 p-4 md:p-6 lg:p-8">{children}</main>
+      <main className="min-w-0 flex-1 p-4 md:p-6 lg:p-8">
+        {showSuperAdminSetupModeWarning ? (
+          <div className="mb-4 rounded-2xl border border-amber-500/25 bg-amber-500/8 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
+            Super Admin setup mode is still enabled (`SUPER_ADMIN_SETUP_MODE=force`).
+            Please switch it to `auto` or `disabled` in `.env`, then redeploy.
+          </div>
+        ) : null}
+        {children}
+      </main>
     </div>
   );
 }
