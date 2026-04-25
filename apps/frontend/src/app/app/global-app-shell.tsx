@@ -202,7 +202,7 @@ export function GlobalAppShell({
                 ? 'flex h-14 items-center justify-center'
                 : 'flex h-11 items-center justify-center gap-2 px-3 text-sm font-medium'
             )}
-            href="/api/auth/logout"
+            href="/logout"
             title="Sign out"
           >
             <LogOut className="size-4 text-primary" />
