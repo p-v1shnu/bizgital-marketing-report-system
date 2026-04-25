@@ -1480,21 +1480,30 @@ export class ColumnConfigService {
       };
     }
 
-    const approvedRows = await this.prisma.reportVersion.findFirst({
-      where: {
-        workflowState: ReportWorkflowState.approved,
-        approvedAt: {
-          not: null
+    const approvedRows = await this.prisma.reportVersion
+      .findFirst({
+        where: {
+          workflowState: ReportWorkflowState.approved,
+          approvedAt: {
+            not: null
+          }
+        },
+        orderBy: {
+          approvedAt: 'desc'
+        },
+        select: {
+          id: true,
+          approvedAt: true
         }
-      },
-      orderBy: {
-        approvedAt: 'desc'
-      },
-      select: {
-        id: true,
-        approvedAt: true
-      }
-    });
+      })
+      .catch((error) => {
+        if (this.isMissingTableError(error)) {
+          // Fresh install fallback before full schema sync.
+          return null;
+        }
+
+        throw error;
+      });
 
     if (
       approvedRows?.approvedAt &&
