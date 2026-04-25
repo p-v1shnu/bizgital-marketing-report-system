@@ -1383,6 +1383,21 @@ export class ColumnConfigService {
         INDEX global_computed_formulas_is_active_created_at_idx (is_active, created_at)
       ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
     `);
+    await this.ensureFormulaStorageColumn(
+      'is_active',
+      'TINYINT(1) NOT NULL DEFAULT 0',
+      'expression'
+    );
+    await this.ensureFormulaStorageColumn(
+      'created_at',
+      'DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)',
+      'is_active'
+    );
+    await this.ensureFormulaStorageColumn(
+      'updated_at',
+      'DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)',
+      'created_at'
+    );
     const setting = await this.ensureEngagementFormulaSetting();
     await this.ensureSystemEngagementFormulaRecord(setting);
   }
@@ -1402,6 +1417,21 @@ export class ColumnConfigService {
         UNIQUE KEY global_computed_column_settings_key_unique (\`key\`)
       ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
     `);
+    await this.ensureComputedColumnSettingsStorageColumn(
+      'operation',
+      "VARCHAR(32) NOT NULL DEFAULT 'sum'",
+      'label'
+    );
+    await this.ensureComputedColumnSettingsStorageColumn(
+      'source_label_a',
+      'VARCHAR(255) NOT NULL',
+      'operation'
+    );
+    await this.ensureComputedColumnSettingsStorageColumn(
+      'source_label_b',
+      'VARCHAR(255) NOT NULL',
+      'source_label_a'
+    );
   }
 
   private async ensureFormulaLockStorage() {
@@ -1788,10 +1818,55 @@ export class ColumnConfigService {
 
     return (
       code === 'P2021' ||
+      code === 'P2022' ||
       message.includes("doesn't exist") ||
       message.includes('no such table') ||
-      message.includes('unknown table')
+      message.includes('unknown table') ||
+      message.includes('unknown column') ||
+      message.includes('column does not exist')
     );
+  }
+
+  private async ensureFormulaStorageColumn(
+    columnName: string,
+    definition: string,
+    afterColumn: string
+  ) {
+    try {
+      await this.prisma.$executeRawUnsafe(
+        `
+        ALTER TABLE global_computed_formulas
+        ADD COLUMN ${columnName} ${definition} AFTER ${afterColumn}
+        `
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message.toLowerCase() : '';
+      if (message.includes('duplicate column name')) {
+        return;
+      }
+      throw error;
+    }
+  }
+
+  private async ensureComputedColumnSettingsStorageColumn(
+    columnName: string,
+    definition: string,
+    afterColumn: string
+  ) {
+    try {
+      await this.prisma.$executeRawUnsafe(
+        `
+        ALTER TABLE global_computed_column_settings
+        ADD COLUMN ${columnName} ${definition} AFTER ${afterColumn}
+        `
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message.toLowerCase() : '';
+      if (message.includes('duplicate column name')) {
+        return;
+      }
+      throw error;
+    }
   }
 
   private async ensureSystemEngagementFormulaRecord(setting: {
