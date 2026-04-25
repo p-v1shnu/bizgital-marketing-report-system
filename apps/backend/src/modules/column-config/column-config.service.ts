@@ -463,15 +463,7 @@ export class ColumnConfigService {
   }
 
   async getMetaColumnCatalog(limit = 120): Promise<MetaColumnCatalogResponse> {
-    const latestProfiles = await this.prisma.importColumnProfile.findMany({
-      select: {
-        sourceColumnName: true,
-        sampleValue: true,
-        updatedAt: true
-      },
-      orderBy: [{ updatedAt: 'desc' }],
-      take: 500
-    });
+    const latestProfiles = await this.readLatestImportColumnProfiles();
 
     await this.ensureUiSettingsStorage();
     const [draftMapping, publishedMapping] = await Promise.all([
@@ -1395,6 +1387,23 @@ export class ColumnConfigService {
     await this.ensureSystemEngagementFormulaRecord(setting);
   }
 
+  private async ensureComputedColumnSettingsStorage() {
+    await this.prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS global_computed_column_settings (
+        id VARCHAR(191) NOT NULL,
+        \`key\` VARCHAR(191) NOT NULL,
+        label VARCHAR(255) NOT NULL,
+        operation VARCHAR(32) NOT NULL DEFAULT 'sum',
+        source_label_a VARCHAR(255) NOT NULL,
+        source_label_b VARCHAR(255) NOT NULL,
+        created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (id),
+        UNIQUE KEY global_computed_column_settings_key_unique (\`key\`)
+      ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    `);
+  }
+
   private async ensureFormulaLockStorage() {
     await this.prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS global_computed_formula_locks (
@@ -1716,6 +1725,8 @@ export class ColumnConfigService {
   }
 
   private async ensureEngagementFormulaSetting() {
+    await this.ensureComputedColumnSettingsStorage();
+
     return this.prisma.globalComputedColumnSetting.upsert({
       where: {
         key: ComputedColumnKey.engagement
@@ -1729,6 +1740,49 @@ export class ColumnConfigService {
         sourceLabelB: defaultEngagementFormula.sourceLabelB
       }
     });
+  }
+
+  private async readLatestImportColumnProfiles() {
+    try {
+      return await this.prisma.importColumnProfile.findMany({
+        select: {
+          sourceColumnName: true,
+          sampleValue: true,
+          updatedAt: true
+        },
+        orderBy: [{ updatedAt: 'desc' }],
+        take: 500
+      });
+    } catch (error) {
+      if (!this.isMissingTableError(error)) {
+        throw error;
+      }
+
+      // Fresh install fallback when schema sync has not created this table yet.
+      return [];
+    }
+  }
+
+  private isMissingTableError(error: unknown) {
+    if (!error || typeof error !== 'object') {
+      return false;
+    }
+
+    const code =
+      'code' in error && typeof (error as { code?: unknown }).code === 'string'
+        ? (error as { code: string }).code
+        : '';
+    const message =
+      'message' in error && typeof (error as { message?: unknown }).message === 'string'
+        ? (error as { message: string }).message.toLowerCase()
+        : '';
+
+    return (
+      code === 'P2021' ||
+      message.includes("doesn't exist") ||
+      message.includes('no such table') ||
+      message.includes('unknown table')
+    );
   }
 
   private async ensureSystemEngagementFormulaRecord(setting: {
