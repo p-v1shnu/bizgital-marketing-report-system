@@ -396,10 +396,52 @@ export class ImportsService {
     }
 
     if (header.includes(0)) {
+      return this.isUtf16EncodedText(header);
+    }
+
+    return true;
+  }
+
+  private isUtf16EncodedText(header: Buffer) {
+    const inspectLength = Math.min(header.length, 512);
+    if (inspectLength < 4) {
       return false;
     }
 
-    return !header.toString('utf8').includes('\uFFFD');
+    if (
+      inspectLength >= 2 &&
+      ((header[0] === 0xff && header[1] === 0xfe) ||
+        (header[0] === 0xfe && header[1] === 0xff))
+    ) {
+      return true;
+    }
+
+    let evenNulls = 0;
+    let oddNulls = 0;
+    let evenCount = 0;
+    let oddCount = 0;
+
+    for (let index = 0; index < inspectLength; index += 1) {
+      if (index % 2 === 0) {
+        evenCount += 1;
+        if (header[index] === 0x00) {
+          evenNulls += 1;
+        }
+      } else {
+        oddCount += 1;
+        if (header[index] === 0x00) {
+          oddNulls += 1;
+        }
+      }
+    }
+
+    const evenNullRatio = evenCount === 0 ? 0 : evenNulls / evenCount;
+    const oddNullRatio = oddCount === 0 ? 0 : oddNulls / oddCount;
+
+    return (
+      (oddNullRatio > 0.4 && evenNullRatio < 0.2) ||
+      (evenNullRatio > 0.4 && oddNullRatio < 0.2)
+    );
   }
 
   private isZipDocument(header: Buffer) {

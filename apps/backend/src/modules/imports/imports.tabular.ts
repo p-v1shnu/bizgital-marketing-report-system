@@ -55,7 +55,8 @@ function isNonEmptyRow(row: string[]) {
 }
 
 async function parseCsvDocument(filePath: string): Promise<ParsedImportDocument> {
-  const rawContent = await readFile(filePath, 'utf8');
+  const rawBuffer = await readFile(filePath);
+  const rawContent = decodeCsvBuffer(rawBuffer);
   const rows = parseCsvRows(rawContent).map((row) => row.map((value) => value.trim()));
   const headerRowIndex = rows.findIndex((row) => isNonEmptyCsvRow(row));
 
@@ -63,6 +64,118 @@ async function parseCsvDocument(filePath: string): Promise<ParsedImportDocument>
     sourceType: 'csv',
     sheetName: null
   });
+}
+
+function decodeCsvBuffer(buffer: Buffer): string {
+  if (buffer.length === 0) {
+    return '';
+  }
+
+  // UTF-8 BOM
+  if (
+    buffer.length >= 3 &&
+    buffer[0] === 0xef &&
+    buffer[1] === 0xbb &&
+    buffer[2] === 0xbf
+  ) {
+    return buffer.subarray(3).toString('utf8');
+  }
+
+  // UTF-16 LE BOM
+  if (buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xfe) {
+    return buffer.subarray(2).toString('utf16le');
+  }
+
+  // UTF-16 BE BOM
+  if (buffer.length >= 2 && buffer[0] === 0xfe && buffer[1] === 0xff) {
+    return decodeUtf16Be(buffer.subarray(2));
+  }
+
+  if (looksLikeUtf16Le(buffer)) {
+    return buffer.toString('utf16le');
+  }
+
+  if (looksLikeUtf16Be(buffer)) {
+    return decodeUtf16Be(buffer);
+  }
+
+  return buffer.toString('utf8');
+}
+
+function decodeUtf16Be(buffer: Buffer): string {
+  const usableLength = buffer.length - (buffer.length % 2);
+  const swapped = Buffer.allocUnsafe(usableLength);
+
+  for (let index = 0; index < usableLength; index += 2) {
+    swapped[index] = buffer[index + 1];
+    swapped[index + 1] = buffer[index];
+  }
+
+  return swapped.toString('utf16le');
+}
+
+function looksLikeUtf16Le(buffer: Buffer): boolean {
+  const inspectLength = Math.min(buffer.length, 512);
+  if (inspectLength < 4) {
+    return false;
+  }
+
+  let evenNulls = 0;
+  let oddNulls = 0;
+  let evenCount = 0;
+  let oddCount = 0;
+
+  for (let index = 0; index < inspectLength; index += 1) {
+    const value = buffer[index];
+    if (index % 2 === 0) {
+      evenCount += 1;
+      if (value === 0x00) {
+        evenNulls += 1;
+      }
+    } else {
+      oddCount += 1;
+      if (value === 0x00) {
+        oddNulls += 1;
+      }
+    }
+  }
+
+  const evenNullRatio = evenCount === 0 ? 0 : evenNulls / evenCount;
+  const oddNullRatio = oddCount === 0 ? 0 : oddNulls / oddCount;
+
+  return oddNullRatio > 0.4 && evenNullRatio < 0.2;
+}
+
+function looksLikeUtf16Be(buffer: Buffer): boolean {
+  const inspectLength = Math.min(buffer.length, 512);
+  if (inspectLength < 4) {
+    return false;
+  }
+
+  let evenNulls = 0;
+  let oddNulls = 0;
+  let evenCount = 0;
+  let oddCount = 0;
+
+  for (let index = 0; index < inspectLength; index += 1) {
+    const value = buffer[index];
+    if (index % 2 === 0) {
+      evenCount += 1;
+      if (value === 0x00) {
+        evenNulls += 1;
+      }
+    } else {
+      oddCount += 1;
+      if (value === 0x00) {
+        oddNulls += 1;
+      }
+    }
+  }
+
+  const evenNullRatio = evenCount === 0 ? 0 : evenNulls / evenCount;
+  const oddNullRatio = oddCount === 0 ? 0 : oddNulls / oddCount;
+
+  return evenNullRatio > 0.4 && oddNullRatio < 0.2;
 }
 
 function parseExcelDocument(filePath: string): ParsedImportDocument {
