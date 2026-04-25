@@ -19,6 +19,7 @@ type Props = {
 
 type SignInMethod = 'microsoft_only' | 'password_only' | 'microsoft_and_password';
 type UserRole = 'admin' | 'content' | 'approver' | 'viewer';
+type RoleFieldValue = UserRole | 'super_admin_global';
 
 type UserDraft = {
   displayName: string;
@@ -149,6 +150,10 @@ function isProtectedSuperAdmin(user: UserSummary) {
   return user.isBootstrapSuperAdmin === true;
 }
 
+function isGlobalBootstrapSuperAdmin(user: UserSummary | null | undefined) {
+  return !!user && user.isBootstrapSuperAdmin === true && user.memberships.length === 0;
+}
+
 function signInHelperText(signInMethod: SignInMethod) {
   if (signInMethod === 'microsoft_only') {
     return 'Sign in with Microsoft Entra ID only. No local password is stored.';
@@ -180,6 +185,10 @@ export function UsersAccessManager({ users, brands, actorName, actorEmail }: Pro
 
   const usersById = useMemo(() => new Map(users.map(user => [user.id, user])), [users]);
   const editingUser = editingUserId ? usersById.get(editingUserId) ?? null : null;
+  const showGlobalSuperAdminRole = isGlobalBootstrapSuperAdmin(editingUser);
+  const roleFieldValue: RoleFieldValue = showGlobalSuperAdminRole
+    ? 'super_admin_global'
+    : draft.role;
   const allBrandCodes = useMemo(() => brands.map(brand => brand.code), [brands]);
   const brandNameByCode = useMemo(
     () => new Map(brands.map(brand => [brand.code, brand.name] as const)),
@@ -398,6 +407,9 @@ export function UsersAccessManager({ users, brands, actorName, actorEmail }: Pro
 
         setStatusMessage(`User "${draft.displayName}" created.`);
       } else if (editingUserId) {
+        const skipMembershipUpdate =
+          editingUser?.isBootstrapSuperAdmin === true &&
+          editingUser.memberships.length === 0;
         const response = await fetch(`${apiBase}/users/${editingUserId}`, {
           method: 'POST',
           headers: {
@@ -410,8 +422,12 @@ export function UsersAccessManager({ users, brands, actorName, actorEmail }: Pro
             actorName,
             actorEmail,
             ...(normalizedPassword ? { password: normalizedPassword } : {}),
-            replaceMemberships: true,
-            memberships: membershipPayload
+            ...(!skipMembershipUpdate
+              ? {
+                  replaceMemberships: true,
+                  memberships: membershipPayload
+                }
+              : {})
           })
         });
         const payload = await response.json().catch(() => null);
@@ -584,7 +600,9 @@ export function UsersAccessManager({ users, brands, actorName, actorEmail }: Pro
                   <td className="px-4 py-3 text-muted-foreground">{user.email}</td>
                   <td className="px-4 py-3 text-muted-foreground">{signInLabel(user)}</td>
                   <td className="px-4 py-3 text-muted-foreground">
-                    {user.memberships.length > 0
+                    {isGlobalBootstrapSuperAdmin(user)
+                      ? 'Super Admin (Global)'
+                      : user.memberships.length > 0
                       ? Array.from(
                           new Set(
                             user.memberships.map(membership =>
@@ -736,11 +754,19 @@ export function UsersAccessManager({ users, brands, actorName, actorEmail }: Pro
                 id="user-role-input"
                 disabled={editingUser?.isBootstrapSuperAdmin}
                 onChange={event => {
-                  const value = normalizeUserRole(event.currentTarget.value);
+                  const selectedValue = event.currentTarget.value as RoleFieldValue;
+                  if (selectedValue === 'super_admin_global') {
+                    return;
+                  }
+
+                  const value = normalizeUserRole(selectedValue);
                   updateRole(value);
                 }}
-                value={draft.role}
+                value={roleFieldValue}
               >
+                {showGlobalSuperAdminRole ? (
+                  <option value="super_admin_global">Super Admin (Global)</option>
+                ) : null}
                 <option value="admin">Admin</option>
                 <option value="content">Content Team</option>
                 <option value="approver">Approver</option>
