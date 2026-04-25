@@ -95,6 +95,7 @@ declare global {
 type Props = {
   activeFormulas: ComputedFormulaResponse[];
   brandId: string;
+  campaignOptions: string[];
   periodId: string;
   uploadedFilename: string | null;
   sourcePreview: NonNullable<ImportPreviewResponse['preview']>;
@@ -668,6 +669,7 @@ function buildManualRowNumbersMap(
 export function ImportWorkingTable({
   activeFormulas,
   brandId,
+  campaignOptions,
   periodId,
   uploadedFilename,
   sourcePreview,
@@ -683,7 +685,7 @@ export function ImportWorkingTable({
 }: Props) {
   const scheduleRefresh = useDebouncedRefresh(1200);
   const apiBaseUrl =
-    process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3003/api';
+    process.env.NEXT_PUBLIC_API_BASE_URL ?? '/api';
   const [manualValues, setManualValues] = useState(() =>
     buildInitialManualValues(sourcePreview.rows)
   );
@@ -1103,6 +1105,17 @@ export function ImportWorkingTable({
     }
     return map;
   }, [dropdownFields]);
+  const campaignOptionLabels = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          campaignOptions
+            .map(option => option.trim())
+            .filter(option => option.length > 0)
+        )
+      ).sort((left, right) => left.localeCompare(right)),
+    [campaignOptions]
+  );
   const manualTargetFields = useMemo(
     () => Array.from(new Set((datasetPreview?.columns ?? []).map((column) => column.targetField))),
     [datasetPreview?.columns]
@@ -2402,20 +2415,36 @@ export function ImportWorkingTable({
 
                     return (
                       <td className="px-4 py-3 align-middle" key={column.key}>
-                        <Input
+                        <Select
                           className="min-w-44"
                           disabled={
                             !isCompanyFormatEditable ||
-                            (column.key === 'campaign_name' &&
-                              normalizedLocalRowValues.campaign_base !== 'true')
+                            normalizedLocalRowValues.campaign_base !== 'true'
                           }
                           onChange={event =>
-                            updateManualValue(rowItem.rowKey, column.key, event.currentTarget.value)
+                            updateManualValue(
+                              rowItem.rowKey,
+                              column.key,
+                              event.currentTarget.value
+                            )
                           }
-                          placeholder="Type here"
-                          type="text"
                           value={currentValue}
-                        />
+                        >
+                          <option value="">
+                            {campaignOptionLabels.length > 0
+                              ? 'Choose...'
+                              : 'No campaigns for this year'}
+                          </option>
+                          {!!currentValue &&
+                          !campaignOptionLabels.includes(currentValue) ? (
+                            <option value={currentValue}>{currentValue} (Legacy)</option>
+                          ) : null}
+                          {campaignOptionLabels.map((campaignName) => (
+                            <option key={campaignName} value={campaignName}>
+                              {campaignName}
+                            </option>
+                          ))}
+                        </Select>
                       </td>
                     );
                   })}
@@ -2534,3 +2563,4 @@ export function ImportWorkingTable({
     </div>
   );
 }
+

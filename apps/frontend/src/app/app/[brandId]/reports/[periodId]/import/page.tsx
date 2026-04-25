@@ -6,6 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { getAuthContext, getMembershipReportAccess } from '@/lib/auth';
 import {
+  getBrandCampaigns,
   getBrandCompanyFormatOptions,
   getComputedFormulas,
   getDatasetOverview,
@@ -260,12 +261,16 @@ export default async function ImportPage({ params, searchParams }: ImportPagePro
   }
 
   const sourcePreviewResult = await getLatestImportPreview(brandId, periodId).catch(() => null);
-  const [globalCompanyFormatOptionsResult, brandCompanyFormatOptionsResult] = await Promise.all([
+  const [globalCompanyFormatOptionsResult, brandCompanyFormatOptionsResult, campaignsResult] =
+    await Promise.all([
     getGlobalCompanyFormatOptions({
       includeDeprecated: true
     }).catch(() => null),
     getBrandCompanyFormatOptions(brandId, {
       includeDeprecated: true
+    }).catch(() => null),
+    getBrandCampaigns(brandId, {
+      year: detail.period.year
     }).catch(() => null)
   ]);
   const [computedFormulasResult, importLayoutResult, topContentPolicyResult] = await Promise.all([
@@ -331,6 +336,9 @@ export default async function ImportPage({ params, searchParams }: ImportPagePro
     globalCompanyFormatOptionsResult?.fields ?? [],
     brandCompanyFormatOptionsResult?.fields ?? []
   );
+  const campaignOptions = (campaignsResult?.items ?? [])
+    .filter((campaign) => campaign.status === 'active')
+    .map((campaign) => campaign.name);
   const activeWorkflowSections = detail.period.workspace.sections.filter(
     section =>
       section.slug !== 'overview' &&
@@ -529,6 +537,7 @@ export default async function ImportPage({ params, searchParams }: ImportPagePro
                 <ImportWorkingTable
                   activeFormulas={computedFormulasResult.items}
                   brandId={brandId}
+                  campaignOptions={campaignOptions}
                   companyFormatFields={companyFormatFields}
                   contentCount={datasetResult?.contentCount ?? null}
                   datasetPreview={datasetPreview}
