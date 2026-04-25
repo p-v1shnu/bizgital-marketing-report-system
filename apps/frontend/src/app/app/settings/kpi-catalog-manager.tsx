@@ -340,12 +340,12 @@ export function KpiCatalogManager({
 
   return (
     <div className="space-y-3">
-      {statusError ? (
+      {statusError && !modalMode && !defaultModalOpen ? (
         <div className="rounded-2xl border border-rose-500/25 bg-rose-500/8 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">
           {statusError}
         </div>
       ) : null}
-      {statusMessage ? (
+      {statusMessage && !modalMode && !defaultModalOpen ? (
         <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/8 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300">
           {statusMessage}
         </div>
@@ -459,6 +459,8 @@ export function KpiCatalogManager({
       {modalMode ? (
         <ModalShell
           description="Choose a data source: mapped post metrics or formula column."
+          error={statusError}
+          message={statusMessage}
           onClose={closeModal}
           title={modalMode === 'create' ? 'Add KPI definition' : 'Edit KPI definition'}
         >
@@ -602,6 +604,8 @@ export function KpiCatalogManager({
       {defaultModalOpen ? (
         <ModalShell
           description="Selected KPIs are auto-assigned to KPI plan of the current year when a new brand is created."
+          error={statusError}
+          message={statusMessage}
           onClose={closeDefaultSelectionModal}
           title="Default KPI for New Brands"
           widthClassName="max-w-2xl"

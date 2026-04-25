@@ -550,7 +550,7 @@ export function CompetitorSetupManager({
 
   return (
     <div className="space-y-5" data-testid="competitor-setup-manager">
-      {statusError ? (
+      {statusError && !modalMode ? (
         <Card className="border-rose-500/25 bg-rose-500/8">
           <CardContent
             className="pt-6 text-sm text-rose-700 dark:text-rose-300"
@@ -561,7 +561,7 @@ export function CompetitorSetupManager({
         </Card>
       ) : null}
 
-      {statusMessage ? (
+      {statusMessage && !modalMode ? (
         <Card className="border-emerald-500/25 bg-emerald-500/8">
           <CardContent
             className="pt-6 text-sm text-emerald-700 dark:text-emerald-300"
@@ -768,6 +768,8 @@ export function CompetitorSetupManager({
       {modalMode ? (
         <ModalShell
           description="Manage competitor profile for yearly assignment."
+          error={statusError}
+          message={statusMessage}
           onClose={closeModal}
           title={modalMode === 'create' ? 'Create competitor' : 'Edit competitor'}
           widthClassName="max-w-2xl"

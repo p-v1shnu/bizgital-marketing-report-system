@@ -295,12 +295,12 @@ export function CompanyFormatOptionsManager({
         </div>
       </div>
 
-      {statusError ? (
+      {statusError && !modalMode ? (
         <div className="rounded-2xl border border-rose-500/25 bg-rose-500/8 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">
           {statusError}
         </div>
       ) : null}
-      {statusMessage ? (
+      {statusMessage && !modalMode ? (
         <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/8 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300">
           {statusMessage}
         </div>
@@ -353,6 +353,8 @@ export function CompanyFormatOptionsManager({
       {modalMode ? (
         <ModalShell
           description="All changes are saved from this popup so the list stays read-only."
+          error={statusError}
+          message={statusMessage}
           onClose={closeModal}
           title={modalMode === 'create' ? `Add ${fieldLabel} option` : `Edit ${fieldLabel} option`}
         >

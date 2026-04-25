@@ -255,12 +255,12 @@ export function BrandCampaignManager({ brandCode, initialCampaigns }: Props) {
 
   return (
     <div className="space-y-4">
-      {statusMessage ? (
+      {statusMessage && !editorMode ? (
         <div className="rounded-[18px] border border-emerald-500/25 bg-emerald-500/8 px-3 py-3 text-sm text-emerald-700 dark:text-emerald-300">
           {statusMessage}
         </div>
       ) : null}
-      {statusError ? (
+      {statusError && !editorMode ? (
         <div className="rounded-[18px] border border-rose-500/25 bg-rose-500/8 px-3 py-3 text-sm text-rose-700 dark:text-rose-300">
           {statusError}
         </div>
@@ -400,6 +400,8 @@ export function BrandCampaignManager({ brandCode, initialCampaigns }: Props) {
       {editorMode ? (
         <ModalShell
           description={`Configure campaign details for year ${selectedYear}.`}
+          error={statusError}
+          message={statusMessage}
           onClose={closeEditorModal}
           title={editorMode === 'create' ? 'Add campaign' : 'Edit campaign'}
         >

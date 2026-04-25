@@ -8,6 +8,8 @@ import { Button } from './button';
 type ModalShellProps = {
   title: string;
   description?: string;
+  error?: string | null;
+  message?: string | null;
   onClose: () => void;
   children: ReactNode;
   widthClassName?: string;
@@ -18,6 +20,8 @@ type ModalShellProps = {
 export function ModalShell({
   title,
   description,
+  error = null,
+  message = null,
   onClose,
   children,
   widthClassName = 'max-w-3xl',
@@ -61,6 +65,16 @@ export function ModalShell({
             </Button>
           ) : null}
         </div>
+        {error ? (
+          <div className="mb-4 rounded-2xl border border-rose-500/25 bg-rose-500/8 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">
+            {error}
+          </div>
+        ) : null}
+        {message ? (
+          <div className="mb-4 rounded-2xl border border-emerald-500/25 bg-emerald-500/8 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300">
+            {message}
+          </div>
+        ) : null}
         {children}
       </div>
     </div>,

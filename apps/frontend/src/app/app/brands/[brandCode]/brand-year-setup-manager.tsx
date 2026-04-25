@@ -406,13 +406,13 @@ export function BrandYearSetupManager({
 
   return (
     <div className="space-y-5">
-      {statusMessage ? (
+      {statusMessage && !copyMode ? (
         <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/8 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
           {statusMessage}
         </div>
       ) : null}
 
-      {statusError ? (
+      {statusError && !copyMode ? (
         <div className="rounded-2xl border border-rose-500/25 bg-rose-500/8 px-3 py-2 text-sm text-rose-700 dark:text-rose-300">
           {statusError}
         </div>
@@ -570,6 +570,8 @@ export function BrandYearSetupManager({
       {copyMode ? (
         <ModalShell
           description={`Copy data from ${selectedYear} to another year.`}
+          error={statusError}
+          message={statusMessage}
           onClose={closeCopyModal}
           title={copyModalTitle}
         >

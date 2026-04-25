@@ -134,12 +134,12 @@ export function QuestionCatalogManager({ initialCatalog }: Props) {
 
   return (
     <div className="space-y-4">
-      {statusMessage ? (
+      {statusMessage && !editTarget ? (
         <div className="rounded-[18px] border border-emerald-500/25 bg-emerald-500/8 px-3 py-3 text-sm text-emerald-700 dark:text-emerald-300">
           {statusMessage}
         </div>
       ) : null}
-      {statusError ? (
+      {statusError && !editTarget ? (
         <div className="rounded-[18px] border border-rose-500/25 bg-rose-500/8 px-3 py-3 text-sm text-rose-700 dark:text-rose-300">
           {statusError}
         </div>
@@ -241,6 +241,8 @@ export function QuestionCatalogManager({ initialCatalog }: Props) {
 
       {editTarget ? (
         <ModalShell
+          error={statusError}
+          message={statusMessage}
           onClose={() => {
             setDeleteConfirmOpen(false);
             setEditTarget(null);

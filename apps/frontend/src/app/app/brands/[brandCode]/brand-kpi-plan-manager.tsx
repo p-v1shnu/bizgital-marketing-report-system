@@ -308,12 +308,12 @@ export function BrandKpiPlanManager({
 
   return (
     <div className="space-y-4">
-      {statusError ? (
+      {statusError && !modalMode ? (
         <div className="rounded-2xl border border-rose-500/25 bg-rose-500/8 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">
           {statusError}
         </div>
       ) : null}
-      {statusMessage ? (
+      {statusMessage && !modalMode ? (
         <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/8 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300">
           {statusMessage}
         </div>
@@ -432,6 +432,8 @@ export function BrandKpiPlanManager({
       {modalMode ? (
         <ModalShell
           description="Add or update one yearly KPI target at a time from this popup."
+          error={statusError}
+          message={statusMessage}
           onClose={closeModal}
           title={modalMode === 'create' ? `Add KPI to ${selectedYear} plan` : `Edit ${selectedYear} KPI`}
         >

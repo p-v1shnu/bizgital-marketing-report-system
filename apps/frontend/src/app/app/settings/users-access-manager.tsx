@@ -540,12 +540,12 @@ export function UsersAccessManager({ users, brands, actorName, actorEmail }: Pro
 
   return (
     <div className="space-y-3">
-      {statusError ? (
+      {statusError && !modalMode ? (
         <div className="rounded-2xl border border-rose-500/25 bg-rose-500/8 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">
           {statusError}
         </div>
       ) : null}
-      {statusMessage ? (
+      {statusMessage && !modalMode ? (
         <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/8 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300">
           {statusMessage}
         </div>
@@ -688,6 +688,8 @@ export function UsersAccessManager({ users, brands, actorName, actorEmail }: Pro
 
       {modalMode ? (
         <ModalShell
+          error={statusError}
+          message={statusMessage}
           onClose={closeModal}
           title={modalMode === 'create' ? 'Create User' : 'Edit User'}
           widthClassName="max-w-2xl"
