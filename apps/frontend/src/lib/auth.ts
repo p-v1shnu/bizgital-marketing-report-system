@@ -3,7 +3,7 @@ import { cache } from 'react';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 
-import { getBrands, getSuperAdminBootstrapStatus } from './reporting-api';
+import { getBrands, getSuperAdminBootstrapStatus, getUsers } from './reporting-api';
 import {
   AUTH_COOKIE_NAME,
   parseAuthSessionCookieValue
@@ -211,6 +211,35 @@ export async function getAuthContext(): Promise<AuthContext> {
       }
     }
   }
+  let hasBootstrapSuperAdminAccess = false;
+
+  if (!user) {
+    const users = await getUsers().catch(() => []);
+    const matchedUser = users.find(
+      (candidate) =>
+        normalizeEmail(candidate.email) === sessionEmail && candidate.status === 'active'
+    );
+
+    if (matchedUser) {
+      user = {
+        id: matchedUser.id,
+        displayName: matchedUser.displayName,
+        email: normalizeEmail(matchedUser.email),
+        status: matchedUser.status
+      };
+      hasBootstrapSuperAdminAccess = matchedUser.isBootstrapSuperAdmin;
+
+      for (const membership of matchedUser.memberships) {
+        const role = normalizeBrandRole(String(membership.role ?? ''));
+        memberships.push({
+          brandCode: membership.brand.code,
+          brandName: membership.brand.name,
+          role,
+          permissions: resolveMembershipPermissions(role, membership.permissions)
+        });
+      }
+    }
+  }
 
   if (!user) {
     return {
@@ -238,7 +267,7 @@ export async function getAuthContext(): Promise<AuthContext> {
       ...user,
       memberships: resolvedMemberships
     },
-    canAccessAdmin: hasAdminMembership
+    canAccessAdmin: hasAdminMembership || hasBootstrapSuperAdminAccess
   };
 }
 
