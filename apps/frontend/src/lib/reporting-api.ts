@@ -1326,6 +1326,32 @@ async function readResponseErrorMessage(
   return `${message} (HTTP ${response.status}).`;
 }
 
+async function fetchWithTransient5xxRetry(
+  url: string,
+  init: RequestInit,
+  fallbackMessage: string
+) {
+  const transientStatuses = new Set([500, 502, 503, 504]);
+  const maxAttempts = 2;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const response = await fetch(url, init);
+    if (response.ok) {
+      return response;
+    }
+
+    const shouldRetry = attempt < maxAttempts && transientStatuses.has(response.status);
+    if (shouldRetry) {
+      await new Promise(resolve => setTimeout(resolve, 150));
+      continue;
+    }
+
+    throw new Error(await readResponseErrorMessage(response, fallbackMessage));
+  }
+
+  throw new Error(fallbackMessage);
+}
+
 export async function getBrands(): Promise<BrandSummary[]> {
   const response = await fetch(`${getBackendApiBaseUrl()}/brands`, {
     cache: 'no-store'
@@ -1733,18 +1759,13 @@ export async function getMetaColumnCatalog(
     params.set('limit', String(options.limit));
   }
 
-  const response = await fetch(
+  const response = await fetchWithTransient5xxRetry(
     `${getBackendApiBaseUrl()}/config/meta-columns${params.toString() ? `?${params.toString()}` : ''}`,
     {
       cache: 'no-store'
-    }
+    },
+    'Failed to load Meta column catalog.'
   );
-
-  if (!response.ok) {
-    throw new Error(
-      await readResponseErrorMessage(response, 'Failed to load Meta column catalog.')
-    );
-  }
 
   return response.json();
 }
@@ -1757,18 +1778,13 @@ export async function getComputedFormulas(options?: {
     params.set('activeOnly', 'true');
   }
 
-  const response = await fetch(
+  const response = await fetchWithTransient5xxRetry(
     `${getBackendApiBaseUrl()}/config/computed-formulas${params.toString() ? `?${params.toString()}` : ''}`,
     {
       cache: 'no-store'
-    }
+    },
+    'Failed to load computed formulas.'
   );
-
-  if (!response.ok) {
-    throw new Error(
-      await readResponseErrorMessage(response, 'Failed to load computed formulas.')
-    );
-  }
 
   return response.json();
 }
