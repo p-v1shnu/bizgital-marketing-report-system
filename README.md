@@ -274,7 +274,7 @@ The application containers are designed to live behind Caddy in production.
 
 - Caddy terminates TLS and owns public HTTP(S)
 - Next.js handles browser-facing HTML behind Caddy
-- NestJS handles `/api/*` traffic behind Caddy
+- NestJS handles most `/api/*` traffic behind Caddy (except frontend-owned auth/media proxy routes)
 - app containers should not manage public TLS themselves
 - forwarded headers from Caddy should be preserved
 - `APP_ORIGIN` and `NEXT_PUBLIC_API_BASE_URL` should point to the public domain in production
@@ -337,6 +337,11 @@ docker compose up -d --build
 report.example.com {
   encode zstd gzip
 
+  @frontend_api path /api/auth/* /api/local-media /api/local-media/* /api/media/proxy /api/media/proxy/*
+  handle @frontend_api {
+    reverse_proxy 127.0.0.1:3200
+  }
+
   @api path /api/*
   handle @api {
     reverse_proxy 127.0.0.1:3003
@@ -350,6 +355,7 @@ report.example.com {
 
 6. Reload Caddy and verify:
 - `https://report.example.com/api/health` returns OK
+- `https://report.example.com/api/auth/microsoft/start?next=%2Fapp` redirects to Microsoft (not backend 404)
 - app login works
 - media endpoints block anonymous requests (run `qa:production-smoke`)
 

@@ -1,6 +1,11 @@
 report.example.com {
   encode zstd gzip
 
+  @frontend_api path /api/auth/* /api/local-media /api/local-media/* /api/media/proxy /api/media/proxy/*
+  handle @frontend_api {
+    reverse_proxy 127.0.0.1:3200
+  }
+
   @api path /api/*
   handle @api {
     reverse_proxy 127.0.0.1:3003
