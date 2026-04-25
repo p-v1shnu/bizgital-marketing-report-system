@@ -374,15 +374,20 @@ export async function saveImportMappingDraftAction(formData: FormData) {
 export async function createImportMappingDraftFromPublishedAction(formData: FormData) {
   const returnPath = normalizeReturnPath(formData.get('returnPath'));
   const auth = await requireAnyAdmin(returnPath);
+  const config = await getImportColumnMappingConfig().catch((error) => {
+    const message =
+      error instanceof Error
+        ? error.message
+        : 'Failed to load current published mapping.';
+    toPage({ error: message }, returnPath);
+  });
+  const baseRules = config.published?.rules ?? null;
+
+  if (!baseRules || baseRules.length === 0) {
+    toPage({ error: 'No published mapping exists yet. Create draft from CSV first.' }, returnPath);
+  }
 
   try {
-    const config = await getImportColumnMappingConfig();
-    const baseRules = config.published?.rules ?? null;
-
-    if (!baseRules || baseRules.length === 0) {
-      toPage({ error: 'No published mapping exists yet. Create draft from CSV first.' }, returnPath);
-    }
-
     const uploadedHeaders = Array.from(
       new Set(
         baseRules

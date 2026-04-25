@@ -31,6 +31,7 @@ function formatDate(value: string) {
 
 export function ImportMappingManager({ config, returnPath }: ImportMappingManagerProps) {
   const publishedVersionId = config.published?.versionId ?? null;
+  const canCreateDraftFromPublished = !!config.published;
   const draftCsvColumnCount = config.draft?.uploadedHeaderCount ?? 0;
   const draftUniqueHeaderCount = config.draft?.uploadedHeaders.length ?? 0;
   const draftRuleCount = config.draft?.rules.length ?? 0;
@@ -106,6 +107,7 @@ export function ImportMappingManager({ config, returnPath }: ImportMappingManage
           </Button>
           <Button
             className="w-full md:w-auto"
+            disabled={!canCreateDraftFromPublished}
             formAction={createImportMappingDraftFromPublishedAction}
             type="submit"
             variant="outline"
