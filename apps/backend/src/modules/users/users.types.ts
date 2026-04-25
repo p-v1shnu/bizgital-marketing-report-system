@@ -19,6 +19,7 @@ export type CreateUserInput = {
   displayName: string;
   status?: UserStatus;
   signInMethod?: UserSignInMethod;
+  globalAdmin?: boolean;
   password?: string;
   memberships?: UserMembershipInput[];
   actorName?: string;
@@ -30,6 +31,7 @@ export type UpdateUserInput = {
   displayName?: string;
   status?: UserStatus;
   signInMethod?: UserSignInMethod;
+  globalAdmin?: boolean;
   password?: string;
   memberships?: UserMembershipInput[];
   replaceMemberships?: boolean;

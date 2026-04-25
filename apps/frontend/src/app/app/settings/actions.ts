@@ -151,6 +151,7 @@ export async function createUserAction(formData: FormData) {
       email,
       displayName,
       status,
+      ...(role === 'admin' && !brandCode ? { globalAdmin: true } : {}),
       ...(password ? { password } : {}),
       ...(brandCode && role
         ? {

@@ -579,6 +579,7 @@ export type UserSummary = {
       status: 'active' | 'inactive';
     };
   }>;
+  isGlobalAdmin: boolean;
   isBootstrapSuperAdmin: boolean;
   createdAt: string;
   updatedAt: string;
@@ -1552,6 +1553,7 @@ export async function createUser(payload: {
   displayName: string;
   status?: 'active' | 'invited' | 'inactive';
   signInMethod?: 'microsoft_only' | 'password_only' | 'microsoft_and_password';
+  globalAdmin?: boolean;
   password?: string;
   memberships?: Array<{
     brandCode: string;
@@ -1568,10 +1570,11 @@ export async function updateUser(
     displayName?: string;
     status?: 'active' | 'invited' | 'inactive';
     signInMethod?: 'microsoft_only' | 'password_only' | 'microsoft_and_password';
+    globalAdmin?: boolean;
     password?: string;
     memberships?: Array<{
       brandCode: string;
-    role: 'admin' | 'content' | 'approver' | 'viewer';
+      role: 'admin' | 'content' | 'approver' | 'viewer';
     }>;
     replaceMemberships?: boolean;
   }

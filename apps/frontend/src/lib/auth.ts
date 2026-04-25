@@ -188,6 +188,7 @@ export async function getAuthContext(): Promise<AuthContext> {
   const memberships: UserMembership[] = [];
   let user: Omit<AuthenticatedUser, 'memberships'> | null = null;
   let hasBootstrapSuperAdminAccess = false;
+  let hasExplicitGlobalAdminAccess = false;
 
   const currentUser = await getCurrentUser().catch(() => null);
   if (currentUser && normalizeEmail(currentUser.email) === sessionEmail) {
@@ -198,6 +199,7 @@ export async function getAuthContext(): Promise<AuthContext> {
       status: currentUser.status
     };
     hasBootstrapSuperAdminAccess = currentUser.isBootstrapSuperAdmin === true;
+    hasExplicitGlobalAdminAccess = currentUser.isGlobalAdmin === true;
 
     for (const membership of currentUser.memberships) {
       const role = normalizeBrandRole(String(membership.role ?? ''));
@@ -259,6 +261,7 @@ export async function getAuthContext(): Promise<AuthContext> {
         status: matchedUser.status
       };
       hasBootstrapSuperAdminAccess = matchedUser.isBootstrapSuperAdmin === true;
+      hasExplicitGlobalAdminAccess = matchedUser.isGlobalAdmin === true;
 
       if (memberships.length === 0) {
         for (const membership of matchedUser.memberships) {
@@ -285,7 +288,8 @@ export async function getAuthContext(): Promise<AuthContext> {
   const hasAdminMembership = memberships.some(
     (membership) => membership.role === 'admin'
   );
-  const hasGlobalAdminAccess = hasAdminMembership || hasBootstrapSuperAdminAccess;
+  const hasGlobalAdminAccess =
+    hasAdminMembership || hasBootstrapSuperAdminAccess || hasExplicitGlobalAdminAccess;
   const resolvedMemberships = hasGlobalAdminAccess
     ? (brands.length > 0
         ? brands.map((brand) => ({

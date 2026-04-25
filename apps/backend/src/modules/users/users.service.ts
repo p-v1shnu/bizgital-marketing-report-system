@@ -55,6 +55,10 @@ type RawBootstrapSuperAdminRow = {
   user_id: string;
 };
 
+type RawGlobalAdminRow = {
+  user_id: string;
+};
+
 type BootstrapStatusSnapshot = {
   mode: BootstrapSetupMode;
   setupRequired: boolean;
@@ -262,6 +266,14 @@ function toTinyIntFlag(value: boolean) {
   return value ? 1 : 0;
 }
 
+function normalizeBooleanInput(value: unknown) {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  return false;
+}
+
 @Injectable()
 export class UsersService {
   constructor(
@@ -273,6 +285,7 @@ export class UsersService {
     await this.ensureAuthStorage();
     await this.ensureMembershipPermissionStorage();
     await this.ensureBootstrapSuperAdminStorage();
+    await this.ensureGlobalAdminStorage();
     const bootstrapStatus = await this.resolveBootstrapStatus();
     const users = await this.prisma.user.findMany({
       include: {
@@ -286,6 +299,9 @@ export class UsersService {
       orderBy: [{ displayName: 'asc' }, { email: 'asc' }]
     });
     const authByUserId = await this.getAuthByUserId(users.map(user => user.id));
+    const globalAdminUserIdSet = await this.getGlobalAdminUserIdSet(
+      users.map(user => user.id)
+    );
     const permissionByMembershipKey = await this.getMembershipPermissionByPairs(
       users.flatMap(user =>
         user.brandMemberships.map(membership => ({
@@ -327,6 +343,7 @@ export class UsersService {
             status: membership.brand.status
           }
         })),
+        isGlobalAdmin: globalAdminUserIdSet.has(user.id),
         isBootstrapSuperAdmin: bootstrapStatus.bootstrapSuperAdminUserId === user.id,
         createdAt: user.createdAt.toISOString(),
         updatedAt: user.updatedAt.toISOString()
@@ -338,6 +355,7 @@ export class UsersService {
     await this.ensureAuthStorage();
     await this.ensureMembershipPermissionStorage();
     await this.ensureBootstrapSuperAdminStorage();
+    await this.ensureGlobalAdminStorage();
 
     const bootstrapStatus = await this.resolveBootstrapStatus();
     const user = await this.prisma.user.findUnique({
@@ -359,6 +377,7 @@ export class UsersService {
     }
 
     const auth = (await this.getAuthByUserId([user.id])).get(user.id);
+    const globalAdminUserIdSet = await this.getGlobalAdminUserIdSet([user.id]);
     const permissionByMembershipKey = await this.getMembershipPermissionByPairs(
       user.brandMemberships.map(membership => ({
         brandId: membership.brandId,
@@ -396,6 +415,7 @@ export class UsersService {
           status: membership.brand.status
         }
       })),
+      isGlobalAdmin: globalAdminUserIdSet.has(user.id),
       isBootstrapSuperAdmin: bootstrapStatus.bootstrapSuperAdminUserId === user.id,
       createdAt: user.createdAt.toISOString(),
       updatedAt: user.updatedAt.toISOString()
@@ -404,6 +424,7 @@ export class UsersService {
 
   async getBootstrapStatus(): Promise<BootstrapStatusResponse> {
     await this.ensureBootstrapSuperAdminStorage();
+    await this.ensureGlobalAdminStorage();
     const status = await this.resolveBootstrapStatus();
 
     return {
@@ -420,6 +441,7 @@ export class UsersService {
     await this.ensureAuthStorage();
     await this.ensureMembershipPermissionStorage();
     await this.ensureBootstrapSuperAdminStorage();
+    await this.ensureGlobalAdminStorage();
 
     const status = await this.resolveBootstrapStatus();
     if (status.hasBootstrapSuperAdmin) {
@@ -565,6 +587,7 @@ export class UsersService {
   async createUser(input: CreateUserInput) {
     await this.ensureAuthStorage();
     await this.ensureMembershipPermissionStorage();
+    await this.ensureGlobalAdminStorage();
 
     const email = normalizeEmail(String(input.email ?? ''));
     const displayName = normalizeText(String(input.displayName ?? ''));
@@ -576,6 +599,7 @@ export class UsersService {
         : 'microsoft_only');
     const password = String(input.password ?? '').trim();
     const authPolicy = authPolicyFromSignInMethod(signInMethod);
+    const shouldBeGlobalAdmin = normalizeBooleanInput(input.globalAdmin);
     const memberships = await this.expandMembershipsByRole(
       this.normalizeMembershipInput(input.memberships ?? [])
     );
@@ -623,6 +647,10 @@ export class UsersService {
           passwordHash: authPolicy.allowPassword ? hashPassword(password) : null,
           allowPassword: authPolicy.allowPassword,
           allowMicrosoft: authPolicy.allowMicrosoft
+        });
+        await this.setGlobalAdminWithClient(tx, {
+          userId: user.id,
+          isGlobalAdmin: shouldBeGlobalAdmin
         });
 
         if (memberships.length > 0) {
@@ -687,6 +715,7 @@ export class UsersService {
     await this.ensureAuthStorage();
     await this.ensureMembershipPermissionStorage();
     await this.ensureBootstrapSuperAdminStorage();
+    await this.ensureGlobalAdminStorage();
     const existing = await this.prisma.user.findUnique({
       where: { id: userId }
     });
@@ -698,6 +727,8 @@ export class UsersService {
     const isBootstrapSuperAdmin = bootstrapStatus.bootstrapSuperAdminUserId === userId;
 
     const existingAuth = (await this.getAuthByUserId([userId])).get(userId);
+    const existingGlobalAdminSet = await this.getGlobalAdminUserIdSet([userId]);
+    const existingIsGlobalAdmin = existingGlobalAdminSet.has(userId);
     const currentAuthPolicy = this.resolveAuthPolicy(existingAuth);
 
     const nextEmail =
@@ -721,6 +752,10 @@ export class UsersService {
       nextAuthPolicy.allowPassword,
       nextAuthPolicy.allowMicrosoft
     );
+    const nextGlobalAdmin =
+      input.globalAdmin !== undefined
+        ? normalizeBooleanInput(input.globalAdmin)
+        : existingIsGlobalAdmin;
     const replaceMemberships = input.replaceMemberships === true;
     const memberships =
       input.memberships !== undefined
@@ -744,6 +779,9 @@ export class UsersService {
     }
     if (memberships !== undefined) {
       changedFields.push(replaceMemberships ? 'memberships(replaced)' : 'memberships');
+    }
+    if (nextGlobalAdmin !== existingIsGlobalAdmin) {
+      changedFields.push('globalAdmin');
     }
     if (password !== undefined) {
       changedFields.push('password');
@@ -829,6 +867,10 @@ export class UsersService {
             allowMicrosoft: nextAuthPolicy.allowMicrosoft
           });
         }
+        await this.setGlobalAdminWithClient(tx, {
+          userId,
+          isGlobalAdmin: nextGlobalAdmin
+        });
 
         if (memberships !== undefined) {
           if (replaceMemberships) {
@@ -938,6 +980,7 @@ export class UsersService {
   async deleteUser(userId: string, input?: DeleteUserInput) {
     await this.ensureAuthStorage();
     await this.ensureBootstrapSuperAdminStorage();
+    await this.ensureGlobalAdminStorage();
     const user = await this.prisma.user.findUnique({
       where: { id: userId }
     });
@@ -962,6 +1005,13 @@ export class UsersService {
       await tx.$executeRawUnsafe(
         `
         DELETE FROM user_auth_credentials
+        WHERE user_id = ?
+        `,
+        userId
+      );
+      await tx.$executeRawUnsafe(
+        `
+        DELETE FROM system_global_admin_users
         WHERE user_id = ?
         `,
         userId
@@ -1572,7 +1622,18 @@ export class UsersService {
       },
       distinct: ['userId']
     });
-    const userIds = adminMemberships.map((membership) => membership.userId);
+    const globalAdminRows = await this.prisma.$queryRawUnsafe<RawGlobalAdminRow[]>(
+      `
+      SELECT user_id
+      FROM system_global_admin_users
+      `
+    );
+    const userIds = Array.from(
+      new Set([
+        ...adminMemberships.map((membership) => membership.userId),
+        ...globalAdminRows.map((row) => row.user_id)
+      ])
+    );
 
     if (userIds.length === 0) {
       return [];
@@ -1591,6 +1652,64 @@ export class UsersService {
     });
 
     return activeUsers.map((user) => user.id);
+  }
+
+  private async getGlobalAdminUserIdSet(userIds: string[]) {
+    if (userIds.length === 0) {
+      return new Set<string>();
+    }
+
+    const placeholders = userIds.map(() => '?').join(', ');
+    const rows = await this.prisma.$queryRawUnsafe<RawGlobalAdminRow[]>(
+      `
+      SELECT user_id
+      FROM system_global_admin_users
+      WHERE user_id IN (${placeholders})
+      `,
+      ...userIds
+    );
+
+    return new Set(rows.map((row) => row.user_id));
+  }
+
+  private async setGlobalAdminWithClient(
+    client: Prisma.TransactionClient,
+    input: {
+      userId: string;
+      isGlobalAdmin: boolean;
+    }
+  ) {
+    if (input.isGlobalAdmin) {
+      await client.$executeRawUnsafe(
+        `
+        INSERT INTO system_global_admin_users (user_id)
+        VALUES (?)
+        ON DUPLICATE KEY UPDATE
+          updated_at = CURRENT_TIMESTAMP(3)
+        `,
+        input.userId
+      );
+      return;
+    }
+
+    await client.$executeRawUnsafe(
+      `
+      DELETE FROM system_global_admin_users
+      WHERE user_id = ?
+      `,
+      input.userId
+    );
+  }
+
+  private async ensureGlobalAdminStorage() {
+    await this.prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS system_global_admin_users (
+        user_id VARCHAR(191) NOT NULL,
+        created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (user_id)
+      ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    `);
   }
 
   private async ensureBootstrapSuperAdminStorage() {

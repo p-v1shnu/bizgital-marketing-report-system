@@ -318,6 +318,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
 
   const users = usersResult.data;
   const adminCount = users.filter(user =>
+    user.isGlobalAdmin ||
     user.memberships.some(membership => membership.role === 'admin')
   ).length;
 

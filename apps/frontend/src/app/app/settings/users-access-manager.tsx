@@ -241,7 +241,7 @@ export function UsersAccessManager({ users, brands, actorName, actorEmail }: Pro
     const hasAdminMembership = user.memberships.some(
       membership => normalizeUserRole(membership.role) === 'admin'
     );
-    const initialRole = hasAdminMembership
+    const initialRole = hasAdminMembership || user.isGlobalAdmin
       ? 'admin'
       : normalizeUserRole(user.memberships[0]?.role);
     const roleMemberships = user.memberships.filter(
@@ -376,6 +376,7 @@ export function UsersAccessManager({ users, brands, actorName, actorEmail }: Pro
             }
           }))
         : [];
+    const resolvedGlobalAdmin = draft.role === 'admin' && resolvedBrandCodes.length === 0;
 
     try {
       if (modalMode === 'create') {
@@ -388,6 +389,7 @@ export function UsersAccessManager({ users, brands, actorName, actorEmail }: Pro
             displayName: draft.displayName,
             email: draft.email,
             signInMethod: draft.signInMethod,
+            globalAdmin: resolvedGlobalAdmin,
             actorName,
             actorEmail,
             ...(normalizedPassword ? { password: normalizedPassword } : {}),
@@ -419,6 +421,7 @@ export function UsersAccessManager({ users, brands, actorName, actorEmail }: Pro
             displayName: draft.displayName,
             email: draft.email,
             signInMethod: draft.signInMethod,
+            globalAdmin: resolvedGlobalAdmin,
             actorName,
             actorEmail,
             ...(normalizedPassword ? { password: normalizedPassword } : {}),
@@ -602,6 +605,8 @@ export function UsersAccessManager({ users, brands, actorName, actorEmail }: Pro
                   <td className="px-4 py-3 text-muted-foreground">
                     {isGlobalBootstrapSuperAdmin(user)
                       ? 'Super Admin (Global)'
+                      : user.isGlobalAdmin
+                      ? 'admin'
                       : user.memberships.length > 0
                       ? Array.from(
                           new Set(
@@ -613,7 +618,12 @@ export function UsersAccessManager({ users, brands, actorName, actorEmail }: Pro
                       : '-'}
                   </td>
                   <td className="px-4 py-3 text-xs text-muted-foreground">
-                    {user.memberships.length > 0 ? (
+                    {user.isGlobalAdmin ? (
+                      <div className="space-y-1">
+                        <div>Create report: Yes</div>
+                        <div>Approve report: Yes</div>
+                      </div>
+                    ) : user.memberships.length > 0 ? (
                       <div className="space-y-1">
                         <div>
                           Create report:{' '}
@@ -802,7 +812,7 @@ export function UsersAccessManager({ users, brands, actorName, actorEmail }: Pro
               <div className="text-sm font-medium">Brand membership</div>
               {draft.role === 'admin' ? (
                 <div className="rounded-2xl border border-border/60 bg-background/60 px-3 py-3 text-sm text-muted-foreground">
-                  Admin role gets automatic access to all brands.
+                  Admin role gets automatic access to all brands. If no brands exist yet, this account is saved as Global Admin and will still have admin access.
                 </div>
               ) : (
                 <div className="space-y-2">

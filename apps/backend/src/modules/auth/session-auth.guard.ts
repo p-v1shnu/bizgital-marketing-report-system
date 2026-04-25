@@ -27,6 +27,10 @@ type RawBootstrapSuperAdminRow = {
   user_id: string;
 };
 
+type RawGlobalAdminRow = {
+  user_id: string;
+};
+
 @Injectable()
 export class SessionAuthGuard implements CanActivate {
   constructor(
@@ -109,14 +113,18 @@ export class SessionAuthGuard implements CanActivate {
     const hasBrandAdminRole = user.brandMemberships.some(
       (membership) => membership.role === BrandRole.admin
     );
-    const hasBootstrapSuperAdminAccess = hasBrandAdminRole
+    const hasGlobalAdminAccess = hasBrandAdminRole
+      ? false
+      : await this.isGlobalAdminUser(user.id);
+    const hasBootstrapSuperAdminAccess = hasBrandAdminRole || hasGlobalAdminAccess
       ? false
       : await this.isBootstrapSuperAdminUser(user.id);
     const userContext: AuthenticatedRequestUser = {
       id: user.id,
       email: user.email,
       displayName: user.displayName,
-      hasAdminRole: hasBrandAdminRole || hasBootstrapSuperAdminAccess,
+      hasAdminRole:
+        hasBrandAdminRole || hasGlobalAdminAccess || hasBootstrapSuperAdminAccess,
       brandMemberships: user.brandMemberships
     };
     request.user = userContext;
@@ -133,6 +141,33 @@ export class SessionAuthGuard implements CanActivate {
         SELECT user_id
         FROM system_bootstrap_super_admin
         WHERE id = 1 AND user_id = ?
+        LIMIT 1
+        `,
+        userId
+      );
+
+      return rows.length > 0;
+    } catch (error) {
+      const message = error instanceof Error ? error.message.toLowerCase() : '';
+      if (
+        message.includes("doesn't exist") ||
+        message.includes('no such table') ||
+        message.includes('unknown table')
+      ) {
+        return false;
+      }
+
+      throw error;
+    }
+  }
+
+  private async isGlobalAdminUser(userId: string) {
+    try {
+      const rows = await this.prisma.$queryRawUnsafe<RawGlobalAdminRow[]>(
+        `
+        SELECT user_id
+        FROM system_global_admin_users
+        WHERE user_id = ?
         LIMIT 1
         `,
         userId
