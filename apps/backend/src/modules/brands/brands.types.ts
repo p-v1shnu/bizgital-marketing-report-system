@@ -1,4 +1,7 @@
 import type {
+  BrandCampaignChannel,
+  BrandCampaignObjective,
+  BrandCampaignStatus,
   BrandStatus,
   BrandDropdownFieldKey,
   BrandDropdownOptionStatus
@@ -63,4 +66,51 @@ export type UpdateBrandInput = {
 export type DeleteBrandInput = {
   actorName?: string;
   actorEmail?: string;
+};
+
+export type BrandCampaignListResponse = {
+  brand: {
+    id: string;
+    code: string;
+    name: string;
+  };
+  year: number;
+  yearOptions: Array<{
+    year: number;
+    hasCampaigns: boolean;
+  }>;
+  items: Array<{
+    id: string;
+    year: number;
+    name: string;
+    status: BrandCampaignStatus;
+    channel: BrandCampaignChannel | null;
+    objective: BrandCampaignObjective | null;
+    startDate: string | null;
+    endDate: string | null;
+    notes: string | null;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+};
+
+export type CreateBrandCampaignInput = {
+  year: number;
+  name: string;
+  status?: BrandCampaignStatus;
+  channel?: BrandCampaignChannel | null;
+  objective?: BrandCampaignObjective | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  notes?: string | null;
+};
+
+export type UpdateBrandCampaignInput = {
+  name?: string;
+  status?: BrandCampaignStatus;
+  channel?: BrandCampaignChannel | null;
+  objective?: BrandCampaignObjective | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  notes?: string | null;
 };

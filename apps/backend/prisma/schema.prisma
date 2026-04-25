@@ -66,6 +66,28 @@ enum BrandDropdownOptionStatus {
   deprecated
 }
 
+enum BrandCampaignStatus {
+  active
+  inactive
+}
+
+enum BrandCampaignChannel {
+  facebook
+  instagram
+  tiktok
+  youtube
+  x
+  line
+  website
+  other
+}
+
+enum BrandCampaignObjective {
+  awareness
+  engagement
+  conversion
+}
+
 enum ComputedColumnKey {
   engagement
 }
@@ -149,6 +171,7 @@ model Brand {
   questionActivations BrandQuestionActivation[]
   dropdownOptions  BrandDropdownOption[]
   kpiPlans         BrandKpiPlan[]
+  campaigns        BrandCampaign[]
 
   @@map("brands")
 }
@@ -318,6 +341,28 @@ model ReportingPeriod {
   @@index([brandId, year, month])
   @@index([deletedAt, purgeAt])
   @@map("reporting_periods")
+}
+
+model BrandCampaign {
+  id        String                 @id @default(cuid())
+  brandId   String                 @map("brand_id")
+  year      Int
+  name      String
+  nameKey   String                 @map("name_key")
+  status    BrandCampaignStatus    @default(active)
+  channel   BrandCampaignChannel?
+  objective BrandCampaignObjective?
+  startDate DateTime?              @db.Date @map("start_date")
+  endDate   DateTime?              @db.Date @map("end_date")
+  notes     String?                @db.Text
+  createdAt DateTime               @default(now()) @map("created_at")
+  updatedAt DateTime               @updatedAt @map("updated_at")
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@unique([brandId, year, nameKey], name: "brand_campaign_brand_year_name_key_unique")
+  @@index([brandId, year, status, createdAt])
+  @@map("brand_campaigns")
 }
 
 model ReportingPeriodQuestionAssignment {

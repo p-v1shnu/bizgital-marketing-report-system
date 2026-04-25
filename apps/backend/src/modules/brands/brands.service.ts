@@ -9,6 +9,9 @@ import {
 import {
   BrandRole,
   BrandStatus,
+  BrandCampaignStatus,
+  BrandCampaignChannel,
+  BrandCampaignObjective,
   BrandDropdownFieldKey,
   BrandDropdownOptionStatus,
   Prisma,
@@ -26,12 +29,15 @@ import {
 import { readImportJobSnapshot } from '../imports/import-snapshot';
 import { MediaService } from '../media/media.service';
 import type {
+  BrandCampaignListResponse,
   CompanyFormatOptionsResponse,
   CreateBrandInput,
+  CreateBrandCampaignInput,
   CreateCompanyFormatOptionInput,
   DeleteBrandInput,
   ReorderCompanyFormatOptionsInput,
   UpdateBrandInput,
+  UpdateBrandCampaignInput,
   UpdateCompanyFormatOptionInput
 } from './brands.types';
 import {
@@ -137,6 +143,143 @@ function normalizeStatus(value: string | undefined) {
   }
 
   return value as BrandStatus;
+}
+
+function normalizeCampaignStatus(value: string | undefined) {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (!Object.values(BrandCampaignStatus).includes(value as BrandCampaignStatus)) {
+    throw new BadRequestException('Invalid campaign status.');
+  }
+
+  return value as BrandCampaignStatus;
+}
+
+function normalizeCampaignChannel(value: string | null | undefined) {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (value === null) {
+    return null;
+  }
+
+  const normalized = normalizeLabel(value);
+  if (!normalized) {
+    return null;
+  }
+
+  if (
+    !Object.values(BrandCampaignChannel).includes(
+      normalized as BrandCampaignChannel
+    )
+  ) {
+    throw new BadRequestException('Invalid campaign channel.');
+  }
+
+  return normalized as BrandCampaignChannel;
+}
+
+function normalizeCampaignObjective(value: string | null | undefined) {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (value === null) {
+    return null;
+  }
+
+  const normalized = normalizeLabel(value);
+  if (!normalized) {
+    return null;
+  }
+
+  if (
+    !Object.values(BrandCampaignObjective).includes(
+      normalized as BrandCampaignObjective
+    )
+  ) {
+    throw new BadRequestException('Invalid campaign objective.');
+  }
+
+  return normalized as BrandCampaignObjective;
+}
+
+function normalizeCampaignYear(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isInteger(value)) {
+    throw new BadRequestException('Campaign year must be an integer.');
+  }
+
+  if (value < 2000 || value > 3000) {
+    throw new BadRequestException('Campaign year must be between 2000 and 3000.');
+  }
+
+  return value;
+}
+
+function normalizeCampaignName(value: string | null | undefined) {
+  const normalized = normalizeLabel(String(value ?? ''));
+
+  if (!normalized) {
+    throw new BadRequestException('Campaign name is required.');
+  }
+
+  if (normalized.length > 191) {
+    throw new BadRequestException('Campaign name cannot exceed 191 characters.');
+  }
+
+  return normalized;
+}
+
+function normalizeCampaignNotes(value: string | null | undefined) {
+  if (value === undefined || value === null) {
+    return value ?? null;
+  }
+
+  const normalized = normalizeLabel(value);
+  return normalized || null;
+}
+
+function parseCampaignDateInput(value: string | null | undefined, fieldLabel: string) {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (value === null) {
+    return null;
+  }
+
+  const normalized = normalizeLabel(value);
+  if (!normalized) {
+    return null;
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    throw new BadRequestException(`${fieldLabel} must use YYYY-MM-DD format.`);
+  }
+
+  const [yearText, monthText, dayText] = normalized.split('-');
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const asDate = new Date(Date.UTC(year, month - 1, day));
+
+  if (
+    Number.isNaN(asDate.getTime()) ||
+    asDate.getUTCFullYear() !== year ||
+    asDate.getUTCMonth() !== month - 1 ||
+    asDate.getUTCDate() !== day
+  ) {
+    throw new BadRequestException(`${fieldLabel} is invalid.`);
+  }
+
+  return asDate;
+}
+
+function toDateOnlyString(value: Date | null) {
+  return value ? value.toISOString().slice(0, 10) : null;
 }
 
 type RawBrandUiSettingRow = {
@@ -651,6 +794,331 @@ export class BrandsService {
     };
   }
 
+  async listCampaigns(
+    brandCode: string,
+    options?: {
+      year?: number;
+      includeInactive?: boolean;
+    },
+    user?: AuthenticatedRequestUser
+  ): Promise<BrandCampaignListResponse> {
+    const brand = await this.getBrandByCodeOrThrow(brandCode, user);
+    const defaultYear = new Date().getUTCFullYear();
+    const resolvedYear =
+      options?.year === undefined ? defaultYear : normalizeCampaignYear(options.year);
+    const includeInactive = options?.includeInactive === true;
+
+    const [campaigns, groupedYears] = await Promise.all([
+      this.prisma.brandCampaign.findMany({
+        where: {
+          brandId: brand.id,
+          year: resolvedYear,
+          ...(includeInactive ? {} : { status: BrandCampaignStatus.active })
+        },
+        orderBy: [
+          { status: 'asc' },
+          { startDate: 'asc' },
+          { createdAt: 'asc' },
+          { name: 'asc' }
+        ]
+      }),
+      this.prisma.brandCampaign.groupBy({
+        by: ['year'],
+        where: {
+          brandId: brand.id
+        },
+        _count: {
+          _all: true
+        },
+        orderBy: {
+          year: 'desc'
+        }
+      })
+    ]);
+
+    const yearOptions = groupedYears.map((item) => ({
+      year: item.year,
+      hasCampaigns: item._count._all > 0
+    }));
+
+    if (!yearOptions.some((item) => item.year === resolvedYear)) {
+      yearOptions.push({
+        year: resolvedYear,
+        hasCampaigns: campaigns.length > 0
+      });
+    }
+
+    yearOptions.sort((left, right) => right.year - left.year);
+
+    return {
+      brand: {
+        id: brand.id,
+        code: brand.code,
+        name: brand.name
+      },
+      year: resolvedYear,
+      yearOptions,
+      items: campaigns.map((campaign) => this.mapCampaignItem(campaign))
+    };
+  }
+
+  async createCampaign(
+    brandCode: string,
+    input: CreateBrandCampaignInput,
+    actor?: {
+      actorName?: string;
+      actorEmail?: string;
+    },
+    user?: AuthenticatedRequestUser
+  ) {
+    const brand = await this.getBrandByCodeOrThrow(brandCode, user);
+    const year = normalizeCampaignYear(input.year);
+    const name = normalizeCampaignName(input.name);
+    const nameKey = toValueKey(name);
+    const status = normalizeCampaignStatus(input.status) ?? BrandCampaignStatus.active;
+    const channel = normalizeCampaignChannel(input.channel) ?? null;
+    const objective = normalizeCampaignObjective(input.objective) ?? null;
+    const startDate = parseCampaignDateInput(input.startDate, 'Start date') ?? null;
+    const endDate = parseCampaignDateInput(input.endDate, 'End date') ?? null;
+    const notes = normalizeCampaignNotes(input.notes) ?? null;
+
+    if (startDate && endDate && endDate.getTime() < startDate.getTime()) {
+      throw new BadRequestException('End date must be on or after start date.');
+    }
+
+    let createdCampaign: Awaited<ReturnType<typeof this.prisma.brandCampaign.create>> | null = null;
+
+    try {
+      createdCampaign = await this.prisma.brandCampaign.create({
+        data: {
+          brandId: brand.id,
+          year,
+          name,
+          nameKey,
+          status,
+          channel,
+          objective,
+          startDate,
+          endDate,
+          notes
+        }
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          `Campaign "${name}" already exists in year ${year}.`
+        );
+      }
+
+      throw error;
+    }
+
+    await this.auditLogService.append({
+      actionKey: 'BRAND_CAMPAIGN_CREATED',
+      entityType: 'BRAND',
+      entityId: brand.id,
+      entityLabel: brand.name,
+      summary: `Created campaign "${createdCampaign.name}" in year ${createdCampaign.year} for "${brand.name}".`,
+      metadata: {
+        campaignId: createdCampaign.id,
+        campaignName: createdCampaign.name,
+        year: createdCampaign.year,
+        status: createdCampaign.status
+      },
+      actor
+    });
+
+    return {
+      item: this.mapCampaignItem(createdCampaign)
+    };
+  }
+
+  async updateCampaign(
+    brandCode: string,
+    campaignId: string,
+    input: UpdateBrandCampaignInput,
+    actor?: {
+      actorName?: string;
+      actorEmail?: string;
+    },
+    user?: AuthenticatedRequestUser
+  ) {
+    const brand = await this.getBrandByCodeOrThrow(brandCode, user);
+    const campaign = await this.prisma.brandCampaign.findFirst({
+      where: {
+        id: campaignId,
+        brandId: brand.id
+      }
+    });
+
+    if (!campaign) {
+      throw new NotFoundException('Campaign was not found.');
+    }
+
+    const nextName =
+      input.name === undefined ? undefined : normalizeCampaignName(input.name);
+    const nextStatus = normalizeCampaignStatus(input.status);
+    const nextChannel = normalizeCampaignChannel(input.channel);
+    const nextObjective = normalizeCampaignObjective(input.objective);
+    const nextStartDate = parseCampaignDateInput(input.startDate, 'Start date');
+    const nextEndDate = parseCampaignDateInput(input.endDate, 'End date');
+    const nextNotes = normalizeCampaignNotes(input.notes);
+
+    const resolvedStartDate =
+      nextStartDate === undefined ? campaign.startDate : nextStartDate;
+    const resolvedEndDate = nextEndDate === undefined ? campaign.endDate : nextEndDate;
+
+    if (
+      resolvedStartDate &&
+      resolvedEndDate &&
+      resolvedEndDate.getTime() < resolvedStartDate.getTime()
+    ) {
+      throw new BadRequestException('End date must be on or after start date.');
+    }
+
+    const hasUpdate =
+      nextName !== undefined ||
+      nextStatus !== undefined ||
+      nextChannel !== undefined ||
+      nextObjective !== undefined ||
+      nextStartDate !== undefined ||
+      nextEndDate !== undefined ||
+      nextNotes !== undefined;
+
+    if (!hasUpdate) {
+      return {
+        item: this.mapCampaignItem(campaign)
+      };
+    }
+
+    let updatedCampaign: Awaited<ReturnType<typeof this.prisma.brandCampaign.update>> | null = null;
+
+    try {
+      updatedCampaign = await this.prisma.brandCampaign.update({
+        where: {
+          id: campaign.id
+        },
+        data: {
+          ...(nextName !== undefined
+            ? {
+                name: nextName,
+                nameKey: toValueKey(nextName)
+              }
+            : {}),
+          ...(nextStatus !== undefined ? { status: nextStatus } : {}),
+          ...(nextChannel !== undefined ? { channel: nextChannel } : {}),
+          ...(nextObjective !== undefined ? { objective: nextObjective } : {}),
+          ...(nextStartDate !== undefined ? { startDate: nextStartDate } : {}),
+          ...(nextEndDate !== undefined ? { endDate: nextEndDate } : {}),
+          ...(nextNotes !== undefined ? { notes: nextNotes } : {})
+        }
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        const nameForError = nextName ?? campaign.name;
+        throw new ConflictException(
+          `Campaign "${nameForError}" already exists in year ${campaign.year}.`
+        );
+      }
+
+      throw error;
+    }
+
+    const changedFields: string[] = [];
+    if (updatedCampaign.name !== campaign.name) {
+      changedFields.push('name');
+    }
+    if (updatedCampaign.status !== campaign.status) {
+      changedFields.push('status');
+    }
+    if (updatedCampaign.channel !== campaign.channel) {
+      changedFields.push('channel');
+    }
+    if (updatedCampaign.objective !== campaign.objective) {
+      changedFields.push('objective');
+    }
+    if (toDateOnlyString(updatedCampaign.startDate) !== toDateOnlyString(campaign.startDate)) {
+      changedFields.push('startDate');
+    }
+    if (toDateOnlyString(updatedCampaign.endDate) !== toDateOnlyString(campaign.endDate)) {
+      changedFields.push('endDate');
+    }
+    if ((updatedCampaign.notes ?? null) !== (campaign.notes ?? null)) {
+      changedFields.push('notes');
+    }
+
+    await this.auditLogService.append({
+      actionKey: 'BRAND_CAMPAIGN_UPDATED',
+      entityType: 'BRAND',
+      entityId: brand.id,
+      entityLabel: brand.name,
+      summary: `Updated campaign "${updatedCampaign.name}" in year ${updatedCampaign.year} for "${brand.name}".`,
+      metadata: {
+        campaignId: updatedCampaign.id,
+        campaignName: updatedCampaign.name,
+        year: updatedCampaign.year,
+        changedFields
+      },
+      actor
+    });
+
+    return {
+      item: this.mapCampaignItem(updatedCampaign)
+    };
+  }
+
+  async deleteCampaign(
+    brandCode: string,
+    campaignId: string,
+    actor?: {
+      actorName?: string;
+      actorEmail?: string;
+    },
+    user?: AuthenticatedRequestUser
+  ) {
+    const brand = await this.getBrandByCodeOrThrow(brandCode, user);
+    const campaign = await this.prisma.brandCampaign.findFirst({
+      where: {
+        id: campaignId,
+        brandId: brand.id
+      }
+    });
+
+    if (!campaign) {
+      throw new NotFoundException('Campaign was not found.');
+    }
+
+    await this.prisma.brandCampaign.delete({
+      where: {
+        id: campaign.id
+      }
+    });
+
+    await this.auditLogService.append({
+      actionKey: 'BRAND_CAMPAIGN_DELETED',
+      entityType: 'BRAND',
+      entityId: brand.id,
+      entityLabel: brand.name,
+      summary: `Deleted campaign "${campaign.name}" in year ${campaign.year} for "${brand.name}".`,
+      metadata: {
+        campaignId: campaign.id,
+        campaignName: campaign.name,
+        year: campaign.year
+      },
+      actor
+    });
+
+    return {
+      deleted: true
+    };
+  }
+
   async getCompanyFormatOptions(
     brandCode: string,
     includeDeprecated = false
@@ -899,6 +1367,36 @@ export class BrandsService {
 
     return {
       deleted: true
+    };
+  }
+
+  private mapCampaignItem(
+    campaign: {
+      id: string;
+      year: number;
+      name: string;
+      status: BrandCampaignStatus;
+      channel: BrandCampaignChannel | null;
+      objective: BrandCampaignObjective | null;
+      startDate: Date | null;
+      endDate: Date | null;
+      notes: string | null;
+      createdAt: Date;
+      updatedAt: Date;
+    }
+  ) {
+    return {
+      id: campaign.id,
+      year: campaign.year,
+      name: campaign.name,
+      status: campaign.status,
+      channel: campaign.channel,
+      objective: campaign.objective,
+      startDate: toDateOnlyString(campaign.startDate),
+      endDate: toDateOnlyString(campaign.endDate),
+      notes: campaign.notes,
+      createdAt: campaign.createdAt.toISOString(),
+      updatedAt: campaign.updatedAt.toISOString()
     };
   }
 

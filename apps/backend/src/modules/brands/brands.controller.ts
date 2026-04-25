@@ -7,12 +7,25 @@ import {
 import { BrandsService } from './brands.service';
 import type {
   CreateBrandInput,
+  CreateBrandCampaignInput,
   CreateCompanyFormatOptionInput,
   DeleteBrandInput,
   ReorderCompanyFormatOptionsInput,
   UpdateBrandInput,
+  UpdateBrandCampaignInput,
   UpdateCompanyFormatOptionInput
 } from './brands.types';
+
+function normalizeOptionalActor(user: AuthenticatedRequestUser | undefined) {
+  if (!user || user.internal) {
+    return undefined;
+  }
+
+  return {
+    actorName: user.displayName,
+    actorEmail: user.email
+  };
+}
 
 @Controller('brands')
 export class BrandsController {
@@ -115,5 +128,66 @@ export class BrandsController {
     @Param('optionId') optionId: string
   ) {
     return this.brandsService.deleteCompanyFormatOption(brandCode, optionId);
+  }
+
+  @Get(':brandCode/campaigns')
+  listCampaigns(
+    @Param('brandCode') brandCode: string,
+    @Query('year') year?: string,
+    @Query('includeInactive') includeInactive?: string,
+    @CurrentUser() user?: AuthenticatedRequestUser
+  ) {
+    const parsedYear = year ? Number(year) : null;
+    const resolvedYear =
+      parsedYear !== null && Number.isFinite(parsedYear) ? parsedYear : undefined;
+
+    return this.brandsService.listCampaigns(brandCode, {
+      year: resolvedYear,
+      includeInactive: includeInactive === 'true'
+    }, user);
+  }
+
+  @Post(':brandCode/campaigns')
+  createCampaign(
+    @Param('brandCode') brandCode: string,
+    @Body() body: CreateBrandCampaignInput,
+    @CurrentUser() user?: AuthenticatedRequestUser
+  ) {
+    return this.brandsService.createCampaign(
+      brandCode,
+      body,
+      normalizeOptionalActor(user),
+      user
+    );
+  }
+
+  @Post(':brandCode/campaigns/:campaignId')
+  updateCampaign(
+    @Param('brandCode') brandCode: string,
+    @Param('campaignId') campaignId: string,
+    @Body() body: UpdateBrandCampaignInput,
+    @CurrentUser() user?: AuthenticatedRequestUser
+  ) {
+    return this.brandsService.updateCampaign(
+      brandCode,
+      campaignId,
+      body,
+      normalizeOptionalActor(user),
+      user
+    );
+  }
+
+  @Delete(':brandCode/campaigns/:campaignId')
+  deleteCampaign(
+    @Param('brandCode') brandCode: string,
+    @Param('campaignId') campaignId: string,
+    @CurrentUser() user?: AuthenticatedRequestUser
+  ) {
+    return this.brandsService.deleteCampaign(
+      brandCode,
+      campaignId,
+      normalizeOptionalActor(user),
+      user
+    );
   }
 }
