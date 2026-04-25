@@ -1805,16 +1805,13 @@ export async function getKpiCatalog(options?: {
     params.set('includeInactive', 'true');
   }
 
-  const response = await fetch(
+  const response = await fetchWithTransient5xxRetry(
     `${getBackendApiBaseUrl()}/config/kpis${params.toString() ? `?${params.toString()}` : ''}`,
     {
       cache: 'no-store'
-    }
+    },
+    'Failed to load KPI catalog.'
   );
-
-  if (!response.ok) {
-    throw new Error(await readResponseErrorMessage(response, 'Failed to load KPI catalog.'));
-  }
 
   return response.json();
 }
