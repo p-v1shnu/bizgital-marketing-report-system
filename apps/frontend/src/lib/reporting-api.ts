@@ -1192,6 +1192,10 @@ const AUTH_USER_EMAIL_COOKIE_NAME = 'bizgital-marketing-report.user-email';
 const INTERNAL_API_SECRET_HEADER = 'X-Internal-Api-Secret';
 
 export function getBackendApiBaseUrl() {
+  if (typeof window !== 'undefined') {
+    return process.env.NEXT_PUBLIC_API_BASE_URL ?? '/api';
+  }
+
   return (
     process.env.INTERNAL_API_BASE_URL ??
     process.env.NEXT_PUBLIC_API_BASE_URL ??
