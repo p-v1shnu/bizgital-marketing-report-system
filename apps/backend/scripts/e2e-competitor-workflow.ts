@@ -611,11 +611,23 @@ async function main() {
         const hasActiveRelatedProduct =
           relatedProductField?.options.some((option) => option.status === 'active') ??
           false;
-        assertCondition(
-          hasActiveRelatedProduct,
-          `Related Product options are still missing for ${setupYear}.`
-        );
-        setupActions.push('Ensured Related Product options are available.');
+
+        if (!hasActiveRelatedProduct) {
+          await requestJson(
+            args.baseUrl,
+            `/brands/${brandCode}/internal-options`,
+            {
+              method: 'POST',
+              body: {
+                fieldKey: 'related_product',
+                label: `E2E Related Product ${setupYear}`
+              }
+            }
+          );
+          setupActions.push(`Created Related Product option for ${setupYear}.`);
+        } else {
+          setupActions.push('Related Product options are already available.');
+        }
       }
 
       if (failedCheckKeys.has('kpi_plan')) {

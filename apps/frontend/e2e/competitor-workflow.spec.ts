@@ -340,7 +340,13 @@ async function prepareYearSetup(targetYear: number): Promise<{
         false;
 
       if (!hasActiveRelatedProduct) {
-        throw new Error(`Related Product options are still missing for ${targetYear}.`);
+        await requestJson(`/brands/${brandCode}/internal-options`, {
+          method: 'POST',
+          body: {
+            fieldKey: 'related_product',
+            label: `E2E Related Product ${targetYear}`
+          }
+        });
       }
     }
 
