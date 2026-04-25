@@ -194,7 +194,7 @@ export function GlobalAppShell({
               admin layer.
             </div>
           </div>
-          <Link
+          <button
             aria-label="Sign out"
             className={cn(
               'rounded-[24px] border border-border/60 bg-background/60 text-muted-foreground transition hover:bg-background/80 hover:text-foreground lg:mt-auto',
@@ -202,12 +202,15 @@ export function GlobalAppShell({
                 ? 'flex h-14 items-center justify-center'
                 : 'flex h-11 items-center justify-center gap-2 px-3 text-sm font-medium'
             )}
-            href="/logout"
+            onClick={() => {
+              window.location.assign('/logout');
+            }}
             title="Sign out"
+            type="button"
           >
             <LogOut className="size-4 text-primary" />
             {collapsed ? null : <span>Sign out</span>}
-          </Link>
+          </button>
         </div>
       </aside>
 
