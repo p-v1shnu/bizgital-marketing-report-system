@@ -3,6 +3,7 @@ import {
   ArrowRight,
   BadgeCheck,
   Building2,
+  Megaphone,
   Users,
   Waypoints
 } from 'lucide-react';
@@ -13,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { requireBrandAdminAccess } from '@/lib/auth';
 import {
   getBrand,
+  getBrandCampaigns,
   getBrandCompanyFormatOptions,
   getCompetitorYearSetup,
   getBrandKpiPlan,
@@ -24,12 +26,14 @@ import { labelForState } from '@/lib/reporting-ui';
 
 import { CompanyFormatOptionsManager } from '../../settings/company-format-options-manager';
 import { BrandYearSetupManager } from './brand-year-setup-manager';
+import { BrandCampaignManager } from './brand-campaign-manager';
 import { QuestionSetupManager } from '../../[brandId]/question-setup/question-setup-manager';
 
 const tabs = [
   { key: 'overview', label: 'Overview', icon: Building2 },
   { key: 'members', label: 'Members', icon: Users },
   { key: 'year-setup', label: 'Year Setup', icon: BadgeCheck },
+  { key: 'campaigns', label: 'Campaigns', icon: Megaphone },
   { key: 'questions', label: 'Questions', icon: BadgeCheck },
   { key: 'columns', label: 'Columns', icon: Waypoints }
 ] as const;
@@ -125,6 +129,21 @@ export default async function BrandAdminDetailPage({
       ? getReportingPeriods(brandCode, activeYear).catch(() => null)
       : Promise.resolve(null)
   ]);
+  const campaignResult =
+    activeTab === 'campaigns'
+      ? await getBrandCampaigns(brandCode, {
+          year: yearSetupYear,
+          includeInactive: true
+        })
+          .then(data => ({ data, error: null as string | null }))
+          .catch(error => ({
+            data: null,
+            error:
+              error instanceof Error
+                ? error.message
+                : 'Failed to load campaigns for this brand.'
+          }))
+      : { data: null, error: null as string | null };
   const relatedProductsResult =
     activeTab === 'columns'
       ? await getBrandCompanyFormatOptions(brandCode, { includeDeprecated: true })
@@ -369,6 +388,30 @@ export default async function BrandAdminDetailPage({
               <QuestionSetupManager
                 brandId={brand.code}
                 initialSetup={questionSetupResult.data}
+              />
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {activeTab === 'campaigns' ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Campaigns</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="rounded-[20px] border border-border/60 bg-background/55 px-4 py-3 text-sm text-muted-foreground">
+              Campaign list is brand-scoped and year-scoped. Import table uses active campaigns
+              in the selected reporting year as dropdown options.
+            </div>
+            {!campaignResult.data ? (
+              <div className="rounded-[18px] border border-rose-500/25 bg-rose-500/8 px-3 py-3 text-sm text-rose-700 dark:text-rose-300">
+                {campaignResult.error ?? 'Campaign setup is unavailable right now.'}
+              </div>
+            ) : (
+              <BrandCampaignManager
+                brandCode={brand.code}
+                initialCampaigns={campaignResult.data}
               />
             )}
           </CardContent>
