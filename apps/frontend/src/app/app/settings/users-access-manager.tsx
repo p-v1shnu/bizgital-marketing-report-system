@@ -260,7 +260,7 @@ export function UsersAccessManager({ users, brands, actorName, actorEmail }: Pro
       displayName: user.displayName,
       email: user.email,
       password: '',
-      signInMethod: inferSignInMethodFromUser(user),
+      signInMethod: user.isBootstrapSuperAdmin ? 'password_only' : inferSignInMethodFromUser(user),
       brandCodes: initialBrandCodes,
       role: initialRole,
       canCreateReports:
@@ -309,8 +309,12 @@ export function UsersAccessManager({ users, brands, actorName, actorEmail }: Pro
     setStatusError(null);
     setStatusMessage(null);
 
+    const isEditingBootstrapSuperAdmin = editingUser?.isBootstrapSuperAdmin === true;
+    const resolvedSignInMethod: SignInMethod = isEditingBootstrapSuperAdmin
+      ? 'password_only'
+      : draft.signInMethod;
     const normalizedPassword = draft.password.trim();
-    const passwordRequired = requiresPassword(draft.signInMethod);
+    const passwordRequired = requiresPassword(resolvedSignInMethod);
     const editingHasPassword = !!editingUser?.hasPassword;
 
     if (!draft.displayName.trim() || !draft.email.trim()) {
@@ -388,7 +392,7 @@ export function UsersAccessManager({ users, brands, actorName, actorEmail }: Pro
           body: JSON.stringify({
             displayName: draft.displayName,
             email: draft.email,
-            signInMethod: draft.signInMethod,
+            signInMethod: resolvedSignInMethod,
             globalAdmin: resolvedGlobalAdmin,
             actorName,
             actorEmail,
@@ -420,7 +424,7 @@ export function UsersAccessManager({ users, brands, actorName, actorEmail }: Pro
           body: JSON.stringify({
             displayName: draft.displayName,
             email: draft.email,
-            signInMethod: draft.signInMethod,
+            signInMethod: resolvedSignInMethod,
             globalAdmin: resolvedGlobalAdmin,
             actorName,
             actorEmail,
@@ -747,11 +751,12 @@ export function UsersAccessManager({ users, brands, actorName, actorEmail }: Pro
               </label>
               <Select
                 id="user-sign-in-method-input"
+                disabled={editingUser?.isBootstrapSuperAdmin}
                 onChange={event => {
                   const value = event.currentTarget.value as SignInMethod;
                   setDraft(current => ({ ...current, signInMethod: value }));
                 }}
-                value={draft.signInMethod}
+                value={editingUser?.isBootstrapSuperAdmin ? 'password_only' : draft.signInMethod}
               >
                 <option value="microsoft_only">Microsoft only</option>
                 <option value="password_only">Password only</option>
@@ -787,10 +792,14 @@ export function UsersAccessManager({ users, brands, actorName, actorEmail }: Pro
             </div>
 
             <div className="rounded-2xl border border-border/60 bg-background/60 px-3 py-3 text-sm text-muted-foreground md:col-span-2">
-              {signInHelperText(draft.signInMethod)}
+              {signInHelperText(
+                editingUser?.isBootstrapSuperAdmin ? 'password_only' : draft.signInMethod
+              )}
             </div>
 
-            {requiresPassword(draft.signInMethod) ? (
+            {requiresPassword(
+              editingUser?.isBootstrapSuperAdmin ? 'password_only' : draft.signInMethod
+            ) ? (
               <div className="space-y-2 md:col-span-2">
                 <label className="text-sm font-medium" htmlFor="user-password-input">
                   {modalMode === 'create' ? 'Password' : 'Password (leave blank to keep current)'}
@@ -956,7 +965,7 @@ export function UsersAccessManager({ users, brands, actorName, actorEmail }: Pro
                 </div>
                 {editingUser.isBootstrapSuperAdmin ? (
                   <div className="mt-2 rounded-2xl border border-amber-500/25 bg-amber-500/8 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-                    Bootstrap Super Admin account is protected from deletion and role downgrade.
+                    Bootstrap Super Admin account is protected from deletion, role downgrade, and sign-in method changes (Password only).
                   </div>
                 ) : null}
               </>

@@ -480,7 +480,7 @@ export class UsersService {
       }
     });
 
-    const createdUserId = await this.prisma.$transaction(async tx => {
+    const bootstrapResult = await this.prisma.$transaction(async tx => {
       const existingBootstrapRows = await tx.$queryRawUnsafe<RawBootstrapSuperAdminRow[]>(
         `
         SELECT id, user_id
@@ -510,34 +510,75 @@ export class UsersService {
         );
       }
 
-      const user = await tx.user.create({
-        data: {
-          email,
-          displayName,
-          status: UserStatus.active
+      const existingUserByEmail = await tx.user.findUnique({
+        where: {
+          email
+        },
+        select: {
+          id: true,
+          displayName: true,
+          status: true
         }
       });
 
+      const recoveredExistingUser = existingUserByEmail !== null;
+      let userId = existingUserByEmail?.id ?? null;
+      if (!userId) {
+        const user = await tx.user.create({
+          data: {
+            email,
+            displayName,
+            status: UserStatus.active
+          }
+        });
+        userId = user.id;
+      } else if (
+        existingUserByEmail?.displayName !== displayName ||
+        existingUserByEmail?.status !== UserStatus.active
+      ) {
+        await tx.user.update({
+          where: {
+            id: userId
+          },
+          data: {
+            displayName,
+            status: UserStatus.active
+          }
+        });
+      }
+
       await this.upsertAuthCredentialWithClient(tx, {
-        userId: user.id,
+        userId,
         passwordHash: hashPassword(password),
         allowPassword: true,
-        allowMicrosoft: true
+        allowMicrosoft: false
+      });
+      await this.setGlobalAdminWithClient(tx, {
+        userId,
+        isGlobalAdmin: true
       });
 
       if (brands.length > 0) {
-        await tx.brandMembership.createMany({
-          data: brands.map((brand) => ({
-            userId: user.id,
-            brandId: brand.id,
-            role: BrandRole.admin
-          }))
-        });
-
         for (const brand of brands) {
+          await tx.brandMembership.upsert({
+            where: {
+              brand_membership_brand_user_role_unique: {
+                brandId: brand.id,
+                userId,
+                role: BrandRole.admin
+              }
+            },
+            update: {},
+            create: {
+              brandId: brand.id,
+              userId,
+              role: BrandRole.admin
+            }
+          });
+
           await this.upsertMembershipPermissionWithClient(tx, {
             brandId: brand.id,
-            userId: user.id,
+            userId,
             canCreateReports: true,
             canApproveReports: true
           });
@@ -548,11 +589,17 @@ export class UsersService {
         `
         INSERT INTO system_bootstrap_super_admin (id, user_id)
         VALUES (1, ?)
+        ON DUPLICATE KEY UPDATE
+          user_id = VALUES(user_id),
+          updated_at = CURRENT_TIMESTAMP(3)
         `,
-        user.id
+        userId
       );
 
-      return user.id;
+      return {
+        userId,
+        recoveredExistingUser
+      };
     }).catch((error) => {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -563,7 +610,7 @@ export class UsersService {
       throw error;
     });
 
-    const createdUser = await this.getUserByIdOrThrow(createdUserId);
+    const createdUser = await this.getUserByIdOrThrow(bootstrapResult.userId);
 
     await this.auditLogService.append({
       actionKey: 'SUPER_ADMIN_BOOTSTRAPPED',
@@ -574,7 +621,8 @@ export class UsersService {
       metadata: {
         email: createdUser.email,
         brandCount: brands.length,
-        mode: status.mode
+        mode: status.mode,
+        recoveredExistingUser: bootstrapResult.recoveredExistingUser
       }
     });
 
@@ -752,10 +800,11 @@ export class UsersService {
       nextAuthPolicy.allowPassword,
       nextAuthPolicy.allowMicrosoft
     );
-    const nextGlobalAdmin =
+    const requestedNextGlobalAdmin =
       input.globalAdmin !== undefined
         ? normalizeBooleanInput(input.globalAdmin)
         : existingIsGlobalAdmin;
+    const nextGlobalAdmin = isBootstrapSuperAdmin ? true : requestedNextGlobalAdmin;
     const replaceMemberships = input.replaceMemberships === true;
     const memberships =
       input.memberships !== undefined
@@ -823,6 +872,15 @@ export class UsersService {
 
     if (isBootstrapSuperAdmin && nextStatus && nextStatus !== UserStatus.active) {
       throw new BadRequestException('Bootstrap Super Admin account must remain active.');
+    }
+
+    if (
+      isBootstrapSuperAdmin &&
+      (!nextAuthPolicy.allowPassword || nextAuthPolicy.allowMicrosoft)
+    ) {
+      throw new BadRequestException(
+        'Bootstrap Super Admin must remain Password only.'
+      );
     }
 
     if (isBootstrapSuperAdmin && memberships !== undefined) {
