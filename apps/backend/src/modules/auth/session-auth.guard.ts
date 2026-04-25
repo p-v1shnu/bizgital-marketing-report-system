@@ -23,6 +23,10 @@ function resolveInternalApiSecret() {
   return normalizeOptionalString(process.env.INTERNAL_API_AUTH_SECRET);
 }
 
+type RawBootstrapSuperAdminRow = {
+  user_id: string;
+};
+
 @Injectable()
 export class SessionAuthGuard implements CanActivate {
   constructor(
@@ -102,13 +106,17 @@ export class SessionAuthGuard implements CanActivate {
       throw new UnauthorizedException('Authentication is required.');
     }
 
+    const hasBrandAdminRole = user.brandMemberships.some(
+      (membership) => membership.role === BrandRole.admin
+    );
+    const hasBootstrapSuperAdminAccess = hasBrandAdminRole
+      ? false
+      : await this.isBootstrapSuperAdminUser(user.id);
     const userContext: AuthenticatedRequestUser = {
       id: user.id,
       email: user.email,
       displayName: user.displayName,
-      hasAdminRole: user.brandMemberships.some(
-        (membership) => membership.role === BrandRole.admin
-      ),
+      hasAdminRole: hasBrandAdminRole || hasBootstrapSuperAdminAccess,
       brandMemberships: user.brandMemberships
     };
     request.user = userContext;
@@ -116,6 +124,33 @@ export class SessionAuthGuard implements CanActivate {
     await this.assertAuthorizedRequest(request, userContext);
 
     return true;
+  }
+
+  private async isBootstrapSuperAdminUser(userId: string) {
+    try {
+      const rows = await this.prisma.$queryRawUnsafe<RawBootstrapSuperAdminRow[]>(
+        `
+        SELECT user_id
+        FROM system_bootstrap_super_admin
+        WHERE id = 1 AND user_id = ?
+        LIMIT 1
+        `,
+        userId
+      );
+
+      return rows.length > 0;
+    } catch (error) {
+      const message = error instanceof Error ? error.message.toLowerCase() : '';
+      if (
+        message.includes("doesn't exist") ||
+        message.includes('no such table') ||
+        message.includes('unknown table')
+      ) {
+        return false;
+      }
+
+      throw error;
+    }
   }
 
   private async assertAuthorizedRequest(
@@ -189,6 +224,10 @@ export class SessionAuthGuard implements CanActivate {
     }
 
     if (/^\/brands\/[^/]+\/internal-options(?:\/|$)/.test(path)) {
+      return method !== 'GET';
+    }
+
+    if (/^\/brands\/[^/]+\/campaigns(?:\/|$)/.test(path)) {
       return method !== 'GET';
     }
 

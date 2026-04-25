@@ -390,12 +390,6 @@ export class UsersService {
       }
     });
 
-    if (brands.length === 0) {
-      throw new BadRequestException(
-        'Cannot setup Super Admin because no brands are available yet.'
-      );
-    }
-
     const createdUserId = await this.prisma.$transaction(async tx => {
       const existingBootstrapRows = await tx.$queryRawUnsafe<RawBootstrapSuperAdminRow[]>(
         `
@@ -441,21 +435,23 @@ export class UsersService {
         allowMicrosoft: true
       });
 
-      await tx.brandMembership.createMany({
-        data: brands.map((brand) => ({
-          userId: user.id,
-          brandId: brand.id,
-          role: BrandRole.admin
-        }))
-      });
-
-      for (const brand of brands) {
-        await this.upsertMembershipPermissionWithClient(tx, {
-          brandId: brand.id,
-          userId: user.id,
-          canCreateReports: true,
-          canApproveReports: true
+      if (brands.length > 0) {
+        await tx.brandMembership.createMany({
+          data: brands.map((brand) => ({
+            userId: user.id,
+            brandId: brand.id,
+            role: BrandRole.admin
+          }))
         });
+
+        for (const brand of brands) {
+          await this.upsertMembershipPermissionWithClient(tx, {
+            brandId: brand.id,
+            userId: user.id,
+            canCreateReports: true,
+            canApproveReports: true
+          });
+        }
       }
 
       await tx.$executeRawUnsafe(
