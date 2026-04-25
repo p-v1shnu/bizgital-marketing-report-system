@@ -242,11 +242,7 @@ export async function getAuthContext(): Promise<AuthContext> {
       }
     }
   }
-  const hasAdminMembershipFromBrandLoop = memberships.some(
-    (membership) => membership.role === 'admin'
-  );
-
-  if (!user || !hasAdminMembershipFromBrandLoop) {
+  if (!user) {
     const users = await getUsers().catch(() => []);
     const matchedUser = users.find(
       (candidate) =>
