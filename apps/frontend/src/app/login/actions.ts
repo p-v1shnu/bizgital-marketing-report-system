@@ -49,7 +49,7 @@ export async function loginAction(formData: FormData) {
   const cookieStore = await cookies();
   cookieStore.set(AUTH_COOKIE_NAME, createAuthSessionCookieValue(account.email), {
     httpOnly: true,
-    sameSite: 'strict',
+    sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
     path: '/',
     maxAge: AUTH_SESSION_TTL_SECONDS

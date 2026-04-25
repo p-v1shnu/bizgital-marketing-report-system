@@ -225,7 +225,7 @@ export async function GET(request: NextRequest) {
 
   response.cookies.set(AUTH_COOKIE_NAME, createAuthSessionCookieValue(backendPayload.email), {
     httpOnly: true,
-    sameSite: 'strict',
+    sameSite: 'lax',
     secure,
     path: '/',
     maxAge: AUTH_SESSION_TTL_SECONDS
