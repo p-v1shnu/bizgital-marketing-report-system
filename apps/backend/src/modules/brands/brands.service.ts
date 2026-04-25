@@ -68,7 +68,7 @@ const COMPANY_FORMAT_FIELD_DEFINITIONS: Array<{
   {
     key: BrandDropdownFieldKey.related_product,
     label: 'Related Product',
-    defaultOptions: ['Hero Product', 'Core Line', 'Seasonal Push', 'Bundle', 'Other']
+    defaultOptions: []
   },
   {
     key: BrandDropdownFieldKey.media_format,
