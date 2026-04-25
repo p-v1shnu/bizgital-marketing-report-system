@@ -1,6 +1,19 @@
-import { Body, Controller, Delete, Get, Param, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  UnauthorizedException,
+  UseGuards
+} from '@nestjs/common';
 
 import { AuthRateLimitGuard } from '../auth/auth-rate-limit.guard';
+import {
+  CurrentUser,
+  type AuthenticatedRequestUser
+} from '../auth/current-user.decorator';
 import { Public } from '../auth/public.decorator';
 import type {
   BootstrapSuperAdminInput,
@@ -19,6 +32,15 @@ export class UsersController {
   @Get()
   listUsers() {
     return this.usersService.listUsers();
+  }
+
+  @Get('me')
+  getCurrentUser(@CurrentUser() user?: AuthenticatedRequestUser) {
+    if (!user || user.internal) {
+      throw new UnauthorizedException('Authentication is required.');
+    }
+
+    return this.usersService.getCurrentUser(user.id);
   }
 
   @Get('bootstrap/status')

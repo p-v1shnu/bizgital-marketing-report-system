@@ -334,6 +334,74 @@ export class UsersService {
     });
   }
 
+  async getCurrentUser(userId: string) {
+    await this.ensureAuthStorage();
+    await this.ensureMembershipPermissionStorage();
+    await this.ensureBootstrapSuperAdminStorage();
+
+    const bootstrapStatus = await this.resolveBootstrapStatus();
+    const user = await this.prisma.user.findUnique({
+      where: {
+        id: userId
+      },
+      include: {
+        brandMemberships: {
+          include: {
+            brand: true
+          },
+          orderBy: [{ role: 'asc' }, { createdAt: 'asc' }]
+        }
+      }
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Authentication is required.');
+    }
+
+    const auth = (await this.getAuthByUserId([user.id])).get(user.id);
+    const permissionByMembershipKey = await this.getMembershipPermissionByPairs(
+      user.brandMemberships.map(membership => ({
+        brandId: membership.brandId,
+        userId: membership.userId
+      }))
+    );
+    const authPolicy = this.resolveAuthPolicy(auth);
+
+    return {
+      id: user.id,
+      email: user.email,
+      displayName: user.displayName,
+      status: user.status,
+      hasPassword: !!auth?.password_hash,
+      microsoftLinked: !!auth?.microsoft_oid,
+      allowPassword: authPolicy.allowPassword,
+      allowMicrosoft: authPolicy.allowMicrosoft,
+      signInMethod: authPolicy.signInMethod,
+      memberships: user.brandMemberships.map(membership => ({
+        id: membership.id,
+        role: membership.role,
+        permissions: resolveMembershipPermissions({
+          role: membership.role,
+          overrideCanCreateReports: permissionByMembershipKey.get(
+            this.membershipPermissionKey(membership.brandId, membership.userId)
+          )?.can_create_reports,
+          overrideCanApproveReports: permissionByMembershipKey.get(
+            this.membershipPermissionKey(membership.brandId, membership.userId)
+          )?.can_approve_reports
+        }),
+        brand: {
+          id: membership.brand.id,
+          code: membership.brand.code,
+          name: membership.brand.name,
+          status: membership.brand.status
+        }
+      })),
+      isBootstrapSuperAdmin: bootstrapStatus.bootstrapSuperAdminUserId === user.id,
+      createdAt: user.createdAt.toISOString(),
+      updatedAt: user.updatedAt.toISOString()
+    };
+  }
+
   async getBootstrapStatus(): Promise<BootstrapStatusResponse> {
     await this.ensureBootstrapSuperAdminStorage();
     const status = await this.resolveBootstrapStatus();

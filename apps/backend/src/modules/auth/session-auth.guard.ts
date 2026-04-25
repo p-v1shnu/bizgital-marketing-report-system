@@ -206,7 +206,8 @@ export class SessionAuthGuard implements CanActivate {
     if (
       path.startsWith('/users') &&
       !path.startsWith('/users/auth/') &&
-      !path.startsWith('/users/bootstrap/')
+      !path.startsWith('/users/bootstrap/') &&
+      path !== '/users/me'
     ) {
       return true;
     }

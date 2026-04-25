@@ -3,7 +3,12 @@ import { cache } from 'react';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 
-import { getBrands, getSuperAdminBootstrapStatus, getUsers } from './reporting-api';
+import {
+  getBrands,
+  getCurrentUser,
+  getSuperAdminBootstrapStatus,
+  getUsers
+} from './reporting-api';
 import {
   AUTH_COOKIE_NAME,
   parseAuthSessionCookieValue
@@ -182,36 +187,59 @@ export async function getAuthContext(): Promise<AuthContext> {
   const brands = await getBrandsForAuth().catch(() => []);
   const memberships: UserMembership[] = [];
   let user: Omit<AuthenticatedUser, 'memberships'> | null = null;
+  let hasBootstrapSuperAdminAccess = false;
 
-  for (const brand of brands) {
-    for (const membership of brand.memberships) {
-      if (normalizeEmail(membership.user.email) !== sessionEmail) {
-        continue;
-      }
+  const currentUser = await getCurrentUser().catch(() => null);
+  if (currentUser && normalizeEmail(currentUser.email) === sessionEmail) {
+    user = {
+      id: currentUser.id,
+      displayName: currentUser.displayName,
+      email: normalizeEmail(currentUser.email),
+      status: currentUser.status
+    };
+    hasBootstrapSuperAdminAccess = currentUser.isBootstrapSuperAdmin === true;
 
-      if (membership.user.status !== 'active') {
-        continue;
-      }
-
+    for (const membership of currentUser.memberships) {
       const role = normalizeBrandRole(String(membership.role ?? ''));
       memberships.push({
-        brandCode: brand.code,
-        brandName: brand.name,
+        brandCode: membership.brand.code,
+        brandName: membership.brand.name,
         role,
         permissions: resolveMembershipPermissions(role, membership.permissions)
       });
+    }
+  }
 
-      if (!user) {
-        user = {
-          id: membership.user.id,
-          displayName: membership.user.displayName,
-          email: normalizeEmail(membership.user.email),
-          status: membership.user.status
-        };
+  if (!user) {
+    for (const brand of brands) {
+      for (const membership of brand.memberships) {
+        if (normalizeEmail(membership.user.email) !== sessionEmail) {
+          continue;
+        }
+
+        if (membership.user.status !== 'active') {
+          continue;
+        }
+
+        const role = normalizeBrandRole(String(membership.role ?? ''));
+        memberships.push({
+          brandCode: brand.code,
+          brandName: brand.name,
+          role,
+          permissions: resolveMembershipPermissions(role, membership.permissions)
+        });
+
+        if (!user) {
+          user = {
+            id: membership.user.id,
+            displayName: membership.user.displayName,
+            email: normalizeEmail(membership.user.email),
+            status: membership.user.status
+          };
+        }
       }
     }
   }
-  let hasBootstrapSuperAdminAccess = false;
   const hasAdminMembershipFromBrandLoop = memberships.some(
     (membership) => membership.role === 'admin'
   );

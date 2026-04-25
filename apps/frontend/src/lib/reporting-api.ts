@@ -1463,6 +1463,20 @@ export async function deleteBrandCampaign(
   return deleteReportingAction(`/brands/${brandCode}/campaigns/${campaignId}`);
 }
 
+export async function getCurrentUser(): Promise<UserSummary> {
+  const response = await fetch(`${getBackendApiBaseUrl()}/users/me`, {
+    cache: 'no-store'
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      await readResponseErrorMessage(response, 'Failed to load current user.')
+    );
+  }
+
+  return response.json();
+}
+
 export async function getUsers(): Promise<UserSummary[]> {
   const response = await fetch(`${getBackendApiBaseUrl()}/users`, {
     cache: 'no-store'
