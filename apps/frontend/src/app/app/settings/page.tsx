@@ -24,6 +24,7 @@ import {
   type KpiCatalogListResponse,
   type UserSummary
 } from '@/lib/reporting-api';
+import { createImportMappingDraftFromCsvAction } from './actions';
 
 import { BrandsManager } from './brands-manager';
 import { AuditLogManager } from './audit-log-manager';
@@ -46,10 +47,12 @@ type SettingsTab =
   | 'questions'
   | 'audit-log';
 type GlobalFieldTab = 'content_style' | 'media_format' | 'content_objective';
+type DataSetupTab = 'mapping' | 'layout' | 'formulas';
 
 type SettingsPageProps = {
   searchParams?: Promise<{
     tab?: string;
+    setupTab?: string;
     field?: string;
     q?: string;
     page?: string;
@@ -99,11 +102,36 @@ function parseFieldTab(value?: string): GlobalFieldTab {
     : 'content_style';
 }
 
+function parseDataSetupTab(setupTab?: string, rawTab?: string): DataSetupTab {
+  if (setupTab === 'mapping' || setupTab === 'layout' || setupTab === 'formulas') {
+    return setupTab;
+  }
+
+  if (rawTab === 'import-mapping') {
+    return 'mapping';
+  }
+
+  if (rawTab === 'formulas') {
+    return 'formulas';
+  }
+
+  return 'mapping';
+}
+
 function settingsHref(tab: SettingsTab, field?: GlobalFieldTab) {
   const search = new URLSearchParams({ tab });
   if (tab === 'columns' && field) {
     search.set('field', field);
   }
+  return `/app/settings?${search.toString()}`;
+}
+
+function dataSetupHref(setupTab: DataSetupTab) {
+  const search = new URLSearchParams({
+    tab: 'data-setup',
+    setupTab
+  });
+
   return `/app/settings?${search.toString()}`;
 }
 
@@ -128,7 +156,9 @@ function parseAuditLimit(value: string | undefined) {
 export default async function SettingsPage({ searchParams }: SettingsPageProps) {
   const adminContext = await requireAnyAdmin('/app/settings');
   const resolvedSearchParams = searchParams ? await searchParams : {};
+  const rawTab = resolvedSearchParams.tab;
   const activeTab = parseSettingsTab(resolvedSearchParams.tab);
+  const activeDataSetupTab = parseDataSetupTab(resolvedSearchParams.setupTab, rawTab);
   const activeField = parseFieldTab(resolvedSearchParams.field);
   const auditQuery = String(resolvedSearchParams.q ?? '').trim();
   const auditPage = parsePositiveInt(resolvedSearchParams.page, 1);
@@ -136,10 +166,13 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
 
   const shouldLoadBrands = activeTab === 'users' || activeTab === 'brands';
   const shouldLoadUsers = activeTab === 'users' || activeTab === 'brands';
-  const shouldLoadColumns = activeTab === 'columns' || activeTab === 'data-setup';
+  const shouldLoadColumns =
+    activeTab === 'columns' ||
+    (activeTab === 'data-setup' && activeDataSetupTab === 'layout');
   const shouldLoadImportMapping = activeTab === 'data-setup';
   const shouldLoadContentPolicy = activeTab === 'content-policy';
-  const shouldLoadFormulas = activeTab === 'data-setup' || activeTab === 'kpis';
+  const shouldLoadFormulas =
+    activeTab === 'kpis' || (activeTab === 'data-setup' && activeDataSetupTab === 'formulas');
   const shouldLoadKpis = activeTab === 'kpis';
   const shouldLoadQuestionCatalog = activeTab === 'questions';
   const shouldLoadAuditLog = activeTab === 'audit-log';
@@ -324,6 +357,35 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
 
   const currentField =
     companyFormatOptionsResult.data?.fields.find(field => field.key === activeField) ?? null;
+  const dataSetupConfig = importMappingConfigResult.data;
+  const baselineReady = !!dataSetupConfig?.published;
+  const isDataSetupDependencyLocked =
+    activeDataSetupTab !== 'mapping' && !baselineReady;
+  const dataSetupTabs: Array<{
+    key: DataSetupTab;
+    label: string;
+    icon: typeof Link2;
+    disabled: boolean;
+  }> = [
+    {
+      key: 'mapping',
+      label: 'Import Mapping',
+      icon: Link2,
+      disabled: false
+    },
+    {
+      key: 'layout',
+      label: 'Table Layout',
+      icon: Columns3,
+      disabled: !baselineReady
+    },
+    {
+      key: 'formulas',
+      label: 'Formula Manager',
+      icon: Calculator,
+      disabled: !baselineReady
+    }
+  ];
 
   return (
     <section className="space-y-6">
@@ -449,32 +511,133 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="rounded-[20px] border border-border/60 bg-background/55 px-4 py-3 text-sm text-muted-foreground">
-              Configure CSV schema once, then continue with table layout and formula logic in the same flow.
+              Configure CSV schema once, then manage mapping, table layout, and formulas by section.
             </div>
 
             <section className="space-y-3">
-              <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                <Link2 className="size-4 text-primary" />
-                Step 1: Import mapping baseline
-              </div>
-              {importMappingConfigResult.error ? (
-                <div className="rounded-[24px] border border-rose-500/25 bg-rose-500/8 px-4 py-4 text-sm text-rose-700 dark:text-rose-300">
-                  {importMappingConfigResult.error}
+              <div className="rounded-[20px] border border-border/60 bg-background/60 p-4" id="csv-schema-source">
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <div className="text-sm font-medium text-foreground">CSV schema source</div>
+                  <span className="rounded-full border border-border/60 bg-background/70 px-2 py-0.5 text-xs text-muted-foreground">
+                    {dataSetupConfig?.published ? 'Configured' : 'Not configured'}
+                  </span>
                 </div>
-              ) : importMappingConfigResult.data ? (
-                <ImportMappingManager
-                  config={importMappingConfigResult.data}
-                  returnPath={settingsHref('data-setup')}
-                />
-              ) : null}
+                {importMappingConfigResult.error ? (
+                  <div className="rounded-xl border border-rose-500/25 bg-rose-500/8 px-3 py-3 text-sm text-rose-700 dark:text-rose-300">
+                    {importMappingConfigResult.error}
+                  </div>
+                ) : (
+                  <>
+                    <div className="mb-3 space-y-1 text-sm text-muted-foreground">
+                      <div>
+                        Current published version:{' '}
+                        {dataSetupConfig?.published
+                          ? dataSetupConfig.published.versionId.slice(0, 8)
+                          : 'none'}
+                      </div>
+                      {dataSetupConfig?.published ? (
+                        <>
+                          <div>
+                            Published at:{' '}
+                            {new Intl.DateTimeFormat('en-US', {
+                              dateStyle: 'medium',
+                              timeStyle: 'short'
+                            }).format(new Date(dataSetupConfig.published.publishedAt))}
+                          </div>
+                          <div>
+                            Published by: {dataSetupConfig.published.publishedBy ?? 'unknown'}
+                          </div>
+                          <div>
+                            Source file: {dataSetupConfig.published.sourceFilename ?? 'n/a'}
+                          </div>
+                        </>
+                      ) : (
+                        <div>Upload CSV and publish mapping baseline to unlock other sections.</div>
+                      )}
+                    </div>
+                    <form
+                      action={createImportMappingDraftFromCsvAction}
+                      className="grid gap-3 md:grid-cols-[minmax(240px,1fr)_220px]"
+                    >
+                      <input name="returnPath" type="hidden" value={dataSetupHref('mapping')} />
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium" htmlFor="data-setup-schema-csv-file-input">
+                          CSV schema file
+                        </label>
+                        <input
+                          accept=".csv,text/csv"
+                          className="block w-full cursor-pointer rounded-xl border border-input bg-background px-3 py-2 text-sm text-foreground"
+                          id="data-setup-schema-csv-file-input"
+                          name="file"
+                          type="file"
+                        />
+                      </div>
+                      <Button className="w-full md:w-auto md:self-end" type="submit">
+                        Upload CSV schema
+                      </Button>
+                    </form>
+                  </>
+                )}
+              </div>
             </section>
 
             <section className="space-y-3">
-              <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                <Columns3 className="size-4 text-primary" />
-                Step 2: Table display layout
-              </div>
-              {metaColumnsResult.error ? (
+              <nav aria-label="Data setup sections" className="flex flex-wrap gap-2">
+                {dataSetupTabs.map((tab) =>
+                  tab.disabled ? (
+                    <div
+                      className="flex items-center gap-2 rounded-[18px] border border-border/60 bg-background/50 px-3 py-2 text-sm text-muted-foreground"
+                      key={tab.key}
+                    >
+                      <tab.icon className="size-4" />
+                      {tab.label}
+                      <span className="text-xs">Baseline required</span>
+                    </div>
+                  ) : (
+                    <Link
+                      className={`flex items-center gap-2 rounded-[18px] border px-3 py-2 text-sm transition ${
+                        activeDataSetupTab === tab.key
+                          ? 'border-primary/25 bg-primary/10 text-foreground'
+                          : 'border-border/60 bg-background/60 text-muted-foreground hover:text-foreground'
+                      }`}
+                      href={dataSetupHref(tab.key)}
+                      key={tab.key}
+                    >
+                      <tab.icon className="size-4 text-primary" />
+                      {tab.label}
+                    </Link>
+                  )
+                )}
+              </nav>
+            </section>
+
+            <section className="space-y-3">
+              {importMappingConfigResult.error ? (
+                <div className="rounded-[18px] border border-rose-500/25 bg-rose-500/8 px-3 py-3 text-sm text-rose-700 dark:text-rose-300">
+                  {importMappingConfigResult.error}
+                </div>
+              ) : activeDataSetupTab === 'mapping' && importMappingConfigResult.data ? (
+                <ImportMappingManager
+                  config={importMappingConfigResult.data}
+                  returnPath={dataSetupHref('mapping')}
+                />
+              ) : isDataSetupDependencyLocked ? (
+                <div className="rounded-[20px] border border-amber-500/25 bg-amber-500/8 px-4 py-4 text-sm text-amber-700 dark:text-amber-300">
+                  <div className="font-medium text-foreground">Baseline required before this section</div>
+                  <div className="mt-2">
+                    Upload CSV schema and publish Import Mapping baseline first, then Table Layout
+                    and Formula Manager will unlock.
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button asChild size="sm" type="button" variant="outline">
+                      <a href="#csv-schema-source">Upload CSV schema</a>
+                    </Button>
+                    <Button asChild size="sm" type="button">
+                      <Link href={dataSetupHref('mapping')}>Publish mapping baseline</Link>
+                    </Button>
+                  </div>
+                </div>
+              ) : activeDataSetupTab === 'layout' ? metaColumnsResult.error ? (
                 <div className="rounded-[18px] border border-rose-500/25 bg-rose-500/8 px-3 py-3 text-sm text-rose-700 dark:text-rose-300">
                   {metaColumnsResult.error}
                 </div>
@@ -487,15 +650,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                   initialSelectedLabels={importLayoutResult.data.visibleSourceColumnLabels}
                   metaColumns={metaColumnsResult.data.columns}
                 />
-              )}
-            </section>
-
-            <section className="space-y-3">
-              <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                <Calculator className="size-4 text-primary" />
-                Step 3: Formula manager
-              </div>
-              {formulasResult.error ? (
+              ) : activeDataSetupTab === 'formulas' ? formulasResult.error ? (
                 <div className="rounded-[24px] border border-rose-500/25 bg-rose-500/8 px-4 py-4 text-sm text-rose-700 dark:text-rose-300">
                   {formulasResult.error}
                 </div>
@@ -508,10 +663,12 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                   formulas={formulasResult.data.items}
                   metaColumns={metaColumnsResult.data.columns}
                 />
-              )}
-              <div className="text-sm text-muted-foreground">
-                Use expression format like <code>{'{{Views}} / {{Viewers}}'}</code>. Active formulas appear in Import content table after upload.
-              </div>
+              ) : null}
+              {activeDataSetupTab === 'formulas' ? (
+                <div className="text-sm text-muted-foreground">
+                  Use expression format like <code>{'{{Views}} / {{Viewers}}'}</code>. Active formulas appear in Import content table after upload.
+                </div>
+              ) : null}
             </section>
           </CardContent>
         </Card>

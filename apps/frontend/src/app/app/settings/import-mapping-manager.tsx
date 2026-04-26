@@ -5,7 +5,6 @@ import type { ImportColumnMappingConfigResponse } from '@/lib/reporting-api';
 
 import {
   createImportMappingDraftFromPublishedAction,
-  createImportMappingDraftFromCsvAction,
   discardImportMappingDraftAction,
   publishImportMappingAction,
   rollbackImportMappingAction,
@@ -39,12 +38,12 @@ export function ImportMappingManager({ config, returnPath }: ImportMappingManage
   return (
     <div className="space-y-4">
       <div className="rounded-[20px] border border-border/60 bg-background/60 p-4 text-sm text-muted-foreground">
-        Import mapping is admin-only. Use this page to tell the system which CSV header names
+        Import mapping is admin-only. Use this section to tell the system which CSV header names
         should map into each system field, then publish once for all users.
       </div>
 
       <div className="rounded-[20px] border border-border/60 bg-background/60 p-4 text-sm text-muted-foreground">
-        <div className="font-medium text-foreground">How to read this page</div>
+        <div className="font-medium text-foreground">How to read this tab</div>
         <ul className="mt-2 list-disc space-y-1 pl-5">
           <li>
             <span className="text-foreground">System field</span>: core field used directly by app
@@ -93,22 +92,15 @@ export function ImportMappingManager({ config, returnPath }: ImportMappingManage
         )}
       </div>
 
-      <form action={createImportMappingDraftFromCsvAction} className="rounded-[20px] border border-border/60 bg-background/60 p-4">
+      <form action={createImportMappingDraftFromPublishedAction} className="rounded-[20px] border border-border/60 bg-background/60 p-4">
         <input name="returnPath" type="hidden" value={returnPath} />
-        <div className="grid gap-3 md:grid-cols-[minmax(240px,1fr)_220px_260px] md:items-end">
-          <div className="space-y-2">
-            <label className="text-sm font-medium" htmlFor="import-mapping-csv-file-input">
-              CSV source file
-            </label>
-            <Input accept=".csv,text/csv" id="import-mapping-csv-file-input" name="file" type="file" />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="text-sm text-muted-foreground">
+            To refresh baseline from a new file, use <span className="text-foreground">Upload CSV schema</span> at the top of Data Setup.
           </div>
-          <Button className="w-full md:w-auto" type="submit">
-            Create draft from CSV
-          </Button>
           <Button
             className="w-full md:w-auto"
             disabled={!canCreateDraftFromPublished}
-            formAction={createImportMappingDraftFromPublishedAction}
             type="submit"
             variant="outline"
           >
