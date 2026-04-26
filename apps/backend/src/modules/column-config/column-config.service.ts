@@ -581,6 +581,7 @@ export class ColumnConfigService implements OnModuleInit {
     );
     const availableColumns = catalog.columns.map(column => column.label);
     const deleteGuards = await this.resolveFormulaDeleteGuards(rows);
+    const activeGuards = await this.resolveFormulaActiveGuards(rows);
 
     return {
       items: rows.map(row => {
@@ -593,6 +594,10 @@ export class ColumnConfigService implements OnModuleInit {
         return this.toComputedFormulaResponse(
           row,
           preview,
+          activeGuards.get(row.id) ?? {
+            canToggle: true,
+            reason: null
+          },
           deleteGuards.get(row.id) ?? {
             canDelete: true,
             reason: null,
@@ -664,6 +669,12 @@ export class ColumnConfigService implements OnModuleInit {
 
     if (!nextLabel || !nextExpression) {
       throw new BadRequestException('Column label and expression cannot be empty.');
+    }
+
+    if (input.isActive === false && (await this.isSystemEngagementFormula(existing))) {
+      throw new BadRequestException(
+        'System Engagement formula must stay active. Update source labels from Engagement settings instead.'
+      );
     }
 
     const preview = await this.previewComputedFormula({
@@ -1349,9 +1360,10 @@ export class ColumnConfigService implements OnModuleInit {
     const preview = await this.previewComputedFormula({
       expression: row.expression
     });
+    const activeGuard = await this.resolveFormulaActiveGuardForFormula(row);
     const guard = await this.resolveDeleteGuardForFormula(row);
 
-    return this.toComputedFormulaResponse(row, preview, guard);
+    return this.toComputedFormulaResponse(row, preview, activeGuard, guard);
   }
 
   private async getRawComputedFormulaById(formulaId: string) {
@@ -1377,6 +1389,10 @@ export class ColumnConfigService implements OnModuleInit {
   private toComputedFormulaResponse(
     row: RawComputedFormulaRow,
     preview: ComputedFormulaPreviewResponse,
+    activeGuard: {
+      canToggle: boolean;
+      reason: string | null;
+    },
     guard: {
       canDelete: boolean;
       reason: string | null;
@@ -1389,10 +1405,43 @@ export class ColumnConfigService implements OnModuleInit {
       columnLabel: row.column_label,
       expression: row.expression,
       isActive: !!row.is_active,
+      activeGuard,
       createdAt: new Date(row.created_at).toISOString(),
       updatedAt: new Date(row.updated_at).toISOString(),
       deleteGuard: guard,
       preview
+    };
+  }
+
+  private async resolveFormulaActiveGuards(rows: RawComputedFormulaRow[]) {
+    if (rows.length === 0) {
+      return new Map<
+        string,
+        {
+          canToggle: boolean;
+          reason: string | null;
+        }
+      >();
+    }
+
+    const guards = await Promise.all(
+      rows.map(async row => [row.id, await this.resolveFormulaActiveGuardForFormula(row)] as const)
+    );
+
+    return new Map(guards);
+  }
+
+  private async resolveFormulaActiveGuardForFormula(row: RawComputedFormulaRow) {
+    if (await this.isSystemEngagementFormula(row)) {
+      return {
+        canToggle: false,
+        reason: 'System Engagement formula must stay active. Update source labels from Engagement settings instead.'
+      };
+    }
+
+    return {
+      canToggle: true,
+      reason: null
     };
   }
 

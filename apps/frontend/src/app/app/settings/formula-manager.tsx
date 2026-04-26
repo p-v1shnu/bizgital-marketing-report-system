@@ -257,6 +257,12 @@ export function FormulaManager({ formulas, metaColumns }: FormulaManagerProps) {
   }
 
   async function toggleFormulaActive(formula: ComputedFormulaResponse) {
+    if (!formula.activeGuard.canToggle) {
+      setStatusError(formula.activeGuard.reason ?? 'This formula cannot be deactivated.');
+      setStatusMessage(null);
+      return;
+    }
+
     const nextActive = !formula.isActive;
     setPendingKey(`toggle:${formula.id}`);
     setStatusError(null);
@@ -279,8 +285,16 @@ export function FormulaManager({ formulas, metaColumns }: FormulaManagerProps) {
         return;
       }
 
+      const finalActive =
+        payload &&
+        typeof payload === 'object' &&
+        'isActive' in payload &&
+        typeof (payload as { isActive?: unknown }).isActive === 'boolean'
+          ? (payload as { isActive: boolean }).isActive
+          : nextActive;
+
       setStatusMessage(
-        nextActive
+        finalActive
           ? `Formula "${formula.columnLabel}" activated.`
           : `Formula "${formula.columnLabel}" deactivated.`
       );
@@ -411,7 +425,7 @@ export function FormulaManager({ formulas, metaColumns }: FormulaManagerProps) {
                             ? 'border-emerald-600/20 bg-emerald-500/40'
                             : 'border-border bg-muted'
                         }`}
-                        disabled={pendingKey === `toggle:${formula.id}`}
+                        disabled={!formula.activeGuard.canToggle || pendingKey === `toggle:${formula.id}`}
                         onClick={() => toggleFormulaActive(formula)}
                         type="button"
                       >
@@ -421,6 +435,11 @@ export function FormulaManager({ formulas, metaColumns }: FormulaManagerProps) {
                           }`}
                         />
                       </button>
+                      {!formula.activeGuard.canToggle ? (
+                        <div className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                          {formula.activeGuard.reason ?? 'This formula cannot be deactivated.'}
+                        </div>
+                      ) : null}
                     </td>
                     <td className="px-4 py-3">
                       <>

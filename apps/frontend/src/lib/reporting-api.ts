@@ -397,6 +397,10 @@ export type ComputedFormulaResponse = {
   columnLabel: string;
   expression: string;
   isActive: boolean;
+  activeGuard: {
+    canToggle: boolean;
+    reason: string | null;
+  };
   createdAt: string;
   updatedAt: string;
   deleteGuard: {
