@@ -60,7 +60,7 @@ const CONTENT_STYLE_DEFAULT_OPTIONS = [
   'Trending',
   'Special Day',
   'Tie-In',
-  'Call-To-Engage (Give-Away)',
+  'Give-Away (Call-To-Engage)',
   'Position',
   'Call-To-Engage',
   'Details',
@@ -70,6 +70,9 @@ const CONTENT_STYLE_DEFAULT_OPTIONS = [
   'Call-to-Action',
   'CRM'
 ];
+const CONTENT_STYLE_GIVEAWAY_VALUE_KEY = 'call-to-engage-give-away';
+const LEGACY_CONTENT_STYLE_GIVEAWAY_LABEL = 'Call-To-Engage (Give-Away)';
+const CURRENT_CONTENT_STYLE_GIVEAWAY_LABEL = 'Give-Away (Call-To-Engage)';
 
 const FIELD_DEFINITIONS: Array<{
   key: BrandDropdownFieldKey;
@@ -196,6 +199,17 @@ function toValueKey(value: string) {
     .replace(/^-+|-+$/g, '');
 
   return normalized || 'option';
+}
+
+function toDefaultOptionValueKey(fieldKey: BrandDropdownFieldKey, label: string) {
+  if (
+    fieldKey === BrandDropdownFieldKey.content_style &&
+    normalizeLabel(label) === CURRENT_CONTENT_STYLE_GIVEAWAY_LABEL
+  ) {
+    return CONTENT_STYLE_GIVEAWAY_VALUE_KEY;
+  }
+
+  return toValueKey(label);
 }
 
 @Injectable()
@@ -1654,7 +1668,7 @@ export class ColumnConfigService implements OnModuleInit {
 
       return field.defaultOptions.map((label, index) => ({
         fieldKey: field.key,
-        valueKey: toValueKey(label),
+        valueKey: toDefaultOptionValueKey(field.key, label),
         label,
         sortOrder: index + 1,
         status: BrandDropdownOptionStatus.active
@@ -1666,6 +1680,39 @@ export class ColumnConfigService implements OnModuleInit {
         data: createPayload
       });
     }
+
+    await this.migrateLegacyContentStyleGiveawayLabel();
+  }
+
+  private async migrateLegacyContentStyleGiveawayLabel() {
+    const legacyLabels = [LEGACY_CONTENT_STYLE_GIVEAWAY_LABEL];
+
+    await Promise.all([
+      this.prisma.globalCompanyFormatOption.updateMany({
+        where: {
+          fieldKey: BrandDropdownFieldKey.content_style,
+          valueKey: CONTENT_STYLE_GIVEAWAY_VALUE_KEY,
+          label: {
+            in: legacyLabels
+          }
+        },
+        data: {
+          label: CURRENT_CONTENT_STYLE_GIVEAWAY_LABEL
+        }
+      }),
+      this.prisma.brandDropdownOption.updateMany({
+        where: {
+          fieldKey: BrandDropdownFieldKey.content_style,
+          valueKey: CONTENT_STYLE_GIVEAWAY_VALUE_KEY,
+          label: {
+            in: legacyLabels
+          }
+        },
+        data: {
+          label: CURRENT_CONTENT_STYLE_GIVEAWAY_LABEL
+        }
+      })
+    ]);
   }
 
   private async isGlobalDropdownOptionUsedInApprovedReports(
