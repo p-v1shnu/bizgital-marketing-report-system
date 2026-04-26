@@ -89,6 +89,10 @@ type BrandIdRow = {
   brand_id: string;
 };
 
+type RawUserIdRow = {
+  user_id: string;
+};
+
 @Injectable()
 export class MediaService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(MediaService.name);
@@ -317,12 +321,10 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
     const user = await this.prisma.user.findFirst({
       where: {
         email: sessionEmail,
-        status: 'active',
-        brandMemberships: {
-          some: {}
-        }
+        status: 'active'
       },
       select: {
+        id: true,
         brandMemberships: {
           select: {
             brandId: true,
@@ -336,14 +338,84 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
       throw new UnauthorizedException('Authentication is required to access media files.');
     }
 
+    const hasBrandAdminRole = user.brandMemberships.some(
+      (membership) => membership.role === 'admin'
+    );
+    const [isGlobalAdmin, isBootstrapSuperAdmin] = hasBrandAdminRole
+      ? [false, false]
+      : await Promise.all([
+          this.isGlobalAdminUser(user.id),
+          this.isBootstrapSuperAdminUser(user.id)
+        ]);
+
     const brandIds = Array.from(
       new Set(user.brandMemberships.map((membership) => membership.brandId))
     );
+    const hasAdminRole =
+      hasBrandAdminRole || isGlobalAdmin || isBootstrapSuperAdmin;
+
+    if (!hasAdminRole && brandIds.length === 0) {
+      throw new UnauthorizedException('Authentication is required to access media files.');
+    }
 
     return {
       brandIds,
-      hasAdminRole: user.brandMemberships.some((membership) => membership.role === 'admin')
+      hasAdminRole
     };
+  }
+
+  private async isGlobalAdminUser(userId: string) {
+    try {
+      const rows = await this.prisma.$queryRawUnsafe<RawUserIdRow[]>(
+        `
+        SELECT user_id
+        FROM system_global_admin_users
+        WHERE user_id = ?
+        LIMIT 1
+        `,
+        userId
+      );
+
+      return rows.length > 0;
+    } catch (error) {
+      const message = error instanceof Error ? error.message.toLowerCase() : '';
+      if (
+        message.includes("doesn't exist") ||
+        message.includes('no such table') ||
+        message.includes('unknown table')
+      ) {
+        return false;
+      }
+
+      throw error;
+    }
+  }
+
+  private async isBootstrapSuperAdminUser(userId: string) {
+    try {
+      const rows = await this.prisma.$queryRawUnsafe<RawUserIdRow[]>(
+        `
+        SELECT user_id
+        FROM system_bootstrap_super_admin
+        WHERE id = 1 AND user_id = ?
+        LIMIT 1
+        `,
+        userId
+      );
+
+      return rows.length > 0;
+    } catch (error) {
+      const message = error instanceof Error ? error.message.toLowerCase() : '';
+      if (
+        message.includes("doesn't exist") ||
+        message.includes('no such table') ||
+        message.includes('unknown table')
+      ) {
+        return false;
+      }
+
+      throw error;
+    }
   }
 
   private async assertCanReadManagedMedia(cookieHeader: string | null | undefined) {
