@@ -1,4 +1,13 @@
-import { Body, Controller, Headers, Post } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Headers,
+  Post,
+  UploadedFile,
+  UseInterceptors
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 
 import { MediaService } from './media.service';
 import type {
@@ -34,6 +43,37 @@ export class MediaController {
     @Headers('cookie') cookieHeader?: string
   ) {
     return this.mediaService.deleteObject(body, cookieHeader ?? '');
+  }
+
+  @Post('upload')
+  @UseInterceptors(FileInterceptor('file'))
+  uploadManagedMedia(
+    @UploadedFile()
+    file:
+      | {
+          originalname?: string;
+          mimetype?: string;
+          size?: number;
+          buffer?: Buffer;
+        }
+      | undefined,
+    @Body('scope') scope?: string,
+    @Headers('cookie') cookieHeader?: string
+  ) {
+    if (!file?.buffer) {
+      throw new BadRequestException('Image file is required.');
+    }
+
+    return this.mediaService.uploadManagedMedia(
+      {
+        scope: scope ?? null,
+        filename: file.originalname ?? null,
+        mimeType: file.mimetype ?? null,
+        sizeBytes: file.size ?? null,
+        buffer: file.buffer
+      },
+      cookieHeader ?? ''
+    );
   }
 
   @Post('cleanup-orphans')

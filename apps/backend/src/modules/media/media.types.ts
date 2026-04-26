@@ -15,6 +15,19 @@ export type CreateMediaPresignUploadResponse = {
   maxBytes: number;
 };
 
+export type UploadManagedMediaInput = {
+  scope?: string | null;
+  filename?: string | null;
+  mimeType?: string | null;
+  sizeBytes?: number | null;
+  buffer: Buffer;
+};
+
+export type UploadManagedMediaResponse = {
+  publicUrl: string;
+  objectKey: string;
+};
+
 export type CreateMediaPresignReadInput = {
   publicUrl?: string | null;
   objectKey?: string | null;

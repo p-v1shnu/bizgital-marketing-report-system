@@ -31,7 +31,9 @@ import type {
   CreateMediaPresignUploadInput,
   CreateMediaPresignUploadResponse,
   DeleteMediaObjectInput,
-  DeleteMediaObjectResponse
+  DeleteMediaObjectResponse,
+  UploadManagedMediaInput,
+  UploadManagedMediaResponse
 } from './media.types';
 
 type MediaStorageConfig = {
@@ -160,6 +162,37 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
       },
       expiresInSeconds: config.presignExpiresSeconds,
       maxBytes: config.uploadMaxBytes
+    };
+  }
+
+  async uploadManagedMedia(
+    input: UploadManagedMediaInput,
+    sessionCookieHeader?: string | null
+  ): Promise<UploadManagedMediaResponse> {
+    if (sessionCookieHeader !== undefined) {
+      await this.assertCanManageManagedMedia(sessionCookieHeader);
+    }
+    const config = this.resolveStorageConfig();
+    const mimeType = this.normalizeMimeType(input.mimeType);
+    this.normalizeSizeBytes(input.sizeBytes, config.uploadMaxBytes);
+    const scope = this.normalizeScope(input.scope);
+    const extension = this.resolveExtension(input.filename, mimeType);
+    const objectKey = this.createObjectKey(scope, extension);
+    const client = this.resolveS3Client(config);
+
+    await client.send(
+      new PutObjectCommand({
+        Bucket: config.bucket,
+        Key: objectKey,
+        Body: input.buffer,
+        ContentType: mimeType,
+        CacheControl: 'private, max-age=31536000, immutable'
+      })
+    );
+
+    return {
+      publicUrl: this.resolvePublicUrl(config.publicBaseUrl, objectKey),
+      objectKey
     };
   }
 
