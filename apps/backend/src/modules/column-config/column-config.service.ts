@@ -629,8 +629,10 @@ export class ColumnConfigService implements OnModuleInit {
         id,
         column_label,
         expression,
-        is_active
-      ) VALUES (?, ?, ?, ?)
+        is_active,
+        created_at,
+        updated_at
+      ) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
       `,
       id,
       columnLabel,
@@ -1924,8 +1926,10 @@ export class ColumnConfigService implements OnModuleInit {
           id,
           column_label,
           expression,
-          is_active
-        ) VALUES (?, ?, ?, 1)
+          is_active,
+          created_at,
+          updated_at
+        ) VALUES (?, ?, ?, 1, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
         `,
         randomUUID(),
         setting.label,
