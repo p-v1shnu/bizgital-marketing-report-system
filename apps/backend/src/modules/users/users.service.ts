@@ -11,6 +11,7 @@ import { BrandRole, Prisma, UserStatus } from '@prisma/client';
 
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
+import type { AuthenticatedRequestUser } from '../auth/current-user.decorator';
 import type {
   BootstrapSetupMode,
   BootstrapStatusResponse,
@@ -759,7 +760,11 @@ export class UsersService {
     return createdUser;
   }
 
-  async updateUser(userId: string, input: UpdateUserInput) {
+  async updateUser(
+    userId: string,
+    input: UpdateUserInput,
+    actorUser?: AuthenticatedRequestUser
+  ) {
     await this.ensureAuthStorage();
     await this.ensureMembershipPermissionStorage();
     await this.ensureBootstrapSuperAdminStorage();
@@ -868,6 +873,14 @@ export class UsersService {
 
     if (!nextAuthPolicy.allowPassword && password) {
       throw new BadRequestException('Password is not allowed for Microsoft only accounts.');
+    }
+
+    if (
+      actorUser?.id === userId &&
+      nextStatus !== undefined &&
+      nextStatus !== UserStatus.active
+    ) {
+      throw new BadRequestException('You cannot deactivate your own account.');
     }
 
     if (isBootstrapSuperAdmin && nextStatus && nextStatus !== UserStatus.active) {

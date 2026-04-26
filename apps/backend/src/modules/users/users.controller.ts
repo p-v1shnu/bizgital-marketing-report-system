@@ -75,8 +75,16 @@ export class UsersController {
   }
 
   @Post(':userId')
-  updateUser(@Param('userId') userId: string, @Body() body: UpdateUserInput) {
-    return this.usersService.updateUser(userId, body);
+  updateUser(
+    @Param('userId') userId: string,
+    @Body() body: UpdateUserInput,
+    @CurrentUser() actor?: AuthenticatedRequestUser
+  ) {
+    return this.usersService.updateUser(
+      userId,
+      body,
+      actor && !actor.internal ? actor : undefined
+    );
   }
 
   @Delete(':userId')

@@ -13,6 +13,7 @@ import type { BrandSummary, UserSummary } from '@/lib/reporting-api';
 type Props = {
   users: UserSummary[];
   brands: BrandSummary[];
+  actorUserId?: string;
   actorName?: string;
   actorEmail?: string;
 };
@@ -170,7 +171,13 @@ function requiresPassword(signInMethod: SignInMethod) {
   return signInMethod !== 'microsoft_only';
 }
 
-export function UsersAccessManager({ users, brands, actorName, actorEmail }: Props) {
+export function UsersAccessManager({
+  users,
+  brands,
+  actorUserId,
+  actorName,
+  actorEmail
+}: Props) {
   const router = useRouter();
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? '/api';
   const [modalMode, setModalMode] = useState<'create' | 'edit' | null>(null);
@@ -298,6 +305,10 @@ export function UsersAccessManager({ users, brands, actorName, actorEmail }: Pro
     if (nextRole === 'admin') {
       setBrandPickerOpen(false);
     }
+  }
+
+  function isCurrentActor(user: UserSummary) {
+    return !!actorUserId && user.id === actorUserId;
   }
 
   async function saveUser() {
@@ -463,6 +474,11 @@ export function UsersAccessManager({ users, brands, actorName, actorEmail }: Pro
     }
 
     const nextStatus = user.status === 'active' ? 'inactive' : 'active';
+    if (isCurrentActor(user) && nextStatus !== 'active') {
+      setStatusError('You cannot deactivate your own account.');
+      return;
+    }
+
     setPendingKey(`toggle:${user.id}`);
     setStatusError(null);
     setStatusMessage(null);
@@ -659,7 +675,9 @@ export function UsersAccessManager({ users, brands, actorName, actorEmail }: Pro
                           : 'border-border bg-muted'
                       }`}
                       disabled={
-                        pendingKey === `toggle:${user.id}` || isProtectedSuperAdmin(user)
+                        pendingKey === `toggle:${user.id}` ||
+                        isProtectedSuperAdmin(user) ||
+                        (isCurrentActor(user) && user.status === 'active')
                       }
                       onClick={() => toggleUserStatus(user)}
                       type="button"

@@ -465,6 +465,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
             <UsersAccessManager
               actorEmail={adminContext.user.email}
               actorName={adminContext.user.displayName}
+              actorUserId={adminContext.user.id}
               brands={brandsResult.data}
               users={users}
             />
