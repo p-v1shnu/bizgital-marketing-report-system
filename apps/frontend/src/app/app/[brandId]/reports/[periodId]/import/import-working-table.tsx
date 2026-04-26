@@ -130,7 +130,7 @@ const preferredColumnOrder = [
   'Related Product',
   'Is campaign content',
   'Campaign Name',
-  'Reactions, comments and shares',
+  'Reactions, Comments and Shares',
   'Total clicks',
   'Engagement'
 ];

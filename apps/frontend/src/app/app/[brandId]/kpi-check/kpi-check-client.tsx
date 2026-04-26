@@ -42,7 +42,7 @@ const fallbackHeaderCandidatesByTarget: Record<CanonicalTargetField, string[]> =
   views: ['Views', 'View count', 'Total views', 'Video views'],
   viewers: ['Viewers'],
   page_followers: ['Page Followers'],
-  engagement: ['Engagement', 'Reactions, comments and shares', 'Total clicks'],
+  engagement: ['Engagement', 'Reactions, Comments and Shares', 'Total clicks'],
   video_views_3s: ['3-second video views', '3 second video views', '3s video views']
 };
 

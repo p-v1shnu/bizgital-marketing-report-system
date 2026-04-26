@@ -95,7 +95,7 @@ const FIELD_DEFINITIONS: Array<{
 
 const defaultEngagementFormula = {
   label: 'Engagement',
-  sourceLabelA: 'Reactions, comments and shares',
+  sourceLabelA: 'Reactions, Comments and Shares',
   sourceLabelB: 'Total clicks'
 };
 
@@ -112,7 +112,7 @@ const DEFAULT_TOP_CONTENT_EXCLUDED_CONTENT_STYLE_VALUE_KEYS = ['call-to-engage-g
 const DEFAULT_IMPORT_TABLE_VISIBLE_SOURCE_COLUMN_LABELS = [
   '3-second video views',
   'Total clicks',
-  'Reactions, comments and shares',
+  'Reactions, Comments and Shares',
   'Reach',
   'Views',
   'Post type',
@@ -1792,7 +1792,7 @@ export class ColumnConfigService implements OnModuleInit {
   private async ensureEngagementFormulaSetting() {
     await this.ensureComputedColumnSettingsStorage();
 
-    return this.prisma.globalComputedColumnSetting.upsert({
+    const setting = await this.prisma.globalComputedColumnSetting.upsert({
       where: {
         key: ComputedColumnKey.engagement
       },
@@ -1805,6 +1805,37 @@ export class ColumnConfigService implements OnModuleInit {
         sourceLabelB: defaultEngagementFormula.sourceLabelB
       }
     });
+
+    const nextLabel =
+      setting.label === 'engagement' ? defaultEngagementFormula.label : setting.label;
+    const nextSourceLabelA =
+      setting.sourceLabelA === 'Reactions, comments and shares' ||
+      setting.sourceLabelA === 'reactions, comments and shares'
+        ? defaultEngagementFormula.sourceLabelA
+        : setting.sourceLabelA;
+    const nextSourceLabelB =
+      setting.sourceLabelB === 'total clicks'
+        ? defaultEngagementFormula.sourceLabelB
+        : setting.sourceLabelB;
+
+    if (
+      nextLabel !== setting.label ||
+      nextSourceLabelA !== setting.sourceLabelA ||
+      nextSourceLabelB !== setting.sourceLabelB
+    ) {
+      return this.prisma.globalComputedColumnSetting.update({
+        where: {
+          key: ComputedColumnKey.engagement
+        },
+        data: {
+          label: nextLabel,
+          sourceLabelA: nextSourceLabelA,
+          sourceLabelB: nextSourceLabelB
+        }
+      });
+    }
+
+    return setting;
   }
 
   private async readLatestImportColumnProfiles() {
