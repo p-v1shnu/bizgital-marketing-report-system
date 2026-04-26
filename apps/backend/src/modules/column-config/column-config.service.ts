@@ -4,7 +4,8 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
-  NotFoundException
+  NotFoundException,
+  OnModuleInit
 } from '@nestjs/common';
 import {
   BrandDropdownFieldKey,
@@ -198,8 +199,33 @@ function toValueKey(value: string) {
 }
 
 @Injectable()
-export class ColumnConfigService {
+export class ColumnConfigService implements OnModuleInit {
+  private computedFormulaBootstrapPromise: Promise<void> | null = null;
+
   constructor(private readonly prisma: PrismaService) {}
+
+  async onModuleInit() {
+    await this.ensureComputedFormulaBootstrap();
+  }
+
+  async ensureComputedFormulaBootstrap() {
+    if (this.computedFormulaBootstrapPromise) {
+      await this.computedFormulaBootstrapPromise;
+      return;
+    }
+
+    this.computedFormulaBootstrapPromise = (async () => {
+      await this.ensureFormulaStorage();
+      await this.ensureFormulaLockStorage();
+      await this.ensureUiSettingsStorage();
+    })();
+
+    try {
+      await this.computedFormulaBootstrapPromise;
+    } finally {
+      this.computedFormulaBootstrapPromise = null;
+    }
+  }
 
   async getGlobalCompanyFormatOptions(
     includeDeprecated = false
@@ -532,8 +558,7 @@ export class ColumnConfigService {
   }
 
   async listComputedFormulas(activeOnly = false): Promise<{ items: ComputedFormulaResponse[] }> {
-    await this.ensureFormulaStorage();
-    await this.ensureFormulaLockStorage();
+    await this.ensureComputedFormulaBootstrap();
 
     const rows = await this.prisma.$queryRawUnsafe<RawComputedFormulaRow[]>(
       `
@@ -580,7 +605,7 @@ export class ColumnConfigService {
   }
 
   async createComputedFormula(input: CreateComputedFormulaInput) {
-    await this.ensureFormulaStorage();
+    await this.ensureComputedFormulaBootstrap();
 
     const columnLabel = normalizeLabel(input.columnLabel);
     const expression = String(input.expression ?? '').trim();
@@ -617,7 +642,7 @@ export class ColumnConfigService {
   }
 
   async updateComputedFormula(formulaId: string, input: UpdateComputedFormulaInput) {
-    await this.ensureFormulaStorage();
+    await this.ensureComputedFormulaBootstrap();
     const existing = await this.getRawComputedFormulaById(formulaId);
 
     if (!existing) {
@@ -669,8 +694,7 @@ export class ColumnConfigService {
   }
 
   async deleteComputedFormula(formulaId: string) {
-    await this.ensureFormulaStorage();
-    await this.ensureFormulaLockStorage();
+    await this.ensureComputedFormulaBootstrap();
     const existing = await this.getRawComputedFormulaById(formulaId);
 
     if (!existing) {
@@ -709,7 +733,7 @@ export class ColumnConfigService {
   }
 
   async previewComputedFormula(input: PreviewComputedFormulaInput) {
-    await this.ensureFormulaStorage();
+    await this.ensureComputedFormulaBootstrap();
     const catalog = await this.getMetaColumnCatalog();
 
     const sampleRow = input.sample
@@ -1291,8 +1315,7 @@ export class ColumnConfigService {
   }
 
   async lockActiveFormulasForApprovedVersion(reportVersionId: string) {
-    await this.ensureFormulaStorage();
-    await this.ensureFormulaLockStorage();
+    await this.ensureComputedFormulaBootstrap();
 
     await this.prisma.$executeRawUnsafe(
       `

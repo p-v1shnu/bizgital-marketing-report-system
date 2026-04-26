@@ -14,6 +14,7 @@ import {
 
 import { PrismaService } from '../../prisma/prisma.service';
 import { BrandsService } from '../brands/brands.service';
+import { ColumnConfigService } from '../column-config/column-config.service';
 import { METRIC_TARGET_FIELDS } from '../mapping/mapping-targets';
 import {
   DEFAULT_NEW_BRAND_KPI_CATALOG_KEYS,
@@ -116,9 +117,12 @@ const DEFAULT_KPI_CATALOG_SEEDS: DefaultKpiCatalogSeed[] = [
 
 @Injectable()
 export class KpiService {
+  private defaultKpiBootstrapPromise: Promise<void> | null = null;
+
   constructor(
     private readonly prisma: PrismaService,
-    private readonly brandsService: BrandsService
+    private readonly brandsService: BrandsService,
+    private readonly columnConfigService: ColumnConfigService
   ) {}
 
   async listCatalog(includeInactive = false): Promise<KpiCatalogListResponse> {
@@ -922,12 +926,27 @@ export class KpiService {
   }
 
   private async ensureDefaultKpiBootstrap() {
-    await this.prisma.$transaction(async client => {
-      await this.ensureGlobalUiSettingsStorageWithClient(client);
-      const engagementFormulaId = await this.ensureDefaultEngagementFormulaWithClient(client);
-      await this.ensureDefaultKpiCatalogRowsWithClient(client, engagementFormulaId);
-      await this.ensureDefaultNewBrandKpiSelectionWithClient(client);
-    });
+    if (this.defaultKpiBootstrapPromise) {
+      await this.defaultKpiBootstrapPromise;
+      return;
+    }
+
+    this.defaultKpiBootstrapPromise = (async () => {
+      await this.columnConfigService.ensureComputedFormulaBootstrap();
+      await this.ensureGlobalUiSettingsStorage();
+
+      await this.prisma.$transaction(async client => {
+        const engagementFormulaId = await this.ensureDefaultEngagementFormulaWithClient(client);
+        await this.ensureDefaultKpiCatalogRowsWithClient(client, engagementFormulaId);
+        await this.ensureDefaultNewBrandKpiSelectionWithClient(client);
+      });
+    })();
+
+    try {
+      await this.defaultKpiBootstrapPromise;
+    } finally {
+      this.defaultKpiBootstrapPromise = null;
+    }
   }
 
   private async ensureDefaultEngagementFormulaWithClient(
@@ -1023,26 +1042,14 @@ export class KpiService {
         canonicalMetricKey: seed.canonicalMetricKey,
         formulaId: seed.formulaId === 'engagement_formula' ? engagementFormulaId : null,
         isActive: true
-      }))
+      })),
+      skipDuplicates: true
     });
   }
 
   private async ensureDefaultNewBrandKpiSelectionWithClient(
     client: Prisma.TransactionClient
   ) {
-    const existingSetting = await client.globalUiSetting.findUnique({
-      where: {
-        settingKey: NEW_BRAND_DEFAULT_KPI_SETTING_KEY
-      },
-      select: {
-        settingKey: true
-      }
-    });
-
-    if (existingSetting) {
-      return;
-    }
-
     const defaultCatalogRows = await client.globalKpiCatalog.findMany({
       where: {
         key: {
@@ -1067,8 +1074,12 @@ export class KpiService {
       kpiCatalogIds: orderedIds
     };
 
-    await client.globalUiSetting.create({
-      data: {
+    await client.globalUiSetting.upsert({
+      where: {
+        settingKey: NEW_BRAND_DEFAULT_KPI_SETTING_KEY
+      },
+      update: {},
+      create: {
         settingKey: NEW_BRAND_DEFAULT_KPI_SETTING_KEY,
         valueJson: JSON.stringify(payload)
       }
