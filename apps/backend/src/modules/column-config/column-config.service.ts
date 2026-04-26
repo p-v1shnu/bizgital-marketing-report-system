@@ -1485,6 +1485,16 @@ export class ColumnConfigService implements OnModuleInit {
         PRIMARY KEY (setting_key)
       ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
     `);
+    await this.ensureUiSettingsStorageColumn(
+      'created_at',
+      'DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)',
+      'value_json'
+    );
+    await this.ensureUiSettingsStorageColumn(
+      'updated_at',
+      'DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)',
+      'created_at'
+    );
   }
 
   private async resolveFormulaDeleteGuards(rows: RawComputedFormulaRow[]) {
@@ -1920,6 +1930,27 @@ export class ColumnConfigService implements OnModuleInit {
     } catch (error) {
       const message = error instanceof Error ? error.message.toLowerCase() : '';
       if (message.includes('duplicate column name')) {
+        return;
+      }
+      throw error;
+    }
+  }
+
+  private async ensureUiSettingsStorageColumn(
+    columnName: string,
+    definition: string,
+    afterColumn: string
+  ) {
+    try {
+      await this.prisma.$executeRawUnsafe(
+        `
+        ALTER TABLE global_ui_settings
+        ADD COLUMN ${columnName} ${definition} AFTER ${afterColumn}
+        `
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message.toLowerCase() : '';
+      if (message.includes('duplicate column name') || message.includes('duplicate column')) {
         return;
       }
       throw error;

@@ -106,6 +106,8 @@ export function ImportColumnLayoutManager({
       return;
     }
 
+    setStatusError(null);
+    setStatusMessage(null);
     setEditSelectedLabels(selectedLabels);
     setQuery('');
     setIsEditOpen(true);
@@ -202,12 +204,12 @@ export function ImportColumnLayoutManager({
         </div>
       ) : null}
 
-      {statusError ? (
+      {!isEditOpen && statusError ? (
         <div className="rounded-2xl border border-rose-500/25 bg-rose-500/8 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">
           {statusError}
         </div>
       ) : null}
-      {statusMessage ? (
+      {!isEditOpen && statusMessage ? (
         <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/8 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300">
           {statusMessage}
         </div>
@@ -277,6 +279,12 @@ export function ImportColumnLayoutManager({
                 Save layout
               </Button>
             </div>
+
+            {statusError ? (
+              <div className="mt-3 rounded-2xl border border-rose-500/25 bg-rose-500/8 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">
+                {statusError}
+              </div>
+            ) : null}
 
             <div className="mt-3 text-xs text-muted-foreground">
               Selected {editSelectedLabels.length} of {metaColumns.length} columns
