@@ -32,6 +32,10 @@ type RawTotalRow = {
   total: bigint | number | string;
 };
 
+type RawUserIdRow = {
+  user_id: string;
+};
+
 @Injectable()
 export class AuditLogService {
   private readonly allowedLimits = new Set([20, 50, 100]);
@@ -207,21 +211,95 @@ export class AuditLogService {
       throw new ForbiddenException('Admin access is required.');
     }
 
+    const actorUser = await this.prisma.user.findUnique({
+      where: {
+        email
+      },
+      select: {
+        id: true,
+        status: true
+      }
+    });
+
+    if (!actorUser || actorUser.status !== UserStatus.active) {
+      throw new ForbiddenException('Admin access is required.');
+    }
+
     const adminMembership = await this.prisma.brandMembership.findFirst({
       where: {
+        userId: actorUser.id,
         role: BrandRole.admin,
-        user: {
-          email,
-          status: UserStatus.active
-        }
       },
       select: {
         id: true
       }
     });
 
-    if (!adminMembership) {
+    if (adminMembership) {
+      return;
+    }
+
+    const [isGlobalAdmin, isBootstrapSuperAdmin] = await Promise.all([
+      this.isGlobalAdminUser(actorUser.id),
+      this.isBootstrapSuperAdminUser(actorUser.id)
+    ]);
+
+    if (!isGlobalAdmin && !isBootstrapSuperAdmin) {
       throw new ForbiddenException('Admin access is required.');
+    }
+  }
+
+  private async isGlobalAdminUser(userId: string) {
+    try {
+      const rows = await this.prisma.$queryRawUnsafe<RawUserIdRow[]>(
+        `
+        SELECT user_id
+        FROM system_global_admin_users
+        WHERE user_id = ?
+        LIMIT 1
+        `,
+        userId
+      );
+
+      return rows.length > 0;
+    } catch (error) {
+      const message = error instanceof Error ? error.message.toLowerCase() : '';
+      if (
+        message.includes("doesn't exist") ||
+        message.includes('no such table') ||
+        message.includes('unknown table')
+      ) {
+        return false;
+      }
+
+      throw error;
+    }
+  }
+
+  private async isBootstrapSuperAdminUser(userId: string) {
+    try {
+      const rows = await this.prisma.$queryRawUnsafe<RawUserIdRow[]>(
+        `
+        SELECT user_id
+        FROM system_bootstrap_super_admin
+        WHERE id = 1 AND user_id = ?
+        LIMIT 1
+        `,
+        userId
+      );
+
+      return rows.length > 0;
+    } catch (error) {
+      const message = error instanceof Error ? error.message.toLowerCase() : '';
+      if (
+        message.includes("doesn't exist") ||
+        message.includes('no such table') ||
+        message.includes('unknown table')
+      ) {
+        return false;
+      }
+
+      throw error;
     }
   }
 
@@ -443,4 +521,3 @@ export class AuditLogService {
     return 0;
   }
 }
-
