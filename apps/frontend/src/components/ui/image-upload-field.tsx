@@ -8,7 +8,7 @@ import {
 } from 'react';
 import { ImagePlus, LoaderCircle, Trash2, ZoomIn } from 'lucide-react';
 
-import { createMediaPresignedUpload, deleteMediaObject } from '@/lib/reporting-api';
+import { deleteMediaObject } from '@/lib/reporting-api';
 import { toProtectedMediaUrl } from '@/lib/media-url';
 import { cn } from '@/lib/utils';
 
@@ -229,34 +229,65 @@ async function optimizeImageForUpload(file: File) {
   });
 }
 
-async function uploadImageToStorage(file: File, scope: string) {
-  const presigned = await createMediaPresignedUpload({
-    scope,
-    filename: file.name,
-    mimeType: file.type,
-    sizeBytes: file.size
-  });
-  const uploadHeaders = new Headers();
-
-  Object.entries(presigned.headers ?? {}).forEach(([key, value]) => {
-    uploadHeaders.set(key, value);
-  });
-
-  if (!uploadHeaders.has('Content-Type')) {
-    uploadHeaders.set('Content-Type', file.type);
+async function readUploadProxyErrorMessage(response: Response, fallback: string) {
+  try {
+    const payload = (await response.json()) as { message?: string | string[]; error?: string };
+    if (Array.isArray(payload.message)) {
+      return payload.message.join(', ');
+    }
+    if (typeof payload.message === 'string' && payload.message.trim().length > 0) {
+      return payload.message;
+    }
+    if (typeof payload.error === 'string' && payload.error.trim().length > 0) {
+      return payload.error;
+    }
+  } catch {
+    // Fall through to the text-body fallback below.
   }
 
-  const uploadResponse = await fetch(presigned.uploadUrl, {
-    method: presigned.method ?? 'PUT',
-    headers: uploadHeaders,
-    body: file
+  try {
+    const text = (await response.text()).trim();
+    if (text.length > 0) {
+      return text;
+    }
+  } catch {
+    // Ignore parse errors and use fallback below.
+  }
+
+  return fallback;
+}
+
+async function uploadImageToStorage(file: File, scope: string) {
+  const formData = new FormData();
+  formData.set('file', file);
+  formData.set('scope', scope);
+
+  const uploadResponse = await fetch('/api/media/upload', {
+    method: 'POST',
+    body: formData,
+    cache: 'no-store',
+    credentials: 'include'
   });
 
   if (!uploadResponse.ok) {
-    throw new Error(`Failed to upload image to storage (HTTP ${uploadResponse.status}).`);
+    throw new Error(
+      await readUploadProxyErrorMessage(
+        uploadResponse,
+        `Failed to upload image to storage (HTTP ${uploadResponse.status}).`
+      )
+    );
   }
 
-  return presigned.publicUrl;
+  const payload = (await uploadResponse.json()) as {
+    publicUrl?: string;
+  };
+  const publicUrl = typeof payload.publicUrl === 'string' ? payload.publicUrl.trim() : '';
+
+  if (!publicUrl) {
+    throw new Error('Upload succeeded but media URL is missing.');
+  }
+
+  return publicUrl;
 }
 
 export function ImageUploadField({

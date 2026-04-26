@@ -1094,7 +1094,8 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
         accessKeyId: config.accessKey,
         secretAccessKey: config.secretKey
       },
-      forcePathStyle: config.forcePathStyle
+      forcePathStyle: config.forcePathStyle,
+      requestChecksumCalculation: 'WHEN_REQUIRED'
     });
 
     this.clientCache = {
