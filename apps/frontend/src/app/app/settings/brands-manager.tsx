@@ -137,14 +137,29 @@ export function BrandsManager({ brands, users, actorName, actorEmail }: Props) {
         brand.code.toLowerCase().includes(keyword)
     );
   }, [brandSearchText, tabBrands]);
+  const autoAssignedAdminUsers = useMemo(
+    () =>
+      users.filter(
+        user =>
+          user.status !== 'inactive' &&
+          (user.isBootstrapSuperAdmin ||
+            user.isGlobalAdmin ||
+            user.memberships.some(membership => membership.role === 'admin'))
+      ),
+    [users]
+  );
+  const autoAssignedAdminUserIdSet = useMemo(
+    () => new Set(autoAssignedAdminUsers.map(user => user.id)),
+    [autoAssignedAdminUsers]
+  );
   const assignableUsers = useMemo(
     () =>
       users.filter(
         user =>
           user.status !== 'inactive' &&
-          !user.memberships.some(membership => membership.role === 'admin')
+          !autoAssignedAdminUserIdSet.has(user.id)
       ),
-    [users]
+    [autoAssignedAdminUserIdSet, users]
   );
   const assignableUserById = useMemo(
     () => new Map(assignableUsers.map(user => [user.id, user])),
@@ -589,6 +604,11 @@ export function BrandsManager({ brands, users, actorName, actorEmail }: Props) {
               ) : null}
               <div className="space-y-2 md:col-span-2">
                 <label className="text-sm font-medium">Responsible users</label>
+                {autoAssignedAdminUsers.length > 0 ? (
+                  <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                    Admin and Super Admin users are assigned to this brand automatically and cannot be removed from here.
+                  </div>
+                ) : null}
                 {assignableUsers.length === 0 ? (
                   <div className="rounded-2xl border border-border/60 bg-background/60 px-3 py-3 text-sm text-muted-foreground">
                     No active non-admin user available for assignment.

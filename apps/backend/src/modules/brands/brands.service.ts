@@ -295,6 +295,10 @@ type RawMembershipPermissionRow = {
   can_approve_reports: number | null;
 };
 
+type RawUserIdRow = {
+  user_id: string;
+};
+
 type MembershipPermissionSnapshot = {
   canCreateReports: boolean;
   canApproveReports: boolean;
@@ -528,10 +532,21 @@ export class BrandsService {
 
           await this.setBrandLogoWithClient(tx, brand.id, logoUrl);
           await this.assignDefaultKpisForNewBrandWithClient(tx, brand.id, timezone);
-          if (responsibleUserIds.length > 0) {
+          const autoAssignedAdminUserIds =
+            await this.listAutoAssignedAdminUserIdsWithClient(tx);
+          await this.ensureAdminMembershipsWithClient(tx, {
+            brandId: brand.id,
+            userIds: autoAssignedAdminUserIds
+          });
+
+          const autoAssignedAdminUserIdSet = new Set(autoAssignedAdminUserIds);
+          const filteredResponsibleUserIds = responsibleUserIds.filter(
+            (userId) => !autoAssignedAdminUserIdSet.has(userId)
+          );
+          if (filteredResponsibleUserIds.length > 0) {
             await this.syncResponsibleUsersWithClient(tx, {
               brandId: brand.id,
-              responsibleUserIds
+              responsibleUserIds: filteredResponsibleUserIds
             });
           }
         });
@@ -640,9 +655,19 @@ export class BrandsService {
 
     if (responsibleUserIds !== undefined) {
       await this.ensureMembershipPermissionStorage();
+      const autoAssignedAdminUserIds =
+        await this.listAutoAssignedAdminUserIdsWithClient(this.prisma);
+      await this.ensureAdminMembershipsWithClient(this.prisma, {
+        brandId: brand.id,
+        userIds: autoAssignedAdminUserIds
+      });
+      const autoAssignedAdminUserIdSet = new Set(autoAssignedAdminUserIds);
+      const filteredResponsibleUserIds = responsibleUserIds.filter(
+        (userId) => !autoAssignedAdminUserIdSet.has(userId)
+      );
       await this.syncResponsibleUsersWithClient(this.prisma, {
         brandId: brand.id,
-        responsibleUserIds
+        responsibleUserIds: filteredResponsibleUserIds
       });
     }
 
@@ -1849,6 +1874,138 @@ export class BrandsService {
         }))
       });
     }
+  }
+
+  private async listAutoAssignedAdminUserIdsWithClient(
+    client: BrandServiceTransactionClient
+  ) {
+    const adminMemberships = await client.brandMembership.findMany({
+      where: {
+        role: BrandRole.admin
+      },
+      select: {
+        userId: true
+      },
+      distinct: ['userId']
+    });
+    const [globalAdminRows, bootstrapSuperAdminRows] = await Promise.all([
+      this.listGlobalAdminRowsWithClient(client),
+      this.listBootstrapSuperAdminRowsWithClient(client)
+    ]);
+
+    const candidateUserIds = Array.from(
+      new Set([
+        ...adminMemberships.map((membership) => membership.userId),
+        ...globalAdminRows.map((row) => row.user_id),
+        ...bootstrapSuperAdminRows.map((row) => row.user_id)
+      ])
+    );
+
+    if (candidateUserIds.length === 0) {
+      return [];
+    }
+
+    const activeUsers = await client.user.findMany({
+      where: {
+        id: {
+          in: candidateUserIds
+        },
+        status: UserStatus.active
+      },
+      select: {
+        id: true
+      }
+    });
+
+    return activeUsers.map((user) => user.id);
+  }
+
+  private async listGlobalAdminRowsWithClient(
+    client: BrandServiceTransactionClient
+  ) {
+    try {
+      return await client.$queryRawUnsafe<RawUserIdRow[]>(`
+        SELECT user_id
+        FROM system_global_admin_users
+      `);
+    } catch (error) {
+      const message = error instanceof Error ? error.message.toLowerCase() : '';
+      if (
+        message.includes("doesn't exist") ||
+        message.includes('no such table') ||
+        message.includes('unknown table')
+      ) {
+        return [];
+      }
+
+      throw error;
+    }
+  }
+
+  private async listBootstrapSuperAdminRowsWithClient(
+    client: BrandServiceTransactionClient
+  ) {
+    try {
+      return await client.$queryRawUnsafe<RawUserIdRow[]>(`
+        SELECT user_id
+        FROM system_bootstrap_super_admin
+      `);
+    } catch (error) {
+      const message = error instanceof Error ? error.message.toLowerCase() : '';
+      if (
+        message.includes("doesn't exist") ||
+        message.includes('no such table') ||
+        message.includes('unknown table')
+      ) {
+        return [];
+      }
+
+      throw error;
+    }
+  }
+
+  private async ensureAdminMembershipsWithClient(
+    client: BrandServiceTransactionClient,
+    input: {
+      brandId: string;
+      userIds: string[];
+    }
+  ) {
+    const uniqueUserIds = Array.from(new Set(input.userIds.map((userId) => userId.trim()).filter((userId) => !!userId)));
+    if (uniqueUserIds.length === 0) {
+      return;
+    }
+
+    const existingAdminMemberships = await client.brandMembership.findMany({
+      where: {
+        brandId: input.brandId,
+        role: BrandRole.admin,
+        userId: {
+          in: uniqueUserIds
+        }
+      },
+      select: {
+        userId: true
+      }
+    });
+    const existingUserIdSet = new Set(
+      existingAdminMemberships.map((membership) => membership.userId)
+    );
+    const missingUserIds = uniqueUserIds.filter(
+      (userId) => !existingUserIdSet.has(userId)
+    );
+
+    if (missingUserIds.length === 0) {
+      return;
+    }
+
+    await client.brandMembership.createMany({
+      data: missingUserIds.map((userId) => ({
+        brandId: input.brandId,
+        userId,
+        role: BrandRole.admin
+      }))
+    });
   }
 
   private async setBrandLogo(brandId: string, logoUrl: string | null) {
