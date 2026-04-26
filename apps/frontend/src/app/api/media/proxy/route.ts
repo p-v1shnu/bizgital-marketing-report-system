@@ -32,14 +32,14 @@ function resolvePublicUrlCandidate(rawSource: string, requestUrl: URL) {
   return null;
 }
 
-function isLocalUploadPath(rawSource: string) {
+function isLocalUploadPath(rawSource: string, requestUrl: URL) {
   if (rawSource.startsWith('/uploads/')) {
     return true;
   }
 
   try {
     const parsed = new URL(rawSource);
-    return parsed.pathname.startsWith('/uploads/');
+    return parsed.origin === requestUrl.origin && parsed.pathname.startsWith('/uploads/');
   } catch {
     return false;
   }
@@ -178,7 +178,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Media source is required.' }, { status: 400 });
   }
 
-  if (isLocalUploadPath(sourceParam)) {
+  if (isLocalUploadPath(sourceParam, requestUrl)) {
     const relativeUploadPath = sanitizeUploadPath(sourceParam);
     if (!relativeUploadPath) {
       return NextResponse.json({ error: 'Invalid local media source.' }, { status: 400 });
