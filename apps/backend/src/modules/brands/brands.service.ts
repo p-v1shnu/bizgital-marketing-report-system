@@ -51,6 +51,7 @@ const CONTENT_STYLE_DEFAULT_OPTIONS = [
   'Trending',
   'Special Day',
   'Tie-In',
+  'Call-To-Engage (Give-Away)',
   'Position',
   'Call-To-Engage',
   'Details',

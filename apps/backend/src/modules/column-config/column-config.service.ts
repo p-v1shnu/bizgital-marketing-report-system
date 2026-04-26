@@ -59,6 +59,7 @@ const CONTENT_STYLE_DEFAULT_OPTIONS = [
   'Trending',
   'Special Day',
   'Tie-In',
+  'Call-To-Engage (Give-Away)',
   'Position',
   'Call-To-Engage',
   'Details',
@@ -106,7 +107,7 @@ const TOP_CONTENT_DATA_SOURCE_POLICY_SETTING_KEY = 'top_content_data_source_poli
 const DEFAULT_CONTENT_COUNT_POLICY_MODE: ContentCountPolicyMode = 'csv_only';
 const DEFAULT_TOP_CONTENT_DATA_SOURCE_POLICY_MODE: TopContentDataSourcePolicyMode = 'csv_only';
 const DEFAULT_POLICY_UPDATED_BY = 'system default';
-const DEFAULT_TOP_CONTENT_EXCLUDED_CONTENT_STYLE_VALUE_KEYS = ['call-to-engage'];
+const DEFAULT_TOP_CONTENT_EXCLUDED_CONTENT_STYLE_VALUE_KEYS = ['call-to-engage-give-away'];
 const DEFAULT_IMPORT_TABLE_VISIBLE_SOURCE_COLUMN_LABELS = [
   '3-second video views',
   'Total clicks',
