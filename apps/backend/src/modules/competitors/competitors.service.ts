@@ -6,6 +6,7 @@ import {
   NotFoundException
 } from '@nestjs/common';
 import {
+  BrandCompetitorStatus,
   CompetitorMonitoringStatus,
   CompetitorStatus,
   Prisma,
@@ -541,17 +542,7 @@ export class CompetitorsService {
 
   async getCatalog(brandCode: string): Promise<CompetitorCatalogResponse> {
     const brand = await this.brandsService.getBrandByCodeOrThrow(brandCode);
-    const competitors = await this.prisma.competitor.findMany({
-      orderBy: [{ status: 'asc' }, { name: 'asc' }],
-      include: {
-        brandCompetitorAssignments: {
-          select: {
-            brandId: true,
-            year: true
-          }
-        }
-      }
-    });
+    const competitors = await this.listCatalogCompetitorsForBrand(brand.id);
 
     return {
       brand: {
@@ -559,23 +550,27 @@ export class CompetitorsService {
         code: brand.code,
         name: brand.name
       },
-      items: competitors.map((item) => ({
-        id: item.id,
-        name: item.name,
-        primaryPlatform: item.primaryPlatform,
-        status: item.status,
-        websiteUrl: item.websiteUrl,
-        facebookUrl: item.facebookUrl,
-        instagramUrl: item.instagramUrl,
-        tiktokUrl: item.tiktokUrl,
-        youtubeUrl: item.youtubeUrl,
-        usage: {
-          assignedBrandCount: new Set(
-            item.brandCompetitorAssignments.map((assignment) => assignment.brandId)
-          ).size,
-          assignedYearCount: item.brandCompetitorAssignments.length
-        }
-      }))
+      items: competitors.map((item) => {
+        const assignmentsForCurrentBrand = item.brandCompetitorAssignments.filter(
+          (assignment) => assignment.brandId === brand.id
+        );
+
+        return {
+          id: item.id,
+          name: item.name,
+          primaryPlatform: item.primaryPlatform,
+          status: item.status,
+          websiteUrl: item.websiteUrl,
+          facebookUrl: item.facebookUrl,
+          instagramUrl: item.instagramUrl,
+          tiktokUrl: item.tiktokUrl,
+          youtubeUrl: item.youtubeUrl,
+          usage: {
+            assignedBrandCount: assignmentsForCurrentBrand.length > 0 ? 1 : 0,
+            assignedYearCount: assignmentsForCurrentBrand.length
+          }
+        };
+      })
     };
   }
 
@@ -631,15 +626,30 @@ export class CompetitorsService {
   }
 
   async createMaster(brandCode: string, input: SaveCompetitorMasterInput) {
-    await this.brandsService.getBrandByCodeOrThrow(brandCode);
+    const brand = await this.brandsService.getBrandByCodeOrThrow(brandCode);
     const normalized = this.normalizeCompetitorMasterInput(input);
     await this.mediaService.assertManagedPublicUrlsExist(
       [normalized.websiteUrl],
       'Competitor logo'
     );
+    const currentYear = new Date().getUTCFullYear();
 
-    return this.prisma.competitor.create({
-      data: normalized
+    return this.prisma.$transaction(async (tx) => {
+      const created = await tx.competitor.create({
+        data: normalized
+      });
+      await tx.brandCompetitor.create({
+        data: {
+          brandId: brand.id,
+          competitorId: created.id,
+          activeFromYear: currentYear,
+          activeToYear: null,
+          displayOrder: 0,
+          status: BrandCompetitorStatus.inactive
+        }
+      });
+
+      return created;
     });
   }
 
@@ -648,15 +658,11 @@ export class CompetitorsService {
     competitorId: string,
     input: UpdateCompetitorMasterInput
   ) {
-    await this.brandsService.getBrandByCodeOrThrow(brandCode);
-    const existing = await this.prisma.competitor.findUnique({
-      where: {
-        id: competitorId
-      }
-    });
+    const brand = await this.brandsService.getBrandByCodeOrThrow(brandCode);
+    const existing = await this.getCatalogCompetitorByIdForBrand(brand.id, competitorId);
 
     if (!existing) {
-      throw new NotFoundException('Competitor not found.');
+      throw new NotFoundException('Competitor not found for this brand.');
     }
 
     const normalized = this.normalizeCompetitorMasterUpdateInput(input);
@@ -692,7 +698,15 @@ export class CompetitorsService {
   }
 
   async deleteMaster(brandCode: string, competitorId: string) {
-    await this.brandsService.getBrandByCodeOrThrow(brandCode);
+    const brand = await this.brandsService.getBrandByCodeOrThrow(brandCode);
+    const visibleToBrand = await this.getCatalogCompetitorByIdForBrand(
+      brand.id,
+      competitorId
+    );
+
+    if (!visibleToBrand) {
+      throw new NotFoundException('Competitor not found for this brand.');
+    }
 
     const existing = await this.prisma.competitor.findUnique({
       where: {
@@ -706,6 +720,9 @@ export class CompetitorsService {
           take: 1
         },
         brandCompetitors: {
+          where: {
+            status: BrandCompetitorStatus.active
+          },
           select: {
             id: true
           },
@@ -772,7 +789,23 @@ export class CompetitorsService {
           id: {
             in: newCompetitorIds
           },
-          status: CompetitorStatus.active
+          status: CompetitorStatus.active,
+          OR: [
+            {
+              brandCompetitorAssignments: {
+                some: {
+                  brandId: brand.id
+                }
+              }
+            },
+            {
+              brandCompetitors: {
+                some: {
+                  brandId: brand.id
+                }
+              }
+            }
+          ]
         },
         select: {
           id: true
@@ -781,7 +814,7 @@ export class CompetitorsService {
 
       if (competitors.length !== newCompetitorIds.length) {
         throw new BadRequestException(
-          'One or more competitors are missing or inactive and cannot be assigned.'
+          'One or more competitors are missing, inactive, or unavailable for this brand.'
         );
       }
     }
@@ -1005,6 +1038,65 @@ export class CompetitorsService {
       targetYear,
       copiedCount: sourceAssignments.length
     };
+  }
+
+  private async listCatalogCompetitorsForBrand(brandId: string) {
+    return this.prisma.competitor.findMany({
+      where: {
+        OR: [
+          {
+            brandCompetitorAssignments: {
+              some: {
+                brandId
+              }
+            }
+          },
+          {
+            brandCompetitors: {
+              some: {
+                brandId
+              }
+            }
+          }
+        ]
+      },
+      orderBy: [{ status: 'asc' }, { name: 'asc' }],
+      include: {
+        brandCompetitorAssignments: {
+          select: {
+            brandId: true,
+            year: true
+          }
+        }
+      }
+    });
+  }
+
+  private async getCatalogCompetitorByIdForBrand(
+    brandId: string,
+    competitorId: string
+  ) {
+    return this.prisma.competitor.findFirst({
+      where: {
+        id: competitorId,
+        OR: [
+          {
+            brandCompetitorAssignments: {
+              some: {
+                brandId
+              }
+            }
+          },
+          {
+            brandCompetitors: {
+              some: {
+                brandId
+              }
+            }
+          }
+        ]
+      }
+    });
   }
 
   async getReadinessForReportVersion(reportVersionId: string) {
