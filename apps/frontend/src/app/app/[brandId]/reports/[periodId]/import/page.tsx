@@ -308,6 +308,8 @@ export default async function ImportPage({ params, searchParams }: ImportPagePro
     canCreateReports && detail.period.availableActions.canReopenLatest;
   const canUpload = !!importJobs.period.currentDraftVersionId && canCreateReports;
   const mappingHref = `/app/settings?tab=import-mapping`;
+  const periodMappingHref = `/app/${brandId}/reports/${periodId}/mapping`;
+  const canAccessPeriodMapping = canCreateReports && !isReadOnlyRole;
   const hasSourceRows = !!sourcePreview && sourcePreview.rows.length > 0;
   const isReadOnly = isReadOnlyRole || !detail.period.currentDraftVersionId;
   const readOnlyReason = isReadOnly
@@ -511,21 +513,28 @@ export default async function ImportPage({ params, searchParams }: ImportPagePro
                   Mapping fallback is available for this upload
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Auto-map could not complete every required field.
-                  {` `}
-                  {canAccessImportMappingAdmin
-                    ? 'Open mapping settings and publish an updated rule set.'
-                    : 'Please ask a workspace manager to update import mapping settings.'}
+                  Auto-map could not complete every required field. Open month mapping to finalize this file,
+                  then return to Import.
                 </p>
               </div>
-              {canAccessImportMappingAdmin ? (
-                <Button asChild size="sm" variant="secondary">
-                  <Link href={mappingHref}>
-                    Open mapping settings
-                    <ArrowRight />
-                  </Link>
-                </Button>
-              ) : null}
+              <div className="flex flex-wrap gap-2">
+                {canAccessPeriodMapping ? (
+                  <Button asChild size="sm" variant="secondary">
+                    <Link href={periodMappingHref}>
+                      Open month mapping
+                      <ArrowRight />
+                    </Link>
+                  </Button>
+                ) : null}
+                {canAccessImportMappingAdmin ? (
+                  <Button asChild size="sm" variant="outline">
+                    <Link href={mappingHref}>
+                      Open mapping settings
+                      <ArrowRight />
+                    </Link>
+                  </Button>
+                ) : null}
+              </div>
             </CardContent>
           </Card>
         ) : null}
@@ -563,13 +572,23 @@ export default async function ImportPage({ params, searchParams }: ImportPagePro
                       this screen.
                     </div>
                     {shouldShowMappingFallback ? (
-                      canAccessImportMappingAdmin ? (
-                        <Button asChild size="sm" variant="secondary">
-                          <Link href={mappingHref}>
-                            Open mapping settings
-                            <ArrowRight />
-                          </Link>
-                        </Button>
+                      canAccessPeriodMapping ? (
+                        <div className="flex flex-wrap gap-2">
+                          <Button asChild size="sm" variant="secondary">
+                            <Link href={periodMappingHref}>
+                              Open month mapping
+                              <ArrowRight />
+                            </Link>
+                          </Button>
+                          {canAccessImportMappingAdmin ? (
+                            <Button asChild size="sm" variant="outline">
+                              <Link href={mappingHref}>
+                                Open mapping settings
+                                <ArrowRight />
+                              </Link>
+                            </Button>
+                          ) : null}
+                        </div>
                       ) : (
                         <div className="text-sm text-muted-foreground">
                           Please ask a workspace manager to update import mapping settings.
