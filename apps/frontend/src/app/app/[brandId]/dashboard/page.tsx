@@ -575,15 +575,21 @@ export default async function DashboardPage({
       const metricsOverview = await getMetricsOverview(brandId, item.id).catch(() => null);
 
       const values: DashboardMetricValues = {
-        views: metricsOverview ? getMetricsActualValue(metricsOverview.items, 'views') : null,
+        views: metricsOverview
+          ? getMetricsActualValue(metricsOverview.items, 'views') ??
+            metricsOverview.dashboardValues.views
+          : null,
         engagement: metricsOverview
           ? getMetricsActualValue(metricsOverview.items, 'engagement')
+            ?? metricsOverview.dashboardValues.engagement
           : null,
         video_views_3s: metricsOverview
           ? getMetricsActualValue(metricsOverview.items, 'video_views_3s')
+            ?? metricsOverview.dashboardValues.video_views_3s
           : null,
         page_followers: metricsOverview
           ? getMetricsActualValue(metricsOverview.items, 'page_followers')
+            ?? metricsOverview.dashboardValues.page_followers
           : null
       };
 

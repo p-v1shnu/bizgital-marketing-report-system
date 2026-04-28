@@ -119,7 +119,7 @@ export class MetricsService {
 
     const baseResponse: Omit<
       MetricsOverviewResponse,
-      'readiness' | 'snapshot' | 'summary' | 'items' | 'plan'
+      'readiness' | 'snapshot' | 'summary' | 'items' | 'plan' | 'dashboardValues'
     > = {
       brand: {
         id: brand.id,
@@ -160,6 +160,14 @@ export class MetricsService {
           itemCount: 0,
           updatedAt: null
         },
+        dashboardValues: {
+          views: null,
+          viewers: null,
+          engagement: null,
+          video_views_3s: null,
+          page_followers: null,
+          page_visit: null
+        },
         items: []
       };
     }
@@ -189,6 +197,7 @@ export class MetricsService {
           : resolvedKpiPlan;
 
     if (kpiPlan.items.length === 0) {
+      const dashboardValues = await this.getDashboardMetricValuesForReportVersion(targetVersion.id);
       return {
         ...baseResponse,
         readiness: {
@@ -212,6 +221,7 @@ export class MetricsService {
           ...kpiPlan.plan,
           year: kpiPlan.year
         },
+        dashboardValues,
         items: []
       };
     }
@@ -225,6 +235,7 @@ export class MetricsService {
       latestImportJob,
       manualHeaderMetrics: await this.manualMetricsService.getReportManualMetrics(targetVersion.id)
     });
+    const dashboardValues = await this.getDashboardMetricValuesForReportVersion(targetVersion.id);
     const needsCanonicalMetrics = kpiPlan.items.some(
       item => item.kpi.sourceType === KpiSourceType.canonical_metric
     );
@@ -255,6 +266,7 @@ export class MetricsService {
         ...kpiPlan.plan,
         year: kpiPlan.year
       },
+      dashboardValues,
       items: planItems,
       summary: {
         ...snapshotStatus.summary,

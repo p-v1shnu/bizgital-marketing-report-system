@@ -40,6 +40,14 @@ export type MetricsOverviewResponse = {
     itemCount: number;
     updatedAt: string | null;
   };
+  dashboardValues: {
+    views: number | null;
+    viewers: number | null;
+    engagement: number | null;
+    video_views_3s: number | null;
+    page_followers: number | null;
+    page_visit: number | null;
+  };
   items: Array<{
     id: string;
     key: string;
