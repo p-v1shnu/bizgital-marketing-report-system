@@ -743,7 +743,7 @@ export function DashboardCompetitorAnalysisSection({
                                 >
                                   <img
                                     alt={`${item.competitor.name} post ${slot.displayOrder}`}
-                                    className="h-full w-full object-cover object-top"
+                                    className="h-full w-full object-contain object-top"
                                     loading="lazy"
                                     src={protectedScreenshotUrl ?? slot.screenshotUrl}
                                   />
