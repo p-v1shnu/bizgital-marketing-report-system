@@ -1537,6 +1537,7 @@ export class ReportingService {
           competitorId: sourceMonitoring.competitorId,
           status: sourceMonitoring.status,
           followerCount: sourceMonitoring.followerCount,
+          monthlyPostCount: sourceMonitoring.monthlyPostCount,
           noActivityNote: sourceMonitoring.noActivityNote,
           noActivityEvidenceImageUrl: sourceMonitoring.noActivityEvidenceImageUrl
         }
