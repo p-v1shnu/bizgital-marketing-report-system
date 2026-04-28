@@ -136,15 +136,22 @@ type GoalMetricKey =
   | 'engagement'
   | 'video_views_3s'
   | 'views'
+  | 'viewers'
   | 'page_followers'
   | 'page_visit';
 
 const GOAL_METRIC_ALIASES: Record<GoalMetricKey, string[]> = {
-  views: ['views', 'view'],
+  views: ['views'],
+  viewers: ['viewers'],
   engagement: ['engagement'],
-  video_views_3s: ['video_views_3s', '3_second_video_views', '3s_video_views'],
-  page_followers: ['page_followers', 'page_follower', 'followers', 'follower'],
-  page_visit: ['page_visit', 'page_visits', 'page_visitor', 'viewers', 'page_views']
+  video_views_3s: [
+    'video_views_3s',
+    '3_second_video_views',
+    '3s_video_views',
+    'three_second_video_views'
+  ],
+  page_followers: ['page_followers', 'page_follower', 'followers'],
+  page_visit: ['page_visit', 'page_visits', 'page_views']
 };
 
 function parseNumericText(value: string | null | undefined) {
@@ -182,17 +189,13 @@ function scoreMetricsItemForGoalMetric(
   for (const alias of aliases) {
     const normalizedAlias = normalizeMetricToken(alias);
     if (canonical === normalizedAlias) {
+      score = Math.max(score, 140);
+    }
+    if (key === normalizedAlias) {
+      score = Math.max(score, 130);
+    }
+    if (label === normalizedAlias || sourceLabel === normalizedAlias) {
       score = Math.max(score, 120);
-    }
-    if (key === normalizedAlias || label === normalizedAlias || sourceLabel === normalizedAlias) {
-      score = Math.max(score, 110);
-    }
-    if (
-      key.includes(normalizedAlias) ||
-      label.includes(normalizedAlias) ||
-      sourceLabel.includes(normalizedAlias)
-    ) {
-      score = Math.max(score, 95);
     }
   }
 
@@ -328,56 +331,13 @@ function scoreKpiPlanItemForGoalMetric(
     const formulaLabelMatch = formulaLabel === normalizedAlias;
 
     if (canonicalMatch) {
-      score = Math.max(score, 120);
+      score = Math.max(score, 140);
     }
-    if (keyMatch || labelMatch || formulaLabelMatch) {
-      score = Math.max(score, formulaSource ? 115 : 110);
+    if (keyMatch) {
+      score = Math.max(score, formulaSource ? 135 : 130);
     }
-
-    if (
-      key.includes(normalizedAlias) ||
-      label.includes(normalizedAlias) ||
-      formulaLabel.includes(normalizedAlias)
-    ) {
-      score = Math.max(score, formulaSource ? 105 : 95);
-    }
-  }
-
-  if (goalMetric === 'engagement') {
-    const engagementHints = ['engagement', 'engage', 'reaction', 'comment', 'share'];
-    const hasHint = engagementHints.some((hint) => {
-      const normalizedHint = normalizeMetricToken(hint);
-      return (
-        canonical.includes(normalizedHint) ||
-        key.includes(normalizedHint) ||
-        label.includes(normalizedHint) ||
-        formulaLabel.includes(normalizedHint)
-      );
-    });
-
-    if (hasHint) {
-      score = Math.max(score, formulaSource ? 108 : 98);
-    }
-
-    if (formulaSource) {
-      score = Math.max(score, 60);
-    }
-  }
-
-  if (goalMetric === 'video_views_3s') {
-    const videoHints = ['video', 'view', '3s', '3_second'];
-    const hasHint = videoHints.some((hint) => {
-      const normalizedHint = normalizeMetricToken(hint);
-      return (
-        canonical.includes(normalizedHint) ||
-        key.includes(normalizedHint) ||
-        label.includes(normalizedHint) ||
-        formulaLabel.includes(normalizedHint)
-      );
-    });
-
-    if (hasHint) {
-      score = Math.max(score, 92);
+    if (labelMatch || formulaLabelMatch) {
+      score = Math.max(score, formulaSource ? 125 : 120);
     }
   }
 
@@ -817,6 +777,7 @@ export default async function DashboardPage({
             year,
             goals: {
               views: getGoalTargetValue(plan, 'views'),
+              viewers: getGoalTargetValue(plan, 'viewers'),
               video_views_3s: getGoalTargetValue(plan, 'video_views_3s'),
               engagement: getGoalTargetValue(plan, 'engagement'),
               page_followers: getGoalTargetValue(plan, 'page_followers'),
@@ -828,6 +789,7 @@ export default async function DashboardPage({
             year,
             goals: {
               views: null,
+              viewers: null,
               video_views_3s: null,
               engagement: null,
               page_followers: null,
@@ -849,6 +811,10 @@ export default async function DashboardPage({
     year: item.year,
     value: item.goals.video_views_3s
   }));
+  const viewersGoalByYear = kpiGoalTargets.map((item) => ({
+    year: item.year,
+    value: item.goals.viewers
+  }));
   const engagementGoalByYear = kpiGoalTargets.map((item) => ({
     year: item.year,
     value: item.goals.engagement
@@ -856,10 +822,6 @@ export default async function DashboardPage({
   const pageFollowersGoalByYear = kpiGoalTargets.map((item) => ({
     year: item.year,
     value: item.goals.page_followers
-  }));
-  const pageVisitGoalByYear = kpiGoalTargets.map((item) => ({
-    year: item.year,
-    value: item.goals.page_visit
   }));
   let selectedTopContentOverview: TopContentOverviewResponse | null = null;
   let selectedQuestionOverview: QuestionOverviewResponse | null = null;
@@ -1317,7 +1279,7 @@ export default async function DashboardPage({
                       <BarChart3 className="shrink-0 text-primary" />
                       <DashboardTitleWithKpi
                         title="Total Viewers"
-                        goalByYear={[]}
+                        goalByYear={viewersGoalByYear}
                         totalValue={totalViewersValue}
                       />
                     </div>
@@ -1327,7 +1289,7 @@ export default async function DashboardPage({
                 <CardContent>
                   <DashboardSingleMetricChart
                     color="#38bdf8"
-                    goalByYear={[]}
+                    goalByYear={viewersGoalByYear}
                     points={totalViewersPoints}
                     seriesName="Viewers"
                   />
@@ -1419,7 +1381,7 @@ export default async function DashboardPage({
                     <BarChart3 className="shrink-0 text-primary" />
                     <DashboardTitleWithKpi
                       title="Page Visits"
-                      goalByYear={pageVisitGoalByYear}
+                      goalByYear={[]}
                       totalValue={totalPageVisitsValue}
                     />
                   </div>
@@ -1429,7 +1391,7 @@ export default async function DashboardPage({
               <CardContent>
                 <DashboardSingleMetricChart
                   color="#818cf8"
-                  goalByYear={pageVisitGoalByYear}
+                  goalByYear={[]}
                   points={pageVisitPoints}
                   seriesName="Page Visits"
                 />

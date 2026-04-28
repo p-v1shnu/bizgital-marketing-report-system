@@ -2456,7 +2456,7 @@ export class ReportingService {
       return new Map<string, ApprovedSnapshotSummary>();
     }
 
-    const [snapshots, reportVersions, datasetCells, metricsItemsByVersionId] = await Promise.all([
+    const [snapshots, reportVersions, datasetCells, dashboardMetricValuesByVersionId] = await Promise.all([
       this.prisma.metricSnapshot.findMany({
         where: {
           reportVersionId: {
@@ -2505,7 +2505,7 @@ export class ReportingService {
           }
         }
       }),
-      this.readMetricsItemsByReportVersionIds(uniqueReportVersionIds)
+      this.readDashboardMetricValuesByReportVersionIds(uniqueReportVersionIds)
     ]);
 
     const reportVersionById = new Map(
@@ -2557,23 +2557,24 @@ export class ReportingService {
         }
       }
 
-      const metricsItems = metricsItemsByVersionId.get(versionId) ?? [];
-      const engagementFromMetrics = this.resolveDashboardMetricValueFromMetricsItems(
-        metricsItems,
-        'engagement'
-      );
-      const videoViews3sFromMetrics = this.resolveDashboardMetricValueFromMetricsItems(
-        metricsItems,
-        'video_views_3s'
-      );
-      if (!mergedItemsByKey.has('engagement') && engagementFromMetrics !== null) {
-        mergedItemsByKey.set('engagement', asMetricItem('engagement', engagementFromMetrics));
-      }
-      if (!mergedItemsByKey.has('video_views_3s') && videoViews3sFromMetrics !== null) {
-        mergedItemsByKey.set(
-          'video_views_3s',
-          asMetricItem('video_views_3s', videoViews3sFromMetrics)
-        );
+      const dashboardMetricValues = dashboardMetricValuesByVersionId.get(versionId) ?? null;
+      const supplementalMetrics: Array<{
+        key: 'views' | 'viewers' | 'engagement' | 'video_views_3s' | 'page_followers';
+        value: number | null;
+      }> = dashboardMetricValues
+        ? [
+            { key: 'views', value: dashboardMetricValues.views },
+            { key: 'viewers', value: dashboardMetricValues.viewers },
+            { key: 'engagement', value: dashboardMetricValues.engagement },
+            { key: 'video_views_3s', value: dashboardMetricValues.video_views_3s },
+            { key: 'page_followers', value: dashboardMetricValues.page_followers }
+          ]
+        : [];
+
+      for (const metric of supplementalMetrics) {
+        if (!mergedItemsByKey.has(metric.key) && metric.value !== null) {
+          mergedItemsByKey.set(metric.key, asMetricItem(metric.key, metric.value));
+        }
       }
 
       if (mergedItemsByKey.size === 0) {
@@ -2598,68 +2599,24 @@ export class ReportingService {
     return result;
   }
 
-  private async readMetricsItemsByReportVersionIds(reportVersionIds: string[]) {
-    type MetricsItems = Awaited<ReturnType<MetricsService['getMetricsItemsForReportVersion']>>;
-    const entries: Array<[string, MetricsItems]> = await Promise.all(
+  private async readDashboardMetricValuesByReportVersionIds(reportVersionIds: string[]) {
+    type DashboardMetricValues = Awaited<
+      ReturnType<MetricsService['getDashboardMetricValuesForReportVersion']>
+    >;
+    const entries: Array<[string, DashboardMetricValues | null]> = await Promise.all(
       reportVersionIds.map(async reportVersionId => {
         try {
-          const items = await this.metricsService.getMetricsItemsForReportVersion(
+          const values = await this.metricsService.getDashboardMetricValuesForReportVersion(
             reportVersionId
           );
-          return [reportVersionId, items];
+          return [reportVersionId, values];
         } catch {
-          return [reportVersionId, []];
+          return [reportVersionId, null];
         }
       })
     );
 
     return new Map(entries);
-  }
-
-  private resolveDashboardMetricValueFromMetricsItems(
-    items: Array<{
-      key: string;
-      label: string;
-      canonicalMetricKey: string | null;
-      actualValue: number | null;
-    }>,
-    targetKey: 'engagement' | 'video_views_3s'
-  ) {
-    const normalizedTarget = targetKey.toLowerCase();
-    const matchByCanonical = items.find(
-      item =>
-        item.actualValue !== null &&
-        (item.canonicalMetricKey?.toLowerCase() ?? '') === normalizedTarget
-    );
-    if (matchByCanonical) {
-      return matchByCanonical.actualValue;
-    }
-
-    const matchByKey = items.find(
-      item => item.actualValue !== null && item.key.toLowerCase() === normalizedTarget
-    );
-    if (matchByKey) {
-      return matchByKey.actualValue;
-    }
-
-    if (targetKey === 'engagement') {
-      const matchByLabel = items.find(
-        item =>
-          item.actualValue !== null &&
-          item.label.toLowerCase().replace(/\s+/g, ' ').trim() === 'engagement'
-      );
-      return matchByLabel?.actualValue ?? null;
-    }
-
-    const matchByVideoLabel = items.find(item => {
-      if (item.actualValue === null) {
-        return false;
-      }
-
-      const label = item.label.toLowerCase();
-      return label.includes('video') && label.includes('3');
-    });
-    return matchByVideoLabel?.actualValue ?? null;
   }
 
   private async appendReportActivityLogWithClient(

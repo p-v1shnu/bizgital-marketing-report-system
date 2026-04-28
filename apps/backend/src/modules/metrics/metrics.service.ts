@@ -345,6 +345,160 @@ export class MetricsService {
     });
   }
 
+  async getDashboardMetricValuesForReportVersion(reportVersionId: string): Promise<{
+    views: number | null;
+    viewers: number | null;
+    engagement: number | null;
+    video_views_3s: number | null;
+    page_followers: number | null;
+    page_visit: number | null;
+  }> {
+    const reportVersion = await this.prisma.reportVersion.findUnique({
+      where: {
+        id: reportVersionId
+      },
+      include: {
+        reportingPeriod: {
+          include: {
+            brand: true
+          }
+        }
+      }
+    });
+
+    if (!reportVersion) {
+      throw new NotFoundException('Report version was not found.');
+    }
+
+    const [snapshotStatus, manualHeaderMetrics, latestImportJob] = await Promise.all([
+      this.getSnapshotStatusForReportVersion(reportVersionId),
+      this.manualMetricsService.getReportManualMetrics(reportVersionId),
+      this.prisma.importJob.findFirst({
+        where: {
+          reportVersionId
+        },
+        orderBy: {
+          createdAt: 'desc'
+        }
+      })
+    ]);
+    const snapshotValueByKey = new Map(
+      snapshotStatus.items.map((item) => [item.key, item.value] as const)
+    );
+    const getSnapshotValue = (key: MappingTargetField) =>
+      snapshotValueByKey.get(key) ?? null;
+    const values = {
+      views: getSnapshotValue(MappingTargetField.views),
+      viewers: manualHeaderMetrics.viewers,
+      engagement: getSnapshotValue(MappingTargetField.engagement),
+      video_views_3s: getSnapshotValue(MappingTargetField.video_views_3s),
+      page_followers: manualHeaderMetrics.pageFollowers,
+      page_visit: manualHeaderMetrics.pageVisit
+    };
+
+    if (values.views === null) {
+      values.views = (
+        await this.getCanonicalMetricActualFromDataset(
+          reportVersionId,
+          MappingTargetField.views
+        )
+      ).value;
+    }
+
+    if (values.video_views_3s === null) {
+      values.video_views_3s = (
+        await this.getCanonicalMetricActualFromDataset(
+          reportVersionId,
+          MappingTargetField.video_views_3s
+        )
+      ).value;
+    }
+
+    if (values.engagement === null) {
+      values.engagement = (
+        await this.getCanonicalMetricActualFromDataset(
+          reportVersionId,
+          MappingTargetField.engagement
+        )
+      ).value;
+    }
+
+    if (values.engagement !== null) {
+      return values;
+    }
+
+    const systemEngagementFormulaIds = await this.getSystemEngagementFormulaIds();
+    if (systemEngagementFormulaIds.size === 0) {
+      return values;
+    }
+
+    const formulas = await this.prisma.globalComputedFormula.findMany({
+      where: {
+        id: {
+          in: Array.from(systemEngagementFormulaIds)
+        }
+      },
+      select: {
+        id: true,
+        expression: true
+      }
+    });
+    if (formulas.length === 0) {
+      return values;
+    }
+
+    const manualFormulaRowsByRowNumber =
+      await this.readManualFormulaRowsByRowNumber(reportVersionId);
+    const datasetFormulaActuals = await this.getFormulaActualsFromDatasetRows({
+      reportVersionId,
+      formulas,
+      manualFormulaRowsByRowNumber
+    });
+
+    for (const formula of formulas) {
+      const actual = datasetFormulaActuals.actualsByFormulaId.get(formula.id);
+      if (actual?.value !== null && actual?.value !== undefined) {
+        values.engagement = actual.value;
+        return values;
+      }
+    }
+
+    if (!latestImportJob || datasetFormulaActuals.unsupportedFormulaIds.size === 0) {
+      return values;
+    }
+
+    const fallbackFormulas = formulas.filter((formula) =>
+      datasetFormulaActuals.unsupportedFormulaIds.has(formula.id)
+    );
+    if (fallbackFormulas.length === 0) {
+      return values;
+    }
+
+    const csvFormulaActuals = await this.getFormulaActualsFromCsvRows({
+      formulas: fallbackFormulas,
+      reportVersionId,
+      brandCode: reportVersion.reportingPeriod.brand.code,
+      periodId: reportVersion.reportingPeriodId,
+      latestImportJob: {
+        id: latestImportJob.id,
+        originalFilename: latestImportJob.originalFilename,
+        storedFilename: latestImportJob.storedFilename,
+        storagePath: latestImportJob.storagePath
+      },
+      manualFormulaRowsByRowNumber
+    });
+
+    for (const formula of fallbackFormulas) {
+      const actual = csvFormulaActuals.get(formula.id);
+      if (actual?.value !== null && actual?.value !== undefined) {
+        values.engagement = actual.value;
+        return values;
+      }
+    }
+
+    return values;
+  }
+
   async getKpiPreview(
     brandCode: string,
     periodId: string
