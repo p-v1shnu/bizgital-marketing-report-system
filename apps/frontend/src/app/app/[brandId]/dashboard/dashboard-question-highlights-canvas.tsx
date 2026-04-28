@@ -137,7 +137,7 @@ export function DashboardQuestionHighlightsCanvas({
                             <img
                               alt={`Question highlight screenshot ${item.displayOrder}`}
                               className="h-full w-full object-contain object-top"
-                              loading="lazy"
+                              loading="eager"
                               src={protectedScreenshotUrl ?? item.screenshotUrl}
                             />
                           </div>
@@ -162,7 +162,7 @@ export function DashboardQuestionHighlightsCanvas({
                             <img
                               alt={`Question highlight screenshot ${item.displayOrder}`}
                               className="h-full w-full object-contain object-top"
-                              loading="lazy"
+                              loading="eager"
                               src={protectedScreenshotUrl ?? item.screenshotUrl}
                             />
                           </div>

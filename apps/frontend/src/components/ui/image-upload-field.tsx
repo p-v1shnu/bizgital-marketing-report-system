@@ -11,6 +11,7 @@ import { ImagePlus, LoaderCircle, Trash2, ZoomIn } from 'lucide-react';
 import { deleteMediaObject } from '@/lib/reporting-api';
 import { toProtectedMediaUrl } from '@/lib/media-url';
 import { cn } from '@/lib/utils';
+import { getAppImageClipboardFile } from '@/lib/app-image-clipboard';
 
 import { Button } from './button';
 import { ModalShell } from './modal-shell';
@@ -106,6 +107,57 @@ function extractImageDataUrlFromHtml(html: string) {
   return dataUrl.startsWith('data:image/') ? dataUrl : null;
 }
 
+function extractImageSrcFromHtml(html: string) {
+  const match = html.match(/<img[^>]+src=["']([^"']+)["']/i);
+  const src = match?.[1]?.trim() ?? '';
+  return src.length > 0 ? src : null;
+}
+
+function looksLikeImageUrl(value: string) {
+  const normalized = value.trim();
+  if (!normalized) {
+    return false;
+  }
+
+  if (normalized.startsWith('blob:') || normalized.startsWith('data:image/')) {
+    return true;
+  }
+
+  if (/\.(png|jpe?g|webp|gif|bmp|avif|svg)(\?.*)?$/i.test(normalized)) {
+    return true;
+  }
+
+  if (normalized.includes('/api/media/proxy') || normalized.includes('/uploads/')) {
+    return true;
+  }
+
+  return false;
+}
+
+async function fetchImageFileFromUrl(url: string, baseName = 'clipboard-url') {
+  const target = url.trim();
+  if (!target) {
+    return null;
+  }
+
+  const response = await fetch(target, {
+    method: 'GET',
+    credentials: 'include',
+    cache: 'no-store'
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to read copied image source (HTTP ${response.status}).`);
+  }
+
+  const blob = await response.blob();
+  if (!blob.type.startsWith('image/')) {
+    throw new Error('Copied content is not an image source.');
+  }
+
+  return buildClipboardImageFile(blob, baseName);
+}
+
 function readClipboardHtml(event: ReactClipboardEvent<HTMLDivElement>) {
   const directHtml = event.clipboardData?.getData('text/html')?.trim();
   if (directHtml) {
@@ -127,6 +179,25 @@ function readClipboardHtml(event: ReactClipboardEvent<HTMLDivElement>) {
       resolve(normalized.length > 0 ? normalized : null);
     });
   });
+}
+
+function readClipboardText(event: ReactClipboardEvent<HTMLDivElement>) {
+  const directText = event.clipboardData?.getData('text/plain')?.trim();
+  return directText && directText.length > 0 ? directText : null;
+}
+
+function readClipboardUriList(event: ReactClipboardEvent<HTMLDivElement>) {
+  const value = event.clipboardData?.getData('text/uri-list')?.trim();
+  if (!value) {
+    return null;
+  }
+
+  const first = value
+    .split('\n')
+    .map((line) => line.trim())
+    .find((line) => line.length > 0 && !line.startsWith('#'));
+
+  return first ?? null;
 }
 
 function withWebpExtension(filename: string) {
@@ -425,9 +496,16 @@ export function ImageUploadField({
   }
 
   async function resolveImageFromClipboard(event: ReactClipboardEvent<HTMLDivElement>) {
+    // Prefer a very recent in-app copied image to avoid stale browser clipboard image payloads.
+    const appClipboardFile = getAppImageClipboardFile({ maxAgeMs: 10_000 });
+    if (appClipboardFile) {
+      return appClipboardFile;
+    }
+
+    const clipboardText = readClipboardText(event);
+
     const clipboardFiles = Array.from(event.clipboardData?.files ?? []);
     const fileEntry = clipboardFiles.find((file) => file.type.startsWith('image/'));
-
     if (fileEntry) {
       return fileEntry;
     }
@@ -452,6 +530,41 @@ export function ImageUploadField({
         if (fileFromHtml) {
           return fileFromHtml;
         }
+      }
+
+      const imageSrc = extractImageSrcFromHtml(clipboardHtml);
+      if (imageSrc && !imageSrc.startsWith('data:image/')) {
+        try {
+          const fileFromHtmlSrc = await fetchImageFileFromUrl(imageSrc, 'clipboard-html-src');
+          if (fileFromHtmlSrc) {
+            return fileFromHtmlSrc;
+          }
+        } catch {
+          // Keep going: another clipboard representation may still be available.
+        }
+      }
+    }
+
+    const clipboardUri = readClipboardUriList(event);
+    if (clipboardUri && looksLikeImageUrl(clipboardUri)) {
+      try {
+        const fileFromUri = await fetchImageFileFromUrl(clipboardUri, 'clipboard-uri-src');
+        if (fileFromUri) {
+          return fileFromUri;
+        }
+      } catch {
+        // Keep going: another clipboard representation may still be available.
+      }
+    }
+
+    if (clipboardText && looksLikeImageUrl(clipboardText)) {
+      try {
+        const fileFromTextUrl = await fetchImageFileFromUrl(clipboardText, 'clipboard-text-src');
+        if (fileFromTextUrl) {
+          return fileFromTextUrl;
+        }
+      } catch {
+        // Keep going: another clipboard representation may still be available.
       }
     }
 

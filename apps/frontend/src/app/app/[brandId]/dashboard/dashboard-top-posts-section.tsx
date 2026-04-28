@@ -1,5 +1,7 @@
 'use client';
 
+import { useId } from 'react';
+
 import { Badge } from '@/components/ui/badge';
 import { toProtectedMediaUrl } from '@/lib/media-url';
 import type { TopContentOverviewResponse } from '@/lib/reporting-api';
@@ -33,6 +35,7 @@ function formatMetricValue(value: number) {
 }
 
 export function DashboardTopPostsSection({ overview }: DashboardTopPostsSectionProps) {
+  const captureIdPrefix = useId().replace(/:/g, '');
   const {
     presentationMode,
     contentMetricScale,
@@ -60,7 +63,7 @@ export function DashboardTopPostsSection({ overview }: DashboardTopPostsSectionP
           .sort((left, right) => left.rankPosition - right.rankPosition);
         const slotLabel = topSlotLabelFallbacks[slotKey];
         const slotAnchorId = topSlotAnchorIds[slotKey];
-        const slotCaptureTargetId = `dashboard-content-top-posts-${slotKey}-cards`;
+        const slotCaptureTargetId = `${captureIdPrefix}-dashboard-content-top-posts-${slotKey}-cards`;
         const aspectClass =
           contentCardAspect === '1_1'
             ? 'aspect-square'
