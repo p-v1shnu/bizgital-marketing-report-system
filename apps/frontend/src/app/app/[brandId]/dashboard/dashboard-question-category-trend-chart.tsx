@@ -52,6 +52,7 @@ export function DashboardQuestionCategoryTrendChart({
     showValueLabels,
     presentationMode,
     chartLayoutPreset,
+    chartCaptureAspect,
     fontScale
   } =
     useDashboardGlobalKpiControls();
@@ -67,7 +68,9 @@ export function DashboardQuestionCategoryTrendChart({
       : 'w-full rounded-[24px] border border-slate-200 bg-white p-3'
     : 'h-[340px] w-full rounded-[24px] border border-slate-200 bg-white p-3 sm:h-[380px]';
   const chartContainerStyle =
-    presentationMode && !useWideFocusCapture ? { aspectRatio: '4 / 5' } : undefined;
+    presentationMode && !useWideFocusCapture
+      ? { aspectRatio: chartCaptureAspect === '9_16' ? '9 / 16' : '9 / 10' }
+      : undefined;
 
   return (
     <div className={chartContainerClassName} style={chartContainerStyle}>

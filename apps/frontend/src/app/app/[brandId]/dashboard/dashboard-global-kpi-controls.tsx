@@ -15,6 +15,7 @@ type DashboardGlobalKpiControlsContextValue = {
   selectedKpiGoalYear: number;
   goalYears: number[];
   chartLayoutPreset: DashboardChartLayoutPreset;
+  chartCaptureAspect: DashboardChartCaptureAspect;
   presentationMode: boolean;
   fontScale: DashboardFontScale;
   contentChartTextScale: DashboardChartTextScale;
@@ -37,6 +38,7 @@ type DashboardGlobalKpiControlsContextValue = {
   setShowMomDelta: (value: boolean) => void;
   setSelectedKpiGoalYear: (year: number) => void;
   setChartLayoutPreset: (preset: DashboardChartLayoutPreset) => void;
+  setChartCaptureAspect: (value: DashboardChartCaptureAspect) => void;
   setPresentationMode: (value: boolean) => void;
   setFontScale: (value: DashboardFontScale) => void;
   setContentChartTextScale: (value: DashboardChartTextScale) => void;
@@ -56,6 +58,7 @@ type DashboardGlobalKpiControlsContextValue = {
 };
 
 export type DashboardChartLayoutPreset = 'focus' | 'two_columns' | 'three_columns';
+export type DashboardChartCaptureAspect = '9_16' | '9_10';
 export type DashboardFontScale = 'm' | 'l' | 'xl';
 export type DashboardChartTextScale = 100 | 125 | 150 | 175 | 200 | 250 | 300;
 export type DashboardMomDisplayMode = 'both' | 'value' | 'percent';
@@ -91,6 +94,8 @@ export function DashboardGlobalKpiControlsProvider({
   const [selectedKpiGoalYear, setSelectedKpiGoalYear] = useState(defaultGoalYear);
   const [chartLayoutPreset, setChartLayoutPreset] =
     useState<DashboardChartLayoutPreset>('three_columns');
+  const [chartCaptureAspect, setChartCaptureAspect] =
+    useState<DashboardChartCaptureAspect>('9_16');
   const [presentationMode, setPresentationMode] = useState(false);
   const [fontScale, setFontScale] = useState<DashboardFontScale>('m');
   const [contentChartTextScale, setContentChartTextScale] = useState<DashboardChartTextScale>(250);
@@ -181,6 +186,7 @@ export function DashboardGlobalKpiControlsProvider({
   useEffect(() => {
     const savedPreset = window.localStorage.getItem('dashboard-chart-layout-preset');
     const savedPresentationMode = window.localStorage.getItem('dashboard-presentation-mode');
+    const savedChartCaptureAspect = window.localStorage.getItem('dashboard-chart-capture-aspect');
     const savedShowKpi = window.localStorage.getItem('dashboard-show-kpi-goal-lines');
     const savedShowValues = window.localStorage.getItem('dashboard-show-value-labels');
     const savedShowLegend = window.localStorage.getItem('dashboard-show-legend');
@@ -217,6 +223,9 @@ export function DashboardGlobalKpiControlsProvider({
       savedPreset === 'three_columns'
     ) {
       setChartLayoutPreset(savedPreset);
+    }
+    if (savedChartCaptureAspect === '9_16' || savedChartCaptureAspect === '9_10') {
+      setChartCaptureAspect(savedChartCaptureAspect);
     }
     if (savedPresentationMode === 'true' || savedPresentationMode === 'false') {
       setPresentationMode(savedPresentationMode === 'true');
@@ -335,6 +344,10 @@ export function DashboardGlobalKpiControlsProvider({
   }, [chartLayoutPreset]);
 
   useEffect(() => {
+    window.localStorage.setItem('dashboard-chart-capture-aspect', chartCaptureAspect);
+  }, [chartCaptureAspect]);
+
+  useEffect(() => {
     window.localStorage.setItem('dashboard-presentation-mode', String(presentationMode));
   }, [presentationMode]);
 
@@ -433,6 +446,7 @@ export function DashboardGlobalKpiControlsProvider({
     setShowGridLines(true);
     setShowMomDelta(true);
     setChartLayoutPreset('three_columns');
+    setChartCaptureAspect('9_16');
     setPresentationMode(false);
     setFontScale('m');
     setContentChartTextScale(250);
@@ -461,6 +475,7 @@ export function DashboardGlobalKpiControlsProvider({
       selectedKpiGoalYear,
       goalYears,
       chartLayoutPreset,
+      chartCaptureAspect,
       presentationMode,
       fontScale,
       contentChartTextScale,
@@ -483,6 +498,7 @@ export function DashboardGlobalKpiControlsProvider({
       setShowMomDelta,
       setSelectedKpiGoalYear,
       setChartLayoutPreset,
+      setChartCaptureAspect,
       setPresentationMode,
       setFontScale,
       setContentChartTextScale,
@@ -502,6 +518,7 @@ export function DashboardGlobalKpiControlsProvider({
     }),
     [
       chartLayoutPreset,
+      chartCaptureAspect,
       contentBadgeScale,
       contentCaptureBackground,
       contentCardAspect,
@@ -560,6 +577,7 @@ export function DashboardGlobalKpiControls({
     selectedKpiGoalYear,
     goalYears,
     chartLayoutPreset,
+    chartCaptureAspect,
     presentationMode,
     fontScale,
     contentChartTextScale,
@@ -581,6 +599,7 @@ export function DashboardGlobalKpiControls({
     setShowMomDelta,
     setSelectedKpiGoalYear,
     setChartLayoutPreset,
+    setChartCaptureAspect,
     setPresentationMode,
     setFontScale,
     setContentChartTextScale,
@@ -626,6 +645,26 @@ export function DashboardGlobalKpiControls({
           <option value="focus">Focus (1 column)</option>
           <option value="two_columns">Presentation (2 columns)</option>
           <option value="three_columns">Summary (3 columns)</option>
+        </select>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2">
+        <label
+          className="text-xs uppercase tracking-[0.14em] text-muted-foreground"
+          htmlFor="dashboard-chart-capture-aspect"
+        >
+          Capture ratio
+        </label>
+        <select
+          className="h-9 rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none ring-offset-background transition focus-visible:ring-2 focus-visible:ring-ring/60"
+          id="dashboard-chart-capture-aspect"
+          onChange={(event) =>
+            setChartCaptureAspect(event.target.value as DashboardChartCaptureAspect)
+          }
+          value={chartCaptureAspect}
+        >
+          <option value="9_16">9:16</option>
+          <option value="9_10">4.5:5</option>
         </select>
         </div>
 

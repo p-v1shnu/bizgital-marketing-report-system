@@ -120,6 +120,7 @@ export function EngagementVideoChart({
     showValueLabels,
     presentationMode,
     chartLayoutPreset,
+    chartCaptureAspect,
     fontScale
   } = useDashboardGlobalKpiControls();
   const fontScaleMultiplier = fontScale === 'xl' ? 1.28 : fontScale === 'l' ? 1.15 : 1;
@@ -140,31 +141,138 @@ export function EngagementVideoChart({
     );
   }, [latestPoint, points]);
 
-  const useWideFocusCapture = presentationMode && chartLayoutPreset === 'focus';
+  const isFocusCapture = presentationMode && chartLayoutPreset === 'focus';
+  const useFixedCaptureFrame = presentationMode && !isFocusCapture;
+  const captureFrameStyle = useFixedCaptureFrame
+    ? { aspectRatio: chartCaptureAspect === '9_16' ? '9 / 16' : '9 / 10' }
+    : undefined;
   const chartContainerClassName = presentationMode
-    ? useWideFocusCapture
+    ? isFocusCapture
       ? 'h-[340px] w-full rounded-[24px] border border-slate-200 bg-white p-3 sm:h-[380px]'
       : 'w-full rounded-[24px] border border-slate-200 bg-white p-3'
     : 'h-[340px] w-full rounded-[24px] border border-slate-200 bg-white p-3 sm:h-[380px]';
-  const chartContainerStyle =
-    presentationMode && !useWideFocusCapture ? { aspectRatio: '4 / 5' } : undefined;
+
+  const chartElement = (
+    <ResponsiveContainer height="100%" width="100%">
+      <BarChart
+        barCategoryGap="26%"
+        data={points}
+        margin={{
+          top: presentationMode ? 36 : 28,
+          right: presentationMode ? 18 : 12,
+          left: presentationMode ? 2 : -4,
+          bottom: presentationMode ? 16 : 10
+        }}
+      >
+        <defs>
+          <linearGradient id="engagementBar" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor="#34d399" />
+            <stop offset="100%" stopColor="#10b981" />
+          </linearGradient>
+          <linearGradient id="videoViewsBar" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor="#ffd39b" />
+            <stop offset="100%" stopColor="#f4b76f" />
+          </linearGradient>
+        </defs>
+
+        {showGridLines ? (
+          <CartesianGrid
+            opacity={0.88}
+            stroke={presentationMode ? 'rgba(148,163,184,0.58)' : 'rgba(148,163,184,0.46)'}
+            strokeDasharray="4 4"
+            strokeWidth={1.1}
+          />
+        ) : null}
+        <XAxis
+          axisLine={false}
+          dataKey="label"
+          tick={{ fill: axisTickColor, fontSize: axisTickSize, fontWeight: 500 }}
+          tickMargin={10}
+          tickLine={false}
+        />
+        <YAxis
+          axisLine={false}
+          tick={{ fill: axisTickColor, fontSize: axisTickSize }}
+          tickFormatter={formatCompactNumber}
+          tickMargin={8}
+          tickLine={false}
+          width={presentationMode ? 78 : 54}
+        />
+        <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(148,163,184,0.08)' }} />
+        {showLegend ? (
+          <Legend
+            align="right"
+            formatter={(value) => (
+              <span
+                className="font-medium"
+                style={{ color: axisTickColor, fontSize: legendTextSize }}
+              >
+                {value}
+              </span>
+            )}
+            height={presentationMode ? 40 : 34}
+            iconSize={presentationMode ? 11 : 9}
+            verticalAlign="top"
+            wrapperStyle={{
+              paddingBottom: presentationMode ? '10px' : '8px'
+            }}
+          />
+        ) : null}
+        <Bar
+          dataKey="engagementValue"
+          fill="url(#engagementBar)"
+          name="Engagement"
+          radius={[0, 0, 6, 6]}
+          stackId="total"
+        >
+          {showValueLabels ? (
+            <LabelList
+              dataKey="engagementValue"
+              fill="#334155"
+              fontSize={valueLabelFontSize}
+              fontWeight={600}
+              formatter={(value) => formatFullNumber(Number(value ?? 0))}
+              position="insideStart"
+            />
+          ) : null}
+        </Bar>
+        <Bar
+          dataKey="videoViews3sValue"
+          fill="url(#videoViewsBar)"
+          name="3s Video Views"
+          radius={[6, 6, 0, 0]}
+          stackId="total"
+        >
+          {showValueLabels ? (
+            <LabelList
+              dataKey="total"
+              fill="#334155"
+              fontSize={valueLabelFontSize}
+              fontWeight={700}
+              formatter={(value) => formatFullNumber(Number(value ?? 0))}
+              position="top"
+            />
+          ) : null}
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  );
+
+  const deltaEntries = [
+    {
+      label: 'Engagement',
+      currentValue: latestPoint?.engagementValue ?? null,
+      previousValue: previousPoint?.engagementValue ?? null
+    },
+    {
+      label: '3s Video Views',
+      currentValue: latestPoint?.videoViews3sValue ?? null,
+      previousValue: previousPoint?.videoViews3sValue ?? null
+    }
+  ];
 
   return (
     <div className="space-y-3">
-      <DashboardMomDelta
-        entries={[
-          {
-            label: 'Engagement',
-            currentValue: latestPoint?.engagementValue ?? null,
-            previousValue: previousPoint?.engagementValue ?? null
-          },
-          {
-            label: '3s Video Views',
-            currentValue: latestPoint?.videoViews3sValue ?? null,
-            previousValue: previousPoint?.videoViews3sValue ?? null
-          }
-        ]}
-      />
       {!presentationMode ? (
         <>
           {monthsMissingMetrics.length > 0 ? (
@@ -176,111 +284,21 @@ export function EngagementVideoChart({
         </>
       ) : null}
 
-      <div className={chartContainerClassName} style={chartContainerStyle}>
-        <ResponsiveContainer height="100%" width="100%">
-          <BarChart
-            barCategoryGap="26%"
-            data={points}
-            margin={{
-              top: presentationMode ? 36 : 28,
-              right: presentationMode ? 18 : 12,
-              left: presentationMode ? 2 : -4,
-              bottom: presentationMode ? 16 : 10
-            }}
-          >
-            <defs>
-              <linearGradient id="engagementBar" x1="0" x2="0" y1="0" y2="1">
-                <stop offset="0%" stopColor="#34d399" />
-                <stop offset="100%" stopColor="#10b981" />
-              </linearGradient>
-              <linearGradient id="videoViewsBar" x1="0" x2="0" y1="0" y2="1">
-                <stop offset="0%" stopColor="#ffd39b" />
-                <stop offset="100%" stopColor="#f4b76f" />
-              </linearGradient>
-            </defs>
-
-            {showGridLines ? (
-              <CartesianGrid
-                opacity={0.88}
-                stroke={presentationMode ? 'rgba(148,163,184,0.58)' : 'rgba(148,163,184,0.46)'}
-                strokeDasharray="4 4"
-                strokeWidth={1.1}
-              />
-            ) : null}
-            <XAxis
-              axisLine={false}
-              dataKey="label"
-              tick={{ fill: axisTickColor, fontSize: axisTickSize, fontWeight: 500 }}
-              tickMargin={10}
-              tickLine={false}
-            />
-            <YAxis
-              axisLine={false}
-              tick={{ fill: axisTickColor, fontSize: axisTickSize }}
-              tickFormatter={formatCompactNumber}
-              tickMargin={8}
-              tickLine={false}
-              width={presentationMode ? 78 : 54}
-            />
-            <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(148,163,184,0.08)' }} />
-            {showLegend ? (
-              <Legend
-                align="right"
-                formatter={(value) => (
-                  <span
-                    className="font-medium"
-                    style={{ color: axisTickColor, fontSize: legendTextSize }}
-                  >
-                    {value}
-                  </span>
-                )}
-                height={presentationMode ? 40 : 34}
-                iconSize={presentationMode ? 11 : 9}
-                verticalAlign="top"
-                wrapperStyle={{
-                  paddingBottom: presentationMode ? '10px' : '8px'
-                }}
-              />
-            ) : null}
-            <Bar
-              dataKey="engagementValue"
-              fill="url(#engagementBar)"
-              name="Engagement"
-              radius={[0, 0, 6, 6]}
-              stackId="total"
-            >
-              {showValueLabels ? (
-                <LabelList
-                  dataKey="engagementValue"
-                  fill="#334155"
-                  fontSize={valueLabelFontSize}
-                  fontWeight={600}
-                  formatter={(value) => formatFullNumber(Number(value ?? 0))}
-                  position="insideStart"
-                />
-              ) : null}
-            </Bar>
-            <Bar
-              dataKey="videoViews3sValue"
-              fill="url(#videoViewsBar)"
-              name="3s Video Views"
-              radius={[6, 6, 0, 0]}
-              stackId="total"
-            >
-              {showValueLabels ? (
-                <LabelList
-                  dataKey="total"
-                  fill="#334155"
-                  fontSize={valueLabelFontSize}
-                  fontWeight={700}
-                  formatter={(value) => formatFullNumber(Number(value ?? 0))}
-                  position="top"
-                />
-              ) : null}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
+      {useFixedCaptureFrame ? (
+        <div className="w-full" style={captureFrameStyle}>
+          <div className="flex h-full flex-col gap-3">
+            <DashboardMomDelta entries={deltaEntries} />
+            <div className="min-h-0 flex-1 rounded-[24px] border border-slate-200 bg-white p-3">
+              {chartElement}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <>
+          <DashboardMomDelta entries={deltaEntries} />
+          <div className={chartContainerClassName}>{chartElement}</div>
+        </>
+      )}
     </div>
   );
 }

@@ -65,6 +65,7 @@ export function DashboardSingleMetricChart({
     selectedKpiGoalYear,
     presentationMode,
     chartLayoutPreset,
+    chartCaptureAspect,
     fontScale
   } = useDashboardGlobalKpiControls();
   const fontScaleMultiplier = fontScale === 'xl' ? 1.28 : fontScale === 'l' ? 1.15 : 1;
@@ -89,121 +90,146 @@ export function DashboardSingleMetricChart({
       null
     );
   }, [latestPoint, points]);
-  const useWideFocusCapture = presentationMode && chartLayoutPreset === 'focus';
+  const isFocusCapture = presentationMode && chartLayoutPreset === 'focus';
+  const useFixedCaptureFrame = presentationMode && !isFocusCapture;
+  const captureFrameStyle = useFixedCaptureFrame
+    ? { aspectRatio: chartCaptureAspect === '9_16' ? '9 / 16' : '9 / 10' }
+    : undefined;
   const chartContainerClassName = presentationMode
-    ? useWideFocusCapture
+    ? isFocusCapture
       ? 'h-[340px] w-full rounded-[24px] border border-slate-200 bg-white p-3 sm:h-[380px]'
       : 'w-full rounded-[24px] border border-slate-200 bg-white p-3'
     : 'h-[340px] w-full rounded-[24px] border border-slate-200 bg-white p-3 sm:h-[380px]';
-  const chartContainerStyle =
-    presentationMode && !useWideFocusCapture ? { aspectRatio: '4 / 5' } : undefined;
+
+  const chartElement = (
+    <ResponsiveContainer height="100%" width="100%">
+      <BarChart
+        data={points}
+        margin={{
+          top: presentationMode ? 28 : 22,
+          right: presentationMode ? 16 : 10,
+          left: presentationMode ? 2 : -4,
+          bottom: presentationMode ? 12 : 8
+        }}
+      >
+        {showGridLines ? (
+          <CartesianGrid
+            opacity={0.88}
+            stroke={presentationMode ? 'rgba(148,163,184,0.58)' : 'rgba(148,163,184,0.46)'}
+            strokeDasharray="4 4"
+            strokeWidth={1.1}
+          />
+        ) : null}
+        <XAxis
+          axisLine={false}
+          dataKey="label"
+          tick={{ fill: axisTickColor, fontSize: axisTickSize, fontWeight: 500 }}
+          tickLine={false}
+        />
+        <YAxis
+          axisLine={false}
+          tick={{ fill: axisTickColor, fontSize: axisTickSize }}
+          tickFormatter={formatCompactNumber}
+          tickLine={false}
+          width={presentationMode ? 78 : 54}
+        />
+        <Tooltip
+          content={({ active, payload }) => {
+            if (!active || !payload?.length) {
+              return null;
+            }
+            const point = payload[0]?.payload as DashboardSingleMetricPoint | undefined;
+            if (!point) {
+              return null;
+            }
+
+            return (
+              <div className="min-w-[220px] rounded-xl border border-border/60 bg-background/95 p-3 shadow-xl backdrop-blur">
+                <div className="text-sm font-semibold text-foreground">
+                  {point.monthYearLabel}
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-4 text-xs">
+                  <div className="text-muted-foreground">{seriesName}</div>
+                  <div className="font-medium text-foreground">
+                    {formatFullNumber(point.value)}
+                  </div>
+                </div>
+                {point.statusLabel ? (
+                  <div className="mt-2 flex items-center justify-between gap-4 border-t border-border/60 pt-2 text-xs">
+                    <div className="text-muted-foreground">Status</div>
+                    <div className="font-medium text-foreground">{point.statusLabel}</div>
+                  </div>
+                ) : null}
+              </div>
+            );
+          }}
+          cursor={{ fill: 'rgba(148,163,184,0.08)' }}
+        />
+        {showKpiGoalLines && selectedGoal != null ? (
+          <ReferenceLine
+            ifOverflow="extendDomain"
+            label={{
+              value: `Goal ${formatFullNumber(selectedGoal)}`,
+              position: 'insideTopRight',
+              fill: goalLineColor,
+              fontSize: goalLabelFontSize,
+              fontWeight: 600
+            }}
+            stroke={goalLineColor}
+            strokeDasharray="8 5"
+            strokeWidth={2}
+            y={selectedGoal}
+          />
+        ) : null}
+        <Bar dataKey="value" fill={color} name={seriesName} radius={[8, 8, 0, 0]}>
+          {showValueLabels ? (
+            <LabelList
+              dataKey="value"
+              fill="#334155"
+              fontSize={valueLabelFontSize}
+              fontWeight={600}
+              formatter={(value) => formatFullNumber(Number(value ?? 0))}
+              position="top"
+            />
+          ) : null}
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  );
 
   return (
     <div className="space-y-3">
-      <DashboardMomDelta
-        entries={[
-          {
-            label: seriesName,
-            currentValue: latestPoint?.value ?? null,
-            previousValue: previousPoint?.value ?? null
-          }
-        ]}
-      />
-      <div className={chartContainerClassName} style={chartContainerStyle}>
-        <ResponsiveContainer height="100%" width="100%">
-          <BarChart
-            data={points}
-            margin={{
-              top: presentationMode ? 28 : 22,
-              right: presentationMode ? 16 : 10,
-              left: presentationMode ? 2 : -4,
-              bottom: presentationMode ? 12 : 8
-            }}
-          >
-            {showGridLines ? (
-              <CartesianGrid
-                opacity={0.88}
-                stroke={presentationMode ? 'rgba(148,163,184,0.58)' : 'rgba(148,163,184,0.46)'}
-                strokeDasharray="4 4"
-                strokeWidth={1.1}
-              />
-            ) : null}
-            <XAxis
-              axisLine={false}
-              dataKey="label"
-              tick={{ fill: axisTickColor, fontSize: axisTickSize, fontWeight: 500 }}
-              tickLine={false}
-            />
-            <YAxis
-              axisLine={false}
-              tick={{ fill: axisTickColor, fontSize: axisTickSize }}
-              tickFormatter={formatCompactNumber}
-              tickLine={false}
-              width={presentationMode ? 78 : 54}
-            />
-            <Tooltip
-              content={({ active, payload }) => {
-                if (!active || !payload?.length) {
-                  return null;
+      {useFixedCaptureFrame ? (
+        <div className="w-full" style={captureFrameStyle}>
+          <div className="flex h-full flex-col gap-3">
+            <DashboardMomDelta
+              entries={[
+                {
+                  label: seriesName,
+                  currentValue: latestPoint?.value ?? null,
+                  previousValue: previousPoint?.value ?? null
                 }
-                const point = payload[0]?.payload as DashboardSingleMetricPoint | undefined;
-                if (!point) {
-                  return null;
-                }
-
-                return (
-                  <div className="min-w-[220px] rounded-xl border border-border/60 bg-background/95 p-3 shadow-xl backdrop-blur">
-                    <div className="text-sm font-semibold text-foreground">
-                      {point.monthYearLabel}
-                    </div>
-                    <div className="mt-2 flex items-center justify-between gap-4 text-xs">
-                      <div className="text-muted-foreground">{seriesName}</div>
-                      <div className="font-medium text-foreground">
-                        {formatFullNumber(point.value)}
-                      </div>
-                    </div>
-                    {point.statusLabel ? (
-                      <div className="mt-2 flex items-center justify-between gap-4 border-t border-border/60 pt-2 text-xs">
-                        <div className="text-muted-foreground">Status</div>
-                        <div className="font-medium text-foreground">{point.statusLabel}</div>
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              }}
-              cursor={{ fill: 'rgba(148,163,184,0.08)' }}
+              ]}
             />
-            {showKpiGoalLines && selectedGoal != null ? (
-              <ReferenceLine
-                ifOverflow="extendDomain"
-                label={{
-                  value: `Goal ${formatFullNumber(selectedGoal)}`,
-                  position: 'insideTopRight',
-                  fill: goalLineColor,
-                  fontSize: goalLabelFontSize,
-                  fontWeight: 600
-                }}
-                stroke={goalLineColor}
-                strokeDasharray="8 5"
-                strokeWidth={2}
-                y={selectedGoal}
-              />
-            ) : null}
-            <Bar dataKey="value" fill={color} name={seriesName} radius={[8, 8, 0, 0]}>
-              {showValueLabels ? (
-                <LabelList
-                  dataKey="value"
-                  fill="#334155"
-                  fontSize={valueLabelFontSize}
-                  fontWeight={600}
-                  formatter={(value) => formatFullNumber(Number(value ?? 0))}
-                  position="top"
-                />
-              ) : null}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
+            <div className="min-h-0 flex-1 rounded-[24px] border border-slate-200 bg-white p-3">
+              {chartElement}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <>
+          <DashboardMomDelta
+            entries={[
+              {
+                label: seriesName,
+                currentValue: latestPoint?.value ?? null,
+                previousValue: previousPoint?.value ?? null
+              }
+            ]}
+          />
+          <div className={chartContainerClassName}>{chartElement}</div>
+        </>
+      )}
     </div>
   );
 }

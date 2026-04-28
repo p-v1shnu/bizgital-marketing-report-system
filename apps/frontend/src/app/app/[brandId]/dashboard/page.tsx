@@ -1294,7 +1294,7 @@ export default async function DashboardPage({
                 </CardHeader>
                 <CardContent>
                   <DashboardSingleMetricChart
-                    color="#38bdf8"
+                    color="#a855f7"
                     goalByYear={viewersGoalByYear}
                     points={totalViewersPoints}
                     seriesName="Viewers"
@@ -1348,7 +1348,7 @@ export default async function DashboardPage({
                 </CardHeader>
                 <CardContent>
                   <DashboardSingleMetricChart
-                    color="#fb923c"
+                    color="#ef4444"
                     goalByYear={videoViews3sGoalByYear}
                     points={totalVideo3sPoints}
                     seriesName="3s Video Views"
