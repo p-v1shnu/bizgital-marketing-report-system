@@ -839,8 +839,10 @@ export class ColumnConfigService implements OnModuleInit {
       `
       INSERT INTO global_ui_settings (
         setting_key,
-        value_json
-      ) VALUES ('import_table_layout', ?)
+        value_json,
+        created_at,
+        updated_at
+      ) VALUES ('import_table_layout', ?, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
       ON DUPLICATE KEY UPDATE
         value_json = VALUES(value_json),
         updated_at = CURRENT_TIMESTAMP(3)
