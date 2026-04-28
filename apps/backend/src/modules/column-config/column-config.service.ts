@@ -520,20 +520,44 @@ export class ColumnConfigService implements OnModuleInit {
         lastSeenAt: string;
       }
     >();
+    const countUppercaseLetters = (value: string) => (value.match(/[A-Z]/g) ?? []).length;
     const upsertCandidate = (
       labelCandidate: string | null | undefined,
       sampleValue: string | null,
       lastSeenAt: string
     ) => {
       const normalizedLabel = normalizeLabel(String(labelCandidate ?? ''));
-      if (!normalizedLabel || deduped.has(normalizedLabel)) {
+      const dedupKey = this.normalizeHeaderKey(normalizedLabel);
+      if (!normalizedLabel || !dedupKey) {
         return;
       }
 
-      deduped.set(normalizedLabel, {
-        label: String(labelCandidate ?? ''),
-        sampleValue,
-        lastSeenAt
+      const existing = deduped.get(dedupKey);
+      if (!existing) {
+        deduped.set(dedupKey, {
+          label: normalizedLabel,
+          sampleValue,
+          lastSeenAt
+        });
+        return;
+      }
+
+      const shouldPreferCandidateLabel =
+        countUppercaseLetters(normalizedLabel) > countUppercaseLetters(existing.label);
+      const shouldPreferCandidateSample = !existing.sampleValue && !!sampleValue;
+      const existingLastSeenAt = Date.parse(existing.lastSeenAt);
+      const candidateLastSeenAt = Date.parse(lastSeenAt);
+      const nextLastSeenAt =
+        !Number.isNaN(existingLastSeenAt) &&
+        !Number.isNaN(candidateLastSeenAt) &&
+        candidateLastSeenAt > existingLastSeenAt
+          ? lastSeenAt
+          : existing.lastSeenAt;
+
+      deduped.set(dedupKey, {
+        label: shouldPreferCandidateLabel ? normalizedLabel : existing.label,
+        sampleValue: shouldPreferCandidateSample ? sampleValue : existing.sampleValue,
+        lastSeenAt: nextLastSeenAt
       });
     };
 
