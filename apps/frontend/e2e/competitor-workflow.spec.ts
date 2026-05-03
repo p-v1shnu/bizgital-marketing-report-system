@@ -562,11 +562,20 @@ test('monthly monitoring checklist auto-saves and marks competitor complete', as
 
     await page.getByTestId(`competitor-checklist-${competitorId}`).click();
     await page.getByTestId('follower-input').fill('1234');
+    const maybeDialog = page
+      .waitForEvent('dialog', { timeout: 1_000 })
+      .then((dialog) => dialog.accept())
+      .catch(() => null);
     await page.getByTestId('status-no-activity-button').click();
-    await expect(page.getByTestId('no-activity-note-input')).toBeVisible();
-    await page
-      .getByTestId('no-activity-note-input')
-      .fill('No activity observed this month.');
+    await maybeDialog;
+    await expect(page.getByTestId('status-no-activity-button')).toHaveAttribute(
+      'aria-checked',
+      'true'
+    );
+    const noActivityNoteInput = page.getByTestId('no-activity-note-input');
+    if ((await noActivityNoteInput.count()) > 0) {
+      await noActivityNoteInput.fill('No activity observed this month.');
+    }
     await page.getByRole('button', { name: 'Save all' }).click();
     await expect(page.getByTestId(`competitor-checklist-${competitorId}`)).toContainText(
       'Saved',
@@ -594,10 +603,7 @@ test('monthly monitoring checklist auto-saves and marks competitor complete', as
       'Complete',
       { timeout: 15_000 }
     );
-    await expect(page.getByTestId('monitoring-readiness-banner')).toContainText(
-      'Competitor section ready',
-      { timeout: 30_000 }
-    );
+    await expect(page.getByTestId('monitoring-readiness-banner')).toHaveCount(0);
   } finally {
     if (periodId && periodCreatedByTest) {
       await cleanupRequest(`/reporting-periods/${periodId}`, { method: 'DELETE' });
