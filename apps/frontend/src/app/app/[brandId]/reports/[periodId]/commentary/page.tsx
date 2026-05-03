@@ -142,7 +142,7 @@ export default async function CommentaryPage({ params }: CommentaryPageProps) {
         <div className="space-y-3">
           <Badge variant="outline">Graph commentary</Badge>
           <h1 className="font-serif text-5xl leading-none tracking-[-0.06em]">
-            Graph Commentary - {detail.period.monthLabel}
+            Commentary for {detail.period.monthLabel}
           </h1>
           <p className="max-w-3xl text-base leading-7 text-muted-foreground">
             Write monthly reasons for each graph based on this month versus last month.
