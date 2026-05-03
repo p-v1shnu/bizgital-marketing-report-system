@@ -103,6 +103,7 @@ type YearSetupStatus = {
 type YearSetupContext = {
   reportYears: Set<number>;
   kpiConfiguredYears: Set<number>;
+  kpiPlanWithItemsYears: Set<number>;
   kpiReadyYears: Set<number>;
   competitorReadyYears: Set<number>;
   questionAssignmentsReady: boolean;
@@ -2925,9 +2926,9 @@ export class ReportingService implements OnModuleInit {
           },
           select: {
             year: true,
-            _count: {
+            items: {
               select: {
-                items: true
+                targetValue: true
               }
             }
           }
@@ -2962,8 +2963,21 @@ export class ReportingService implements OnModuleInit {
     return {
       reportYears: new Set(reportYearsRows.map((row) => row.year)),
       kpiConfiguredYears: new Set(kpiPlans.map((plan) => plan.year)),
+      kpiPlanWithItemsYears: new Set(
+        kpiPlans.filter((plan) => plan.items.length > 0).map((plan) => plan.year)
+      ),
       kpiReadyYears: new Set(
-        kpiPlans.filter((plan) => plan._count.items > 0).map((plan) => plan.year)
+        kpiPlans
+          .filter(
+            (plan) =>
+              plan.items.length > 0 &&
+              plan.items.every(
+                (item) =>
+                  item.targetValue !== null &&
+                  Number.isFinite(Number(item.targetValue))
+              )
+          )
+          .map((plan) => plan.year)
       ),
       competitorReadyYears: new Set(competitorAssignmentYears.map((row) => row.year)),
       questionAssignmentsReady: activeQuestionAssignmentCount > 0,
@@ -2973,6 +2987,7 @@ export class ReportingService implements OnModuleInit {
 
   private toYearSetupStatus(year: number, context: YearSetupContext): YearSetupStatus {
     const hasKpiPlan = context.kpiConfiguredYears.has(year);
+    const hasKpiItems = context.kpiPlanWithItemsYears.has(year);
     const hasReadyKpiPlan = context.kpiReadyYears.has(year);
     const hasCompetitorAssignments = context.competitorReadyYears.has(year);
 
@@ -2989,8 +3004,10 @@ export class ReportingService implements OnModuleInit {
         passed: kpiPassed,
         detail: kpiPassed
           ? 'Yearly KPI targets are configured.'
-          : hasKpiPlan
+          : hasKpiPlan && !hasKpiItems
             ? 'KPI plan exists but has no KPI items yet.'
+            : hasKpiPlan
+              ? 'Add yearly target values for every KPI item before creating reports.'
             : 'Configure yearly KPI targets before creating reports.'
       },
       {
