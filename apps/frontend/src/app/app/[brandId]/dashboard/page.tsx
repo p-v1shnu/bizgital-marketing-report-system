@@ -33,6 +33,12 @@ import {
   getReportingPeriods,
   getTopContentOverview
 } from '@/lib/reporting-api';
+import {
+  calculatePercentChange,
+  formatChangePercent,
+  formatSignedDelta,
+  formatValue
+} from '@/lib/format-metrics';
 import { badgeToneForState, labelForState, monthLabel } from '@/lib/reporting-ui';
 
 import {
@@ -306,44 +312,6 @@ function statusLabelForDashboardSource(sourceState: DashboardSourceState | null)
   return 'No published data';
 }
 
-function formatMetricValue(value: number | null) {
-  if (value === null || Number.isNaN(value)) {
-    return 'N/A';
-  }
-
-  return new Intl.NumberFormat('en-US', {
-    maximumFractionDigits: value % 1 === 0 ? 0 : 2
-  }).format(value);
-}
-
-function formatChangePercent(value: number | null) {
-  if (value === null || Number.isNaN(value)) {
-    return 'N/A';
-  }
-
-  const sign = value > 0 ? '+' : '';
-  return `${sign}${value.toFixed(1)}%`;
-}
-
-function formatSignedDelta(currentValue: number | null, previousValue: number | null) {
-  if (
-    currentValue === null ||
-    previousValue === null ||
-    Number.isNaN(currentValue) ||
-    Number.isNaN(previousValue)
-  ) {
-    return 'N/A';
-  }
-
-  const delta = currentValue - previousValue;
-  const sign = delta > 0 ? '+' : '';
-  const formatted = new Intl.NumberFormat('en-US', {
-    maximumFractionDigits: delta % 1 === 0 ? 0 : 2
-  }).format(delta);
-
-  return `${sign}${formatted}`;
-}
-
 function getChangeToneClassName(changePercent: number | null) {
   if (changePercent === null || Number.isNaN(changePercent) || changePercent === 0) {
     return 'text-slate-600';
@@ -354,20 +322,6 @@ function getChangeToneClassName(changePercent: number | null) {
   }
 
   return 'text-rose-700';
-}
-
-function calculatePercentChange(currentValue: number | null, previousValue: number | null) {
-  if (
-    currentValue === null ||
-    previousValue === null ||
-    Number.isNaN(currentValue) ||
-    Number.isNaN(previousValue) ||
-    previousValue === 0
-  ) {
-    return null;
-  }
-
-  return ((currentValue - previousValue) / Math.abs(previousValue)) * 100;
 }
 
 function buildDashboardHref(
@@ -1878,11 +1832,11 @@ export default async function DashboardPage({
                             </div>
                             <div className="mt-2 flex flex-wrap items-end justify-between gap-2">
                               <div className="text-3xl font-semibold leading-none text-slate-900">
-                                {formatMetricValue(selectedMonthlyContentTotal)}
+                                {formatValue(selectedMonthlyContentTotal)}
                               </div>
                               <div className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
                                 <Megaphone className="h-3.5 w-3.5" />
-                                Campaign posts {formatMetricValue(selectedMonthlyCampaignPostCount)}
+                                Campaign posts {formatValue(selectedMonthlyCampaignPostCount)}
                               </div>
                             </div>
                             <div className="mt-3 space-y-1.5 text-sm text-slate-700">
@@ -1895,7 +1849,7 @@ export default async function DashboardPage({
                                     key={`media-summary-${item.valueKey}`}
                                   >
                                     <span>{item.label}</span>
-                                    <span className="font-medium">{formatMetricValue(item.count)}</span>
+                                    <span className="font-medium">{formatValue(item.count)}</span>
                                   </div>
                                 ))
                               )}
@@ -1912,7 +1866,7 @@ export default async function DashboardPage({
                                       key={`campaign-summary-${item.valueKey}`}
                                     >
                                       <span>{item.label}</span>
-                                      <span className="font-medium">{formatMetricValue(item.count)}</span>
+                                      <span className="font-medium">{formatValue(item.count)}</span>
                                     </div>
                                   ))}
                                 </div>
@@ -1930,7 +1884,7 @@ export default async function DashboardPage({
                               </span>
                             </div>
                             <div className="mt-2 text-3xl font-semibold leading-none text-slate-900">
-                              {formatMetricValue(currentPageVisit)}
+                              {formatValue(currentPageVisit)}
                             </div>
                             <div
                               className={`mt-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium ${getChangeToneClassName(pageVisitChangePercent)}`}
@@ -1950,7 +1904,7 @@ export default async function DashboardPage({
                               </span>
                             </div>
                             <div className="mt-2 text-3xl font-semibold leading-none text-slate-900">
-                              {formatMetricValue(ownBrandFollowerCount)}
+                              {formatValue(ownBrandFollowerCount)}
                             </div>
                             <div
                               className={`mt-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium ${getChangeToneClassName(pageFollowersChangePercent)}`}
@@ -1979,7 +1933,7 @@ export default async function DashboardPage({
                                     key={`objective-summary-${item.valueKey}`}
                                   >
                                     <span>{item.label}</span>
-                                    <span className="font-medium">{formatMetricValue(item.count)}</span>
+                                    <span className="font-medium">{formatValue(item.count)}</span>
                                   </div>
                                 ))
                               )}
@@ -2003,7 +1957,7 @@ export default async function DashboardPage({
                                     key={`style-summary-${item.valueKey}`}
                                   >
                                     <span>{item.label}</span>
-                                    <span className="font-medium">{formatMetricValue(item.count)}</span>
+                                    <span className="font-medium">{formatValue(item.count)}</span>
                                   </div>
                                 ))
                               )}
@@ -2027,7 +1981,7 @@ export default async function DashboardPage({
                                     key={`related-product-summary-${item.valueKey}`}
                                   >
                                     <span>{item.label}</span>
-                                    <span className="font-medium">{formatMetricValue(item.count)}</span>
+                                    <span className="font-medium">{formatValue(item.count)}</span>
                                   </div>
                                 ))
                               )}
@@ -2137,14 +2091,14 @@ export default async function DashboardPage({
                                       <div className="text-xs uppercase tracking-[0.12em] text-slate-500">Previous</div>
                                       <div className="mt-1 font-medium text-slate-900">
                                         {metric.hasPreviousValue
-                                          ? formatMetricValue(metric.previousValue)
+                                          ? formatValue(metric.previousValue)
                                           : 'No previous'}
                                       </div>
                                     </div>
                                     <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
                                       <div className="text-xs uppercase tracking-[0.12em] text-slate-500">Current</div>
                                       <div className="mt-1 font-medium text-slate-900">
-                                        {formatMetricValue(metric.currentValue)}
+                                        {formatValue(metric.currentValue)}
                                       </div>
                                     </div>
                                   </div>
@@ -2270,7 +2224,7 @@ export default async function DashboardPage({
                                           {item.label}
                                         </div>
                                         <div className="text-sm font-semibold text-slate-900">
-                                          {formatMetricValue(item.count)}
+                                          {formatValue(item.count)}
                                         </div>
                                       </div>
                                     ))}
@@ -2325,3 +2279,4 @@ export default async function DashboardPage({
     </section>
   );
 }
+

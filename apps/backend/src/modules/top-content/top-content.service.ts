@@ -27,7 +27,8 @@ import { readImportJobSnapshot } from '../imports/import-snapshot';
 import { AVAILABLE_TARGETS_BY_KEY } from '../mapping/mapping-targets';
 import {
   parseManualSourceRowsSettingPayload,
-  toManualSourceRowsSettingKey
+  toManualSourceRowsSettingKey,
+  type ManualSourceRowsByRowNumber
 } from '../dataset/manual-source-rows-setting';
 import { TOP_CONTENT_SLOTS, type TopContentSlotKey } from './top-content.constants';
 import {
@@ -1572,7 +1573,9 @@ export class TopContentService {
     return map;
   }
 
-  private async getManualMediaFormatValueKeyByRow(reportVersionId: string) {
+  private async getManualSourceRowsByRowNumber(
+    reportVersionId: string
+  ): Promise<ManualSourceRowsByRowNumber> {
     const setting = await this.prisma.globalUiSetting.findUnique({
       where: {
         settingKey: toManualSourceRowsSettingKey(reportVersionId)
@@ -1581,154 +1584,140 @@ export class TopContentService {
         valueJson: true
       }
     });
-    const rowsByRowNumber = parseManualSourceRowsSettingPayload(setting?.valueJson ?? null);
-    const map = new Map<number, string | null>();
-    const mediaFormatLookup = await this.getMediaFormatOptionLookup();
+    return parseManualSourceRowsSettingPayload(setting?.valueJson ?? null);
+  }
 
+  private mapManualSourceColumnValuesByRow<TValue>(
+    rowsByRowNumber: ManualSourceRowsByRowNumber,
+    columnLabelPredicate: (columnLabel: string | null | undefined) => boolean,
+    valueResolver: (input: {
+      columns: Record<string, string>;
+      explicitValue: string | null;
+    }) => TValue
+  ) {
+    const map = new Map<number, TValue>();
     for (const [rowNumber, columns] of Object.entries(rowsByRowNumber)) {
       const parsedRowNumber = Number(rowNumber);
       if (!Number.isInteger(parsedRowNumber) || parsedRowNumber < 1) {
         continue;
       }
 
-      const mediaFormatEntry = Object.entries(columns).find(([columnLabel]) =>
-        this.isMediaFormatColumnLabel(columnLabel)
+      const matchedColumn = Object.entries(columns).find(([columnLabel]) =>
+        columnLabelPredicate(columnLabel)
       );
       map.set(
         parsedRowNumber,
+        valueResolver({
+          columns,
+          explicitValue: matchedColumn?.[1] ?? null
+        })
+      );
+    }
+
+    return map;
+  }
+
+  private async getManualSourceColumnValuesByRow<TValue>(input: {
+    reportVersionId: string;
+    rowsByRowNumber?: ManualSourceRowsByRowNumber;
+    columnLabelPredicate: (columnLabel: string | null | undefined) => boolean;
+    valueResolver: (input: {
+      columns: Record<string, string>;
+      explicitValue: string | null;
+    }) => TValue;
+  }) {
+    const rowsByRowNumber =
+      input.rowsByRowNumber ??
+      (await this.getManualSourceRowsByRowNumber(input.reportVersionId));
+    return this.mapManualSourceColumnValuesByRow(
+      rowsByRowNumber,
+      input.columnLabelPredicate,
+      input.valueResolver
+    );
+  }
+
+  private async getManualMediaFormatValueKeyByRow(input: {
+    reportVersionId: string;
+    rowsByRowNumber?: ManualSourceRowsByRowNumber;
+    lookup?: MediaFormatOptionLookup;
+  }) {
+    const mediaFormatLookup = input.lookup ?? (await this.getMediaFormatOptionLookup());
+    return this.getManualSourceColumnValuesByRow<string | null>({
+      reportVersionId: input.reportVersionId,
+      rowsByRowNumber: input.rowsByRowNumber,
+      columnLabelPredicate: (columnLabel) => this.isMediaFormatColumnLabel(columnLabel),
+      valueResolver: ({ columns, explicitValue }) =>
         this.resolveMediaFormatValueKey({
           rawValues: Object.values(columns),
-          explicitValue: mediaFormatEntry ? mediaFormatEntry[1] : null,
+          explicitValue,
           lookup: mediaFormatLookup
         })
-      );
-    }
-
-    return map;
+    });
   }
 
-  private async getManualContentObjectiveValueKeyByRow(reportVersionId: string) {
-    const setting = await this.prisma.globalUiSetting.findUnique({
-      where: {
-        settingKey: toManualSourceRowsSettingKey(reportVersionId)
-      },
-      select: {
-        valueJson: true
-      }
-    });
-    const rowsByRowNumber = parseManualSourceRowsSettingPayload(setting?.valueJson ?? null);
-    const map = new Map<number, string | null>();
-    const contentObjectiveLookup = await this.getContentObjectiveOptionLookup();
-
-    for (const [rowNumber, columns] of Object.entries(rowsByRowNumber)) {
-      const parsedRowNumber = Number(rowNumber);
-      if (!Number.isInteger(parsedRowNumber) || parsedRowNumber < 1) {
-        continue;
-      }
-
-      const contentObjectiveEntry = Object.entries(columns).find(([columnLabel]) =>
-        this.isContentObjectiveColumnLabel(columnLabel)
-      );
-      map.set(
-        parsedRowNumber,
+  private async getManualContentObjectiveValueKeyByRow(input: {
+    reportVersionId: string;
+    rowsByRowNumber?: ManualSourceRowsByRowNumber;
+    lookup?: ContentObjectiveOptionLookup;
+  }) {
+    const contentObjectiveLookup =
+      input.lookup ?? (await this.getContentObjectiveOptionLookup());
+    return this.getManualSourceColumnValuesByRow<string | null>({
+      reportVersionId: input.reportVersionId,
+      rowsByRowNumber: input.rowsByRowNumber,
+      columnLabelPredicate: (columnLabel) =>
+        this.isContentObjectiveColumnLabel(columnLabel),
+      valueResolver: ({ columns, explicitValue }) =>
         this.resolveDropdownValueKey({
           rawValues: Object.values(columns),
-          explicitValue: contentObjectiveEntry ? contentObjectiveEntry[1] : null,
+          explicitValue,
           lookup: contentObjectiveLookup
         })
-      );
-    }
-
-    return map;
+    });
   }
 
-  private async getManualRelatedProductValueKeyByRow(reportVersionId: string) {
-    const setting = await this.prisma.globalUiSetting.findUnique({
-      where: {
-        settingKey: toManualSourceRowsSettingKey(reportVersionId)
-      },
-      select: {
-        valueJson: true
-      }
-    });
-    const rowsByRowNumber = parseManualSourceRowsSettingPayload(setting?.valueJson ?? null);
-    const map = new Map<number, string | null>();
-    const relatedProductLookup = await this.getRelatedProductOptionLookup();
-
-    for (const [rowNumber, columns] of Object.entries(rowsByRowNumber)) {
-      const parsedRowNumber = Number(rowNumber);
-      if (!Number.isInteger(parsedRowNumber) || parsedRowNumber < 1) {
-        continue;
-      }
-
-      const relatedProductEntry = Object.entries(columns).find(([columnLabel]) =>
-        this.isRelatedProductColumnLabel(columnLabel)
-      );
-      map.set(
-        parsedRowNumber,
+  private async getManualRelatedProductValueKeyByRow(input: {
+    reportVersionId: string;
+    rowsByRowNumber?: ManualSourceRowsByRowNumber;
+    lookup?: RelatedProductOptionLookup;
+  }) {
+    const relatedProductLookup =
+      input.lookup ?? (await this.getRelatedProductOptionLookup());
+    return this.getManualSourceColumnValuesByRow<string | null>({
+      reportVersionId: input.reportVersionId,
+      rowsByRowNumber: input.rowsByRowNumber,
+      columnLabelPredicate: (columnLabel) => this.isRelatedProductColumnLabel(columnLabel),
+      valueResolver: ({ columns, explicitValue }) =>
         this.resolveDropdownValueKey({
           rawValues: Object.values(columns),
-          explicitValue: relatedProductEntry ? relatedProductEntry[1] : null,
+          explicitValue,
           lookup: relatedProductLookup
         })
-      );
-    }
-
-    return map;
+    });
   }
 
-  private async getManualCampaignBaseByRow(reportVersionId: string) {
-    const setting = await this.prisma.globalUiSetting.findUnique({
-      where: {
-        settingKey: toManualSourceRowsSettingKey(reportVersionId)
-      },
-      select: {
-        valueJson: true
-      }
+  private async getManualCampaignBaseByRow(input: {
+    reportVersionId: string;
+    rowsByRowNumber?: ManualSourceRowsByRowNumber;
+  }) {
+    return this.getManualSourceColumnValuesByRow<boolean | null>({
+      reportVersionId: input.reportVersionId,
+      rowsByRowNumber: input.rowsByRowNumber,
+      columnLabelPredicate: (columnLabel) => this.isCampaignBaseColumnLabel(columnLabel),
+      valueResolver: ({ explicitValue }) => this.parseCampaignBaseValue(explicitValue)
     });
-    const rowsByRowNumber = parseManualSourceRowsSettingPayload(setting?.valueJson ?? null);
-    const map = new Map<number, boolean | null>();
-
-    for (const [rowNumber, columns] of Object.entries(rowsByRowNumber)) {
-      const parsedRowNumber = Number(rowNumber);
-      if (!Number.isInteger(parsedRowNumber) || parsedRowNumber < 1) {
-        continue;
-      }
-
-      const campaignBaseEntry = Object.entries(columns).find(([columnLabel]) =>
-        this.isCampaignBaseColumnLabel(columnLabel)
-      );
-      map.set(parsedRowNumber, this.parseCampaignBaseValue(campaignBaseEntry?.[1] ?? null));
-    }
-
-    return map;
   }
 
-  private async getManualCampaignNameByRow(reportVersionId: string) {
-    const setting = await this.prisma.globalUiSetting.findUnique({
-      where: {
-        settingKey: toManualSourceRowsSettingKey(reportVersionId)
-      },
-      select: {
-        valueJson: true
-      }
+  private async getManualCampaignNameByRow(input: {
+    reportVersionId: string;
+    rowsByRowNumber?: ManualSourceRowsByRowNumber;
+  }) {
+    return this.getManualSourceColumnValuesByRow<string | null>({
+      reportVersionId: input.reportVersionId,
+      rowsByRowNumber: input.rowsByRowNumber,
+      columnLabelPredicate: (columnLabel) => this.isCampaignNameColumnLabel(columnLabel),
+      valueResolver: ({ explicitValue }) => this.normalizeTextOrNull(explicitValue)
     });
-    const rowsByRowNumber = parseManualSourceRowsSettingPayload(setting?.valueJson ?? null);
-    const map = new Map<number, string | null>();
-
-    for (const [rowNumber, columns] of Object.entries(rowsByRowNumber)) {
-      const parsedRowNumber = Number(rowNumber);
-      if (!Number.isInteger(parsedRowNumber) || parsedRowNumber < 1) {
-        continue;
-      }
-
-      const campaignNameEntry = Object.entries(columns).find(([columnLabel]) =>
-        this.isCampaignNameColumnLabel(columnLabel)
-      );
-      map.set(parsedRowNumber, this.normalizeTextOrNull(campaignNameEntry?.[1] ?? null));
-    }
-
-    return map;
   }
 
   private mergeMapWithFallback(
@@ -1936,12 +1925,8 @@ export class TopContentService {
     const [
       latestImportJob,
       datasetRows,
-      manualMediaFormatByRowNumber,
       manualContentStyleByRowNumber,
-      manualContentObjectiveByRowNumber,
-      manualRelatedProductByRowNumber,
-      manualCampaignBaseByRowNumber,
-      manualCampaignNameByRowNumber,
+      manualSourceRowsSetting,
       mediaFormatLookup,
       contentStyleLookup,
       contentObjectiveLookup,
@@ -1971,18 +1956,55 @@ export class TopContentService {
             sourceRowNumber: true
           }
         }),
-        this.getManualMediaFormatValueKeyByRow(reportVersionId),
         this.getManualContentStyleValueKeyByRow(reportVersionId),
-        this.getManualContentObjectiveValueKeyByRow(reportVersionId),
-        this.getManualRelatedProductValueKeyByRow(reportVersionId),
-        this.getManualCampaignBaseByRow(reportVersionId),
-        this.getManualCampaignNameByRow(reportVersionId),
+        this.prisma.globalUiSetting.findUnique({
+          where: {
+            settingKey: toManualSourceRowsSettingKey(reportVersionId)
+          },
+          select: {
+            valueJson: true
+          }
+        }),
         this.getMediaFormatOptionLookup(),
         this.getContentStyleOptionLookup(),
         this.getContentObjectiveOptionLookup(),
         this.getRelatedProductOptionLookup(),
         this.buildContentCountSummary(reportVersionId, policy)
       ]);
+    const manualSourceRowsByRowNumber = parseManualSourceRowsSettingPayload(
+      manualSourceRowsSetting?.valueJson ?? null
+    );
+    const [
+      manualMediaFormatByRowNumber,
+      manualContentObjectiveByRowNumber,
+      manualRelatedProductByRowNumber,
+      manualCampaignBaseByRowNumber,
+      manualCampaignNameByRowNumber
+    ] = await Promise.all([
+      this.getManualMediaFormatValueKeyByRow({
+        reportVersionId,
+        rowsByRowNumber: manualSourceRowsByRowNumber,
+        lookup: mediaFormatLookup
+      }),
+      this.getManualContentObjectiveValueKeyByRow({
+        reportVersionId,
+        rowsByRowNumber: manualSourceRowsByRowNumber,
+        lookup: contentObjectiveLookup
+      }),
+      this.getManualRelatedProductValueKeyByRow({
+        reportVersionId,
+        rowsByRowNumber: manualSourceRowsByRowNumber,
+        lookup: relatedProductLookup
+      }),
+      this.getManualCampaignBaseByRow({
+        reportVersionId,
+        rowsByRowNumber: manualSourceRowsByRowNumber
+      }),
+      this.getManualCampaignNameByRow({
+        reportVersionId,
+        rowsByRowNumber: manualSourceRowsByRowNumber
+      })
+    ]);
     const headerCandidatesLookup = await this.getHeaderCandidatesLookup();
     const snapshot = latestImportJob ? readImportJobSnapshot(latestImportJob) : null;
     const csvRowCount = snapshot?.dataRows.length ?? 0;

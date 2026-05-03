@@ -18,6 +18,12 @@ export const REPORT_METRIC_COMMENTARY_KEYS = [
 ] as const;
 
 export type ReportMetricCommentaryKey = (typeof REPORT_METRIC_COMMENTARY_KEYS)[number];
+export const REPORT_METRIC_LABELS: Record<ReportMetricCommentaryKey, string> = {
+  views: 'Total Views',
+  viewers: 'Total Viewers',
+  engagement: 'Total Engagement',
+  video_views_3s: 'Total 3-second Video Views'
+};
 export type ReportMetricApplicability = 'applicable' | 'na';
 
 export type ReportMetricCommentaryEntry = {

@@ -1,7 +1,10 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, OnModuleInit } from '@nestjs/common';
 
 import { PrismaService } from '../../prisma/prisma.service';
-import { REPORT_METRIC_COMMENTARY_KEYS } from './manual-metrics.types';
+import {
+  REPORT_METRIC_COMMENTARY_KEYS,
+  REPORT_METRIC_LABELS
+} from './manual-metrics.types';
 import type {
   ManualHeaderMetricValues,
   ReportMetricApplicability,
@@ -25,16 +28,14 @@ type RawMetricCommentaryRow = {
 
 const MANUAL_HEADER_MAX_VALUE = 999_999_999_999_999;
 const MAX_METRIC_COMMENTARY_REMARK_LENGTH = 4_000;
-const REPORT_METRIC_LABELS: Record<ReportMetricCommentaryKey, string> = {
-  views: 'Total Views',
-  viewers: 'Total Viewers',
-  engagement: 'Total Engagement',
-  video_views_3s: 'Total 3-second Video Views'
-};
 
 @Injectable()
-export class ManualMetricsService {
+export class ManualMetricsService implements OnModuleInit {
   constructor(private readonly prisma: PrismaService) {}
+
+  async onModuleInit() {
+    await this.ensureCommentaryStorage();
+  }
 
   async getReportManualMetrics(reportVersionId: string): Promise<ManualHeaderMetricValues> {
     await this.ensureStorage();
@@ -102,8 +103,6 @@ export class ManualMetricsService {
   async getReportMetricCommentary(
     reportVersionId: string
   ): Promise<ReportMetricCommentaryEntry[]> {
-    await this.ensureCommentaryStorage();
-
     const rows = await this.prisma.$queryRawUnsafe<RawMetricCommentaryRow[]>(
       `
       SELECT metric_key, applicability, remark
@@ -129,8 +128,6 @@ export class ManualMetricsService {
     reportVersionId: string,
     input: UpdateReportMetricCommentaryInput
   ) {
-    await this.ensureCommentaryStorage();
-
     if (!Array.isArray(input.entries) || input.entries.length === 0) {
       return this.getReportMetricCommentary(reportVersionId);
     }

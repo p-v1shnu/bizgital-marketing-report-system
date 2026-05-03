@@ -57,6 +57,53 @@ type KpiPreview = {
   detail: string;
   toneClassName: string;
 };
+type SectionLink = ReportingDetailResponse['period']['workspace']['sections'][number] & {
+  href: string;
+};
+
+function SectionTabLink({
+  section,
+  isActive
+}: {
+  section: SectionLink;
+  isActive: boolean;
+}) {
+  const statusDotClass =
+    section.status === 'ready'
+      ? 'bg-emerald-500'
+      : section.status === 'blocked'
+        ? 'bg-amber-500'
+        : 'bg-sky-500';
+  const activeStatusClass =
+    section.status === 'ready'
+      ? 'border-emerald-400/70 bg-emerald-500/22 text-emerald-50 shadow-[0_0_0_1px_rgba(16,185,129,0.45),0_10px_25px_rgba(16,185,129,0.2)]'
+      : section.status === 'blocked'
+        ? 'border-amber-400/70 bg-amber-500/20 text-amber-50 shadow-[0_0_0_1px_rgba(245,158,11,0.4),0_10px_25px_rgba(245,158,11,0.18)]'
+        : 'border-sky-400/70 bg-sky-500/22 text-sky-50 shadow-[0_0_0_1px_rgba(56,189,248,0.42),0_10px_25px_rgba(56,189,248,0.2)]';
+  const inactiveStatusClass =
+    section.status === 'ready'
+      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+      : section.status === 'blocked'
+        ? 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+        : 'border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300';
+
+  return (
+    <Link
+      className={`rounded-full border px-4 py-2 text-sm transition ${
+        isActive
+          ? `${activeStatusClass} scale-[1.01]`
+          : `${inactiveStatusClass} hover:opacity-90`
+      }`}
+      href={section.href}
+      title={`${section.label}: ${sectionStatusLabel(section.status)}. ${section.detail}`}
+    >
+      <span className="inline-flex items-center gap-2 font-medium">
+        <span className={`size-2 rounded-full ${statusDotClass}`} />
+        {section.label}
+      </span>
+    </Link>
+  );
+}
 
 function buildKpiPreview(preview: MetricsKpiPreviewResponse | null): KpiPreview {
   if (!preview) {
@@ -103,7 +150,7 @@ export async function ReportWorkspaceShell({
   const isRecommendedSectionActive =
     recommendedAction.section?.slug === activeSection;
   const readOnlyMode = isReadOnlyMode(detail);
-  const sectionLinks = visibleWorkspaceSections(detail).map((section) => ({
+  const sectionLinks: SectionLink[] = visibleWorkspaceSections(detail).map((section) => ({
     ...section,
     href: reportSectionHref(brandId, periodId, section.slug)
   }));
@@ -111,45 +158,11 @@ export async function ReportWorkspaceShell({
     <div className="overflow-x-auto pb-1">
       <div className="flex min-w-max gap-2">
         {sectionLinks.map((section) => (
-          (() => {
-            const isActive = section.slug === activeSection;
-            const statusDotClass =
-              section.status === 'ready'
-                ? 'bg-emerald-500'
-                : section.status === 'blocked'
-                  ? 'bg-amber-500'
-                  : 'bg-sky-500';
-            const activeStatusClass =
-              section.status === 'ready'
-                ? 'border-emerald-400/70 bg-emerald-500/22 text-emerald-50 shadow-[0_0_0_1px_rgba(16,185,129,0.45),0_10px_25px_rgba(16,185,129,0.2)]'
-                : section.status === 'blocked'
-                  ? 'border-amber-400/70 bg-amber-500/20 text-amber-50 shadow-[0_0_0_1px_rgba(245,158,11,0.4),0_10px_25px_rgba(245,158,11,0.18)]'
-                  : 'border-sky-400/70 bg-sky-500/22 text-sky-50 shadow-[0_0_0_1px_rgba(56,189,248,0.42),0_10px_25px_rgba(56,189,248,0.2)]';
-            const inactiveStatusClass =
-              section.status === 'ready'
-                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-                : section.status === 'blocked'
-                  ? 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300'
-                  : 'border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300';
-
-            return (
-          <Link
-            className={`rounded-full border px-4 py-2 text-sm transition ${
-              isActive
-                ? `${activeStatusClass} scale-[1.01]`
-                : `${inactiveStatusClass} hover:opacity-90`
-            }`}
-            href={section.href}
+          <SectionTabLink
+            isActive={section.slug === activeSection}
             key={section.slug}
-            title={`${section.label}: ${sectionStatusLabel(section.status)}. ${section.detail}`}
-          >
-            <span className="inline-flex items-center gap-2 font-medium">
-              <span className={`size-2 rounded-full ${statusDotClass}`} />
-              {section.label}
-            </span>
-          </Link>
-            );
-          })()
+            section={section}
+          />
         ))}
       </div>
     </div>

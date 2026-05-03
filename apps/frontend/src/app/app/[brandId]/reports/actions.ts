@@ -413,6 +413,7 @@ export async function reopenForEditingAction(formData: FormData) {
         error: 'Please enter at least 1 character for the request note.'
       }
     });
+    return;
   }
 
   try {

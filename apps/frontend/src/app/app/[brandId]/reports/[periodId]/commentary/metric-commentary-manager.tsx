@@ -6,6 +6,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useDebouncedRefresh } from '@/hooks/use-debounced-refresh';
+import {
+  calculatePercentChange,
+  formatChangePercent,
+  formatSignedDelta,
+  formatValue
+} from '@/lib/format-metrics';
 
 type MetricCommentaryItem = {
   key: 'views' | 'viewers' | 'engagement' | 'video_views_3s';
@@ -97,44 +103,6 @@ function validate(
   }
 
   return errors;
-}
-
-function formatValue(value: number | null) {
-  if (value === null || Number.isNaN(value)) {
-    return 'N/A';
-  }
-
-  return new Intl.NumberFormat('en-US', {
-    maximumFractionDigits: value % 1 === 0 ? 0 : 2
-  }).format(value);
-}
-
-function formatChange(value: number | null) {
-  if (value === null || Number.isNaN(value)) {
-    return 'N/A';
-  }
-
-  const sign = value > 0 ? '+' : '';
-  return `${sign}${value.toFixed(1)}%`;
-}
-
-function formatSignedDelta(currentValue: number | null, previousValue: number | null) {
-  if (
-    currentValue === null ||
-    previousValue === null ||
-    Number.isNaN(currentValue) ||
-    Number.isNaN(previousValue)
-  ) {
-    return 'N/A';
-  }
-
-  const delta = currentValue - previousValue;
-  const sign = delta > 0 ? '+' : '';
-  const formatted = new Intl.NumberFormat('en-US', {
-    maximumFractionDigits: delta % 1 === 0 ? 0 : 2
-  }).format(delta);
-
-  return `${sign}${formatted}`;
 }
 
 function MiniCompareChart({
@@ -382,6 +350,9 @@ export function MetricCommentaryManager({
         {initialItems.map((item) => {
           const isRemarkBlocked = isReadOnly || (item.key === 'viewers' && !viewersInputReady);
           const error = errors[item.key];
+          const metricChangePercent =
+            item.changePercent ??
+            calculatePercentChange(item.currentValue, item.previousValue);
 
           return (
             <div className="space-y-3 rounded-2xl border border-border/60 bg-background/60 p-4" key={item.key}>
@@ -390,7 +361,7 @@ export function MetricCommentaryManager({
                 <div className="text-xs text-muted-foreground">
                   Change:{' '}
                   {item.hasPreviousValue
-                    ? `${formatChange(item.changePercent)} (${formatSignedDelta(item.currentValue, item.previousValue)})`
+                    ? `${formatChangePercent(metricChangePercent)} (${formatSignedDelta(item.currentValue, item.previousValue)})`
                     : 'N/A'}
                 </div>
                 <div className="text-xs text-muted-foreground">{item.requirementDetail}</div>

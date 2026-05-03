@@ -38,7 +38,10 @@ import type {
   DatasetOverviewResponse,
   UpdateDatasetValuesInput
 } from './dataset.types';
-import { REPORT_METRIC_COMMENTARY_KEYS } from '../manual-metrics/manual-metrics.types';
+import {
+  REPORT_METRIC_COMMENTARY_KEYS,
+  REPORT_METRIC_LABELS
+} from '../manual-metrics/manual-metrics.types';
 import type { ReportMetricCommentaryKey } from '../manual-metrics/manual-metrics.types';
 
 const DATASET_PREVIEW_LIMIT = 5;
@@ -51,12 +54,6 @@ const MANUAL_EXTENDED_TARGET_FIELDS: MappingTargetField[] = [
   MappingTargetField.published_at
 ];
 const MANUAL_EXTENDED_TARGET_FIELD_SET = new Set<MappingTargetField>(MANUAL_EXTENDED_TARGET_FIELDS);
-const METRIC_COMMENTARY_LABELS: Record<ReportMetricCommentaryKey, string> = {
-  views: 'Total Views',
-  viewers: 'Total Viewers',
-  engagement: 'Total Engagement',
-  video_views_3s: 'Total 3-second Video Views'
-};
 
 @Injectable()
 export class DatasetService {
@@ -719,7 +716,7 @@ export class DatasetService {
     if (!targetVersionId) {
       const emptyItems = [...REPORT_METRIC_COMMENTARY_KEYS].map((key) => ({
         key,
-        label: METRIC_COMMENTARY_LABELS[key],
+        label: REPORT_METRIC_LABELS[key],
         applicability: 'applicable' as const,
         remark: null,
         requiresRemark: key !== 'video_views_3s',

@@ -3,7 +3,8 @@ import {
   ConflictException,
   Injectable,
   Logger,
-  NotFoundException
+  NotFoundException,
+  OnModuleInit
 } from '@nestjs/common';
 import {
   BrandDropdownFieldKey,
@@ -131,7 +132,7 @@ const REPORT_RECYCLE_RETENTION_DAYS = 7;
 const REPORT_RECYCLE_RETENTION_MS = REPORT_RECYCLE_RETENTION_DAYS * 24 * 60 * 60 * 1000;
 
 @Injectable()
-export class ReportingService {
+export class ReportingService implements OnModuleInit {
   private readonly logger = new Logger(ReportingService.name);
 
   constructor(
@@ -146,6 +147,11 @@ export class ReportingService {
     private readonly mediaService: MediaService,
     private readonly topContentService: TopContentService
   ) {}
+
+  async onModuleInit() {
+    await this.ensureGlobalUiSettingsStorageWithClient(this.prisma);
+    await this.ensureMetricCommentaryStorageWithClient(this.prisma);
+  }
 
   async listReportingPeriods(
     brandCode: string,
@@ -1775,18 +1781,6 @@ export class ReportingService {
     sourceVersionId: string,
     draftVersionId: string
   ) {
-    await tx.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS report_metric_commentaries (
-        report_version_id VARCHAR(191) NOT NULL,
-        metric_key VARCHAR(64) NOT NULL,
-        applicability VARCHAR(16) NOT NULL DEFAULT 'applicable',
-        remark LONGTEXT NULL,
-        created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-        updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
-        PRIMARY KEY (report_version_id, metric_key)
-      ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-    `);
-
     await tx.$executeRawUnsafe(
       `
       INSERT INTO report_metric_commentaries (
@@ -2518,7 +2512,6 @@ export class ReportingService {
       return new Map<string, ReportActivityLogEvent[]>();
     }
 
-    await this.ensureGlobalUiSettingsStorageWithClient(this.prisma);
     const settingKeys = periodIds.map(periodId => toReportActivityLogSettingKey(periodId));
     const settings = await this.prisma.globalUiSetting.findMany({
       where: {
@@ -2725,8 +2718,6 @@ export class ReportingService {
       actor?: ActionActorInput;
     }
   ) {
-    await this.ensureGlobalUiSettingsStorageWithClient(client);
-
     const settingKey = toReportActivityLogSettingKey(input.reportingPeriodId);
     const currentSetting = await client.globalUiSetting.findUnique({
       where: {
@@ -2851,6 +2842,22 @@ export class ReportingService {
         created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
         updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
         PRIMARY KEY (setting_key)
+      ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    `);
+  }
+
+  private async ensureMetricCommentaryStorageWithClient(
+    client: PrismaService | Prisma.TransactionClient
+  ) {
+    await client.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS report_metric_commentaries (
+        report_version_id VARCHAR(191) NOT NULL,
+        metric_key VARCHAR(64) NOT NULL,
+        applicability VARCHAR(16) NOT NULL DEFAULT 'applicable',
+        remark LONGTEXT NULL,
+        created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (report_version_id, metric_key)
       ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
     `);
   }
