@@ -1302,7 +1302,7 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
   }
 
   private getConfigValue(name: string) {
-    return this.configService?.get<string>(name) ?? process.env[name];
+    return this.configService.get<string>(name);
   }
 
   private isMissingObjectError(error: unknown) {

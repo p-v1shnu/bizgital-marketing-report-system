@@ -32,6 +32,7 @@ type Props = {
   isReadOnly: boolean;
   readOnlyReason: string | null;
   isFirstReportingMonth: boolean;
+  firstMonthDefaultRemark: string;
   viewersInputReady: boolean;
   initialItems: MetricCommentaryItem[];
 };
@@ -40,10 +41,13 @@ type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 type MetricKey = MetricCommentaryItem['key'];
 type MetricFormValues = Record<MetricKey, { remark: string }>;
 
-const firstMonthDefaultRemark = 'First reporting month, no previous-month comparison.';
 const metricKeyOrder: MetricKey[] = ['views', 'viewers', 'engagement', 'video_views_3s'];
 
-function toFormValues(items: MetricCommentaryItem[], isFirstReportingMonth: boolean): MetricFormValues {
+function toFormValues(
+  items: MetricCommentaryItem[],
+  isFirstReportingMonth: boolean,
+  firstMonthDefaultRemark: string
+): MetricFormValues {
   const itemByKey = new Map(items.map((item) => [item.key, item]));
   return Object.fromEntries(
     metricKeyOrder.map((key) => {
@@ -158,27 +162,36 @@ export function MetricCommentaryManager({
   isReadOnly,
   readOnlyReason,
   isFirstReportingMonth,
+  firstMonthDefaultRemark,
   viewersInputReady,
   initialItems
 }: Props) {
   const scheduleRefresh = useDebouncedRefresh(600);
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? '/api';
-  const [values, setValues] = useState(() => toFormValues(initialItems, isFirstReportingMonth));
+  const [values, setValues] = useState(() =>
+    toFormValues(initialItems, isFirstReportingMonth, firstMonthDefaultRemark)
+  );
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const requestSequenceRef = useRef(0);
-  const lastPersistedValuesRef = useRef(toFormValues(initialItems, isFirstReportingMonth));
+  const lastPersistedValuesRef = useRef(
+    toFormValues(initialItems, isFirstReportingMonth, firstMonthDefaultRemark)
+  );
 
   useEffect(() => {
-    const nextValues = toFormValues(initialItems, isFirstReportingMonth);
+    const nextValues = toFormValues(
+      initialItems,
+      isFirstReportingMonth,
+      firstMonthDefaultRemark
+    );
     setValues(nextValues);
     setSaveStatus('idle');
     setSaveError(null);
     setSavedAt(null);
     lastPersistedValuesRef.current = nextValues;
     requestSequenceRef.current += 1;
-  }, [initialItems, isFirstReportingMonth]);
+  }, [firstMonthDefaultRemark, initialItems, isFirstReportingMonth]);
 
   const errors = useMemo(
     () => validate(values, initialItems, viewersInputReady),

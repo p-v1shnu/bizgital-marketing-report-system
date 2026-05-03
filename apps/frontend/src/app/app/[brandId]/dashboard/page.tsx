@@ -130,7 +130,6 @@ const dashboardRemarkMetricOrder: DashboardRemarkMetricKey[] = [
   'engagement',
   'video_views_3s'
 ];
-const firstMonthDefaultRemark = 'First reporting month, no previous-month comparison.';
 
 function clampMonth(month: number) {
   return Math.min(Math.max(month, 1), 12);
@@ -604,6 +603,8 @@ export default async function DashboardPage({
         pageVisit,
         metricCommentaryIsFirstReportingMonth:
           datasetOverview?.metricCommentary.isFirstReportingMonth ?? false,
+        metricCommentaryFirstMonthDefaultRemark:
+          datasetOverview?.metricCommentary.firstMonthDefaultRemark ?? '',
         metricCommentaryItems:
           datasetOverview?.metricCommentary.items.map((metric) => ({
             key: metric.key,
@@ -926,6 +927,7 @@ export default async function DashboardPage({
   let selectedCompetitorOverview: CompetitorOverviewResponse | null = null;
   let selectedRemarkItems: DashboardRemarkMetricItem[] | null = null;
   let selectedIsFirstReportingMonth = false;
+  let selectedFirstMonthDefaultRemark = '';
   let selectedContentLoadErrors: string[] = [];
   let previousVisiblePeriodLabel: string | null = null;
   let previousFollowerByCompetitorId = new Map<string, number | null>();
@@ -953,6 +955,8 @@ export default async function DashboardPage({
         : null;
     const selectedEnhancement = enhancementByPeriodId.get(selectedContentPeriod.id);
     selectedIsFirstReportingMonth = selectedEnhancement?.metricCommentaryIsFirstReportingMonth ?? false;
+    selectedFirstMonthDefaultRemark =
+      selectedEnhancement?.metricCommentaryFirstMonthDefaultRemark ?? '';
     selectedRemarkItems = selectedEnhancement?.metricCommentaryItems ?? null;
     const selectedContentReportVersionId =
       selectedContentSourceState === 'submitted_preview'
@@ -2031,11 +2035,11 @@ export default async function DashboardPage({
                                   ? trimmedRemark
                                   : isVideoNoDataMonth
                                     ? 'No 3-second video views this month.'
-                                    : selectedIsFirstReportingMonth && metric.requiresRemark
-                                      ? firstMonthDefaultRemark
-                                    : metric.requiresRemark
-                                      ? 'Remark is required in report workspace.'
-                                      : 'No remark for this month.';
+                                  : selectedIsFirstReportingMonth && metric.requiresRemark
+                                    ? selectedFirstMonthDefaultRemark
+                                  : metric.requiresRemark
+                                    ? 'Remark is required in report workspace.'
+                                    : 'No remark for this month.';
                               const canCopy =
                                 trimmedRemark.length > 0 ||
                                 isVideoNoDataMonth ||

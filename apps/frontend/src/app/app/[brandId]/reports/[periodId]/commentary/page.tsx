@@ -1,4 +1,4 @@
-import { AlertCircle, MessageSquareText } from 'lucide-react';
+import { MessageSquareText } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -110,7 +110,6 @@ export default async function CommentaryPage({ params }: CommentaryPageProps) {
         canCreateOrResumeDraft
       })
     : null;
-  const firstMonthDefaultRemark = 'First reporting month, no previous-month comparison.';
   const displayedRequiredCount = dataset.metricCommentary.items.filter(
     (item) => item.requiresRemark
   ).length;
@@ -128,7 +127,7 @@ export default async function CommentaryPage({ params }: CommentaryPageProps) {
       return false;
     }
 
-    return firstMonthDefaultRemark.trim().length > 0;
+    return dataset.metricCommentary.firstMonthDefaultRemark.trim().length > 0;
   }).length;
   const displayedMissingCount = Math.max(0, displayedRequiredCount - displayedCompletedCount);
 
@@ -176,17 +175,12 @@ export default async function CommentaryPage({ params }: CommentaryPageProps) {
                 Commentary is complete for this month.
               </div>
             )}
-            {dataset.metricCommentary.items.length === 0 ? (
-              <div className="rounded-xl border border-amber-500/25 bg-amber-500/8 px-3 py-2 text-amber-700 dark:text-amber-300">
-                <AlertCircle className="mr-2 inline size-4" />
-                No metric commentary rows were generated for this draft yet.
-              </div>
-            ) : null}
           </CardContent>
         </Card>
 
         <MetricCommentaryManager
           brandId={brandId}
+          firstMonthDefaultRemark={dataset.metricCommentary.firstMonthDefaultRemark}
           importHref={`/app/${brandId}/reports/${periodId}/import`}
           initialItems={dataset.metricCommentary.items}
           isFirstReportingMonth={dataset.metricCommentary.isFirstReportingMonth}

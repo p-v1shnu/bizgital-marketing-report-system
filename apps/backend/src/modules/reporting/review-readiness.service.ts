@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { ReportCadence, ReportWorkflowState } from '@prisma/client';
+import { ReportWorkflowState } from '@prisma/client';
 
 import { PrismaService } from '../../prisma/prisma.service';
 import { CompetitorsService } from '../competitors/competitors.service';
+import { FIRST_MONTH_DEFAULT_REMARK } from '../manual-metrics/manual-metrics.types';
 import { ManualMetricsService } from '../manual-metrics/manual-metrics.service';
 import { MetricsService } from '../metrics/metrics.service';
 import { QuestionsService } from '../questions/questions.service';
@@ -16,8 +17,6 @@ type ReviewReadiness =
   ReportingDetailResponse['period']['reviewReadiness'] & {
     targetVersionId: string | null;
   };
-
-const FIRST_MONTH_DEFAULT_REMARK = 'First reporting month, no previous-month comparison.';
 
 @Injectable()
 export class ReviewReadinessService {
@@ -113,7 +112,7 @@ export class ReviewReadinessService {
       this.metricsService.getDashboardMetricValuesForReportVersion(targetVersion.id),
       this.manualMetricsService.getReportManualMetrics(targetVersion.id),
       this.manualMetricsService.getReportMetricCommentary(targetVersion.id),
-      this.resolvePreviousVersionIdForCommentary({
+      this.manualMetricsService.resolvePreviousVersionIdForCommentary({
         brandId: period.brandId,
         year: period.year,
         month: period.month
@@ -324,63 +323,5 @@ export class ReviewReadinessService {
 
   private getDeferredModules(): ReviewReadiness['deferred'] {
     return [];
-  }
-
-  private async resolvePreviousVersionIdForCommentary(input: {
-    brandId: string;
-    year: number;
-    month: number;
-  }) {
-    const previousPeriod = await this.prisma.reportingPeriod.findFirst({
-      where: {
-        brandId: input.brandId,
-        cadence: ReportCadence.monthly,
-        deletedAt: null,
-        OR: [
-          {
-            year: {
-              lt: input.year
-            }
-          },
-          {
-            year: input.year,
-            month: {
-              lt: input.month
-            }
-          }
-        ]
-      },
-      include: {
-        reportVersions: {
-          orderBy: {
-            versionNo: 'desc'
-          }
-        }
-      },
-      orderBy: [{ year: 'desc' }, { month: 'desc' }]
-    });
-
-    if (!previousPeriod) {
-      return null;
-    }
-
-    const preferredOrder: ReportWorkflowState[] = [
-      ReportWorkflowState.approved,
-      ReportWorkflowState.submitted,
-      ReportWorkflowState.draft,
-      ReportWorkflowState.rejected,
-      ReportWorkflowState.superseded
-    ];
-
-    for (const state of preferredOrder) {
-      const matched = previousPeriod.reportVersions.find(
-        (version) => version.workflowState === state
-      );
-      if (matched) {
-        return matched.id;
-      }
-    }
-
-    return previousPeriod.reportVersions[0]?.id ?? null;
   }
 }

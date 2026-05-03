@@ -760,6 +760,7 @@ export type DatasetOverviewResponse = {
   };
   metricCommentary: {
     isFirstReportingMonth: boolean;
+    firstMonthDefaultRemark: string;
     viewersInputReady: boolean;
     items: Array<{
       key: ReportMetricCommentaryKey;

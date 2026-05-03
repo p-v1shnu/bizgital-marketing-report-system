@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, OnModuleInit } from '@nestjs/common';
+import { ReportCadence, ReportWorkflowState } from '@prisma/client';
 
 import { PrismaService } from '../../prisma/prisma.service';
 import {
@@ -171,6 +172,64 @@ export class ManualMetricsService implements OnModuleInit {
     });
 
     return this.getReportMetricCommentary(reportVersionId);
+  }
+
+  async resolvePreviousVersionIdForCommentary(input: {
+    brandId: string;
+    year: number;
+    month: number;
+  }) {
+    const previousPeriod = await this.prisma.reportingPeriod.findFirst({
+      where: {
+        brandId: input.brandId,
+        cadence: ReportCadence.monthly,
+        deletedAt: null,
+        OR: [
+          {
+            year: {
+              lt: input.year
+            }
+          },
+          {
+            year: input.year,
+            month: {
+              lt: input.month
+            }
+          }
+        ]
+      },
+      include: {
+        reportVersions: {
+          orderBy: {
+            versionNo: 'desc'
+          }
+        }
+      },
+      orderBy: [{ year: 'desc' }, { month: 'desc' }]
+    });
+
+    if (!previousPeriod) {
+      return null;
+    }
+
+    const preferredOrder: ReportWorkflowState[] = [
+      ReportWorkflowState.approved,
+      ReportWorkflowState.submitted,
+      ReportWorkflowState.draft,
+      ReportWorkflowState.rejected,
+      ReportWorkflowState.superseded
+    ];
+
+    for (const state of preferredOrder) {
+      const matched = previousPeriod.reportVersions.find(
+        (version) => version.workflowState === state
+      );
+      if (matched) {
+        return matched.id;
+      }
+    }
+
+    return previousPeriod.reportVersions[0]?.id ?? null;
   }
 
   private async ensureStorage() {

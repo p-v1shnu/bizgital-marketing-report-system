@@ -52,9 +52,7 @@ export function ReopenReportButton({
     <>
       <Button
         className={triggerClassName}
-        onClick={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
+        onClick={() => {
           setReason('');
           setOpen(true);
         }}

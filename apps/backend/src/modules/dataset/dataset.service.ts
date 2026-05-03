@@ -6,7 +6,6 @@ import {
 } from '@nestjs/common';
 import {
   MappingTargetField,
-  ReportCadence,
   ReportWorkflowState
 } from '@prisma/client';
 
@@ -39,10 +38,12 @@ import type {
   UpdateDatasetValuesInput
 } from './dataset.types';
 import {
+  FIRST_MONTH_DEFAULT_REMARK,
   REPORT_METRIC_COMMENTARY_KEYS,
-  REPORT_METRIC_LABELS
+  REPORT_METRIC_LABELS,
+  calculateChangePercent,
+  pickDashboardValueForMetric
 } from '../manual-metrics/manual-metrics.types';
-import type { ReportMetricCommentaryKey } from '../manual-metrics/manual-metrics.types';
 
 const DATASET_PREVIEW_LIMIT = 5;
 const MANUAL_EXTENDED_TARGET_FIELDS: MappingTargetField[] = [
@@ -732,6 +733,7 @@ export class DatasetService {
 
       return {
         isFirstReportingMonth: true,
+        firstMonthDefaultRemark: FIRST_MONTH_DEFAULT_REMARK,
         viewersInputReady: false,
         items: emptyItems,
         summary: {
@@ -746,7 +748,7 @@ export class DatasetService {
       this.manualMetricsService.getReportMetricCommentary(targetVersionId),
       this.metricsService.getDashboardMetricValuesForReportVersion(targetVersionId),
       this.manualMetricsService.getReportManualMetrics(targetVersionId),
-      this.resolvePreviousVersionIdForCommentary({
+      this.manualMetricsService.resolvePreviousVersionIdForCommentary({
         brandId,
         year: period.year,
         month: period.month
@@ -762,9 +764,9 @@ export class DatasetService {
     const requireVideoCommentary = (currentValues.video_views_3s ?? 0) > 0;
 
     const items = entries.map((entry) => {
-      const currentValue = this.pickDashboardValueForMetric(currentValues, entry.key);
+      const currentValue = pickDashboardValueForMetric(currentValues, entry.key);
       const previousValue = previousValues
-        ? this.pickDashboardValueForMetric(previousValues, entry.key)
+        ? pickDashboardValueForMetric(previousValues, entry.key)
         : null;
       const requiresRemark =
         entry.key === 'video_views_3s'
@@ -787,7 +789,7 @@ export class DatasetService {
         currentValue,
         previousValue,
         hasPreviousValue,
-        changePercent: this.calculateChangePercent(currentValue, previousValue)
+        changePercent: calculateChangePercent(currentValue, previousValue)
       };
     });
 
@@ -798,6 +800,7 @@ export class DatasetService {
 
     return {
       isFirstReportingMonth: !hasPreviousValue,
+      firstMonthDefaultRemark: FIRST_MONTH_DEFAULT_REMARK,
       viewersInputReady,
       items,
       summary: {
@@ -824,86 +827,6 @@ export class DatasetService {
         }
       ]
     });
-  }
-
-  private async resolvePreviousVersionIdForCommentary(input: {
-    brandId: string;
-    year: number;
-    month: number;
-  }) {
-    const previousPeriod = await this.prisma.reportingPeriod.findFirst({
-      where: {
-        brandId: input.brandId,
-        cadence: ReportCadence.monthly,
-        deletedAt: null,
-        OR: [
-          {
-            year: {
-              lt: input.year
-            }
-          },
-          {
-            year: input.year,
-            month: {
-              lt: input.month
-            }
-          }
-        ]
-      },
-      include: {
-        reportVersions: {
-          orderBy: {
-            versionNo: 'desc'
-          }
-        }
-      },
-      orderBy: [{ year: 'desc' }, { month: 'desc' }]
-    });
-
-    if (!previousPeriod) {
-      return null;
-    }
-
-    const preferredOrder: ReportWorkflowState[] = [
-      ReportWorkflowState.approved,
-      ReportWorkflowState.submitted,
-      ReportWorkflowState.draft,
-      ReportWorkflowState.rejected,
-      ReportWorkflowState.superseded
-    ];
-
-    for (const state of preferredOrder) {
-      const matched = previousPeriod.reportVersions.find(
-        (version) => version.workflowState === state
-      );
-      if (matched) {
-        return matched.id;
-      }
-    }
-
-    return previousPeriod.reportVersions[0]?.id ?? null;
-  }
-
-  private pickDashboardValueForMetric(
-    values: {
-      views: number | null;
-      viewers: number | null;
-      engagement: number | null;
-      video_views_3s: number | null;
-      page_followers: number | null;
-      page_visit: number | null;
-    },
-    key: ReportMetricCommentaryKey
-  ) {
-    return values[key];
-  }
-
-  private calculateChangePercent(currentValue: number | null, previousValue: number | null) {
-    if (currentValue === null || previousValue === null || previousValue === 0) {
-      return null;
-    }
-
-    return ((currentValue - previousValue) / Math.abs(previousValue)) * 100;
   }
 
   private toStringValue(value: number | null) {

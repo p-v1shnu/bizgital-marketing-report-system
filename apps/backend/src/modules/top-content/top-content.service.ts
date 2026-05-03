@@ -109,7 +109,7 @@ type RelatedProductOptionLookup = DropdownOptionLookup;
 const DEFAULT_REQUIRED_SOURCE_LABELS_BY_SLOT: Record<TopContentSlotKey, string> = {
   top_views: 'Views',
   top_engagement: 'Engagement',
-  top_reach: 'Viewers'
+  top_reach: 'Viewers (Post)'
 };
 
 const DEFAULT_ENGAGEMENT_SOURCE_LABEL_A = 'Reactions, comments and shares';
@@ -1347,7 +1347,7 @@ export class TopContentService {
     const viewsIndex = findColumnIndex(requiredSourceLabelsBySlot.top_views);
     const reachIndex = findColumnIndexAny([
       requiredSourceLabelsBySlot.top_reach,
-      'Viewers',
+      'Viewers (Post)',
       'Total Viewers',
       'Reach',
       'Total Reach'
