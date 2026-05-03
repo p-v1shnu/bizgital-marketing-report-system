@@ -1815,7 +1815,7 @@ export default async function DashboardPage({
                     >
                       <CardHeader>
                         <CardTitle className="flex flex-wrap items-center justify-between gap-3">
-                          <span>Monthly summary for slide</span>
+                      <span>Monthly summary</span>
                           {selectedContentPeriodLabel ? (
                             <Badge className={contentWhiteBadgeClassName} variant="outline">
                               {selectedContentPeriodLabel}
