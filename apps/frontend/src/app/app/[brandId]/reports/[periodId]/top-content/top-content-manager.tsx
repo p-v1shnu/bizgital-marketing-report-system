@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ImageUploadField } from '@/components/ui/image-upload-field';
 import { useDebouncedRefresh } from '@/hooks/use-debounced-refresh';
 import { saveTopContentCard, type TopContentOverviewResponse } from '@/lib/reporting-api';
+import { ReportSectionHeader } from '../report-section-header';
 
 type Props = {
   brandId: string;
@@ -303,27 +304,49 @@ export function TopContentManager({
 
   return (
     <div className="space-y-6">
-      <div className="space-y-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="outline">Top content screenshots</Badge>
-          <Badge variant="outline">{`Policy: ${initialOverview.dataSourcePolicy.label}`}</Badge>
-          <Badge variant="outline">
-            {`Coverage: ${filledScreenshotCount}/${requiredSlotCount}`}
-          </Badge>
-          <Badge variant="outline">{isReadOnly ? 'Read-only (reviewer)' : 'Auto-save enabled'}</Badge>
-        </div>
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="space-y-3">
-            <h1 className="font-serif text-5xl leading-none tracking-[-0.06em]">
-              Top content for {monthLabel}
-            </h1>
-            <p className="max-w-3xl text-base leading-7 text-muted-foreground">
-              System ranks the top 3 posts by Views, Engagement, and Viewers from the imported CSV columns. Add screenshot evidence for every slot before submit.
-              {` `}
-              {initialOverview.dataSourcePolicy.excludeManualRows
-                ? 'Manual rows are currently excluded by policy.'
-                : 'Manual rows are currently allowed by policy when they have usable values.'}
-            </p>
+      <ReportSectionHeader
+        actions={
+          <div className="inline-flex items-center gap-3 rounded-2xl border border-border/60 bg-background/90 px-3 py-2">
+            <span className="text-xs text-muted-foreground">{globalSaveStatusText}</span>
+            {!isReadOnly ? (
+              <Button
+                disabled={isSavingAnything}
+                onClick={() => {
+                  void persistAllCards('manual');
+                }}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                {isSavingAnything ? <LoaderCircle className="animate-spin" /> : <Save />}
+                Save all
+              </Button>
+            ) : null}
+          </div>
+        }
+        badges={
+          <>
+            <Badge variant="outline">Top content screenshots</Badge>
+            <Badge variant="outline">{`Policy: ${initialOverview.dataSourcePolicy.label}`}</Badge>
+            <Badge variant="outline">
+              {`Coverage: ${filledScreenshotCount}/${requiredSlotCount}`}
+            </Badge>
+            <Badge variant="outline">
+              {isReadOnly ? 'Read-only (reviewer)' : 'Auto-save enabled'}
+            </Badge>
+          </>
+        }
+        description={
+          <>
+            System ranks the top 3 posts by Views, Engagement, and Viewers from the imported CSV
+            columns. Add screenshot evidence for every slot before submit.{` `}
+            {initialOverview.dataSourcePolicy.excludeManualRows
+              ? 'Manual rows are currently excluded by policy.'
+              : 'Manual rows are currently allowed by policy when they have usable values.'}
+          </>
+        }
+        supplementary={
+          <>
             {mappingHref ? (
               <div className="flex flex-wrap items-center gap-2">
                 <Button asChild size="sm" variant="outline">
@@ -352,26 +375,10 @@ export function TopContentManager({
                 Posts with the same dataset row will use the same screenshot automatically.
               </span>
             </div>
-          </div>
-          <div className="inline-flex items-center gap-3 rounded-2xl border border-border/60 bg-background/90 px-3 py-2">
-            <span className="text-xs text-muted-foreground">{globalSaveStatusText}</span>
-            {!isReadOnly ? (
-              <Button
-                disabled={isSavingAnything}
-                onClick={() => {
-                  void persistAllCards('manual');
-                }}
-                size="sm"
-                type="button"
-                variant="outline"
-              >
-                {isSavingAnything ? <LoaderCircle className="animate-spin" /> : <Save />}
-                Save all
-              </Button>
-            ) : null}
-          </div>
-        </div>
-      </div>
+          </>
+        }
+        title={`Top content for ${monthLabel}`}
+      />
 
       {isReadOnly ? (
         <Card className="border-amber-500/25 bg-amber-500/10">

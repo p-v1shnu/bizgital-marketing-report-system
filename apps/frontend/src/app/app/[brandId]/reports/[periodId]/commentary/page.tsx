@@ -8,6 +8,7 @@ import { getDatasetOverview, getReportingPeriodDetail } from '@/lib/reporting-ap
 
 import { ReportWorkspaceShell } from '../workspace-shell';
 import { WorkspaceUnavailableCard } from '../workspace-unavailable-card';
+import { ReportSectionHeader } from '../report-section-header';
 import { MetricCommentaryManager } from './metric-commentary-manager';
 
 type CommentaryPageProps = {
@@ -139,15 +140,11 @@ export default async function CommentaryPage({ params }: CommentaryPageProps) {
       periodId={periodId}
     >
       <div className="space-y-6">
-        <div className="space-y-3">
-          <Badge variant="outline">Graph commentary</Badge>
-          <h1 className="font-serif text-5xl leading-none tracking-[-0.06em]">
-            Commentary for {detail.period.monthLabel}
-          </h1>
-          <p className="max-w-3xl text-base leading-7 text-muted-foreground">
-            Write monthly reasons for each graph based on this month versus last month.
-          </p>
-        </div>
+        <ReportSectionHeader
+          badges={<Badge variant="outline">Graph commentary</Badge>}
+          description="Write monthly reasons for each graph based on this month versus last month."
+          title={`Commentary for ${detail.period.monthLabel}`}
+        />
 
         <Card className="border-border/60 bg-background/55">
           <CardHeader>

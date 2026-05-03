@@ -170,7 +170,7 @@ export async function ReportWorkspaceShell({
 
   if (layout === 'canvas') {
     return (
-      <section className="space-y-5">
+      <section className="space-y-6">
         <div className="flex flex-wrap items-center gap-3">
           <Badge variant="outline">{detail.brand.name}</Badge>
           <Badge variant="outline">{detail.period.monthLabel}</Badge>

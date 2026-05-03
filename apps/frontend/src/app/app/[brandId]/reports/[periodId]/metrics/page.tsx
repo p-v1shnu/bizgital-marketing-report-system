@@ -12,6 +12,7 @@ import {
 } from '@/lib/reporting-api';
 import { getAuthContext, getMembershipReportAccess } from '@/lib/auth';
 
+import { ReportSectionHeader } from '../report-section-header';
 import { ReportWorkspaceShell } from '../workspace-shell';
 import { WorkspaceUnavailableCard } from '../workspace-unavailable-card';
 import { regenerateMetricsSnapshotAction } from './actions';
@@ -183,15 +184,11 @@ export default async function MetricsPage({
       periodId={periodId}
     >
       <div className="space-y-6">
-        <div className="space-y-3">
-          <Badge variant="outline">Brand KPI metrics</Badge>
-          <h1 className="font-serif text-5xl leading-none tracking-[-0.06em]">
-            {detail.period.monthLabel}
-          </h1>
-          <p className="max-w-3xl text-base leading-7 text-muted-foreground">
-            Metrics now follow the brand&apos;s KPI plan for {metrics.plan.year}. Each card shows the KPI definition, actual monthly result, and yearly target in one place.
-          </p>
-        </div>
+        <ReportSectionHeader
+          badges={<Badge variant="outline">Brand KPI metrics</Badge>}
+          description={`Metrics now follow the brand's KPI plan for ${metrics.plan.year}. Each card shows the KPI definition, actual monthly result, and yearly target in one place.`}
+          title={`KPI metrics for ${detail.period.monthLabel}`}
+        />
 
         {resolvedSearchParams?.message ? (
           <Card className="border-emerald-500/25 bg-emerald-500/8">

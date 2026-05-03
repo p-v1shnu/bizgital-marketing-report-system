@@ -27,6 +27,7 @@ import { ApproveVersionButton } from '../../approve-version-button';
 import { ReopenReportButton } from '../../reopen-report-button';
 import { RequestChangesButton } from '../../request-changes-button';
 import { SubmitVersionButton } from '../../submit-version-button';
+import { ReportSectionHeader } from '../report-section-header';
 import { ReportWorkspaceShell } from '../workspace-shell';
 import { WorkspaceUnavailableCard } from '../workspace-unavailable-card';
 
@@ -106,25 +107,21 @@ export default async function ReviewPage({ params }: ReviewPageProps) {
       periodId={periodId}
     >
       <div className="space-y-6">
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <Badge variant="outline">{readinessLabel(period.reviewReadiness.overall)}</Badge>
-            <Badge variant="outline">
-              {readinessOpenItemsLabel(period.reviewReadiness.blockingCount)}
-            </Badge>
-            <Badge variant="outline">
-              {editModeLabel(isReadOnly || isReadOnlyRole)}
-            </Badge>
-          </div>
-          <div className="space-y-3">
-            <h1 className="font-serif text-5xl leading-none tracking-[-0.06em]">
-              Review center for {period.monthLabel}
-            </h1>
-            <p className="max-w-3xl text-base leading-7 text-muted-foreground">
-              {readinessHelpText(period.reviewReadiness.overall)}
-            </p>
-          </div>
-        </div>
+        <ReportSectionHeader
+          badges={
+            <>
+              <Badge variant="outline">{readinessLabel(period.reviewReadiness.overall)}</Badge>
+              <Badge variant="outline">
+                {readinessOpenItemsLabel(period.reviewReadiness.blockingCount)}
+              </Badge>
+              <Badge variant="outline">
+                {editModeLabel(isReadOnly || isReadOnlyRole)}
+              </Badge>
+            </>
+          }
+          description={readinessHelpText(period.reviewReadiness.overall)}
+          title={`Review center for ${period.monthLabel}`}
+        />
 
         <div className="grid gap-5">
           <div className="grid gap-5">

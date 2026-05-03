@@ -21,6 +21,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useDebouncedRefresh } from '@/hooks/use-debounced-refresh';
 import type { QuestionOverviewResponse } from '@/lib/reporting-api';
 import { saveQuestionEntry, saveQuestionHighlights } from '@/lib/reporting-api';
+import { ReportSectionHeader } from '../report-section-header';
 
 type Props = {
   brandId: string;
@@ -585,43 +586,42 @@ export function QuestionsManager({
   }
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center gap-3">
-        <Badge variant="outline">Monthly insight questions</Badge>
-        <Badge variant="outline">
-          Categories complete: {completedCount}/{requiredCount}
-        </Badge>
-        <Badge variant="outline">Highlight screenshots: {highlightFilledCount}</Badge>
-        <Badge variant="outline">{isReadOnly ? 'Read-only (reviewer)' : 'Auto-save enabled'}</Badge>
-      </div>
-
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="space-y-3">
-          <h1 className="font-serif text-5xl leading-none tracking-[-0.06em]">
-            Questions for {monthLabel}
-          </h1>
-          <p className="max-w-3xl text-base leading-7 text-muted-foreground">
-            Step 1 records question count by category for charts. Step 2 captures highlight screenshots and an optional free-form note for presentation slides.
-          </p>
-        </div>
-        <div className="inline-flex items-center gap-3 rounded-2xl border border-border/60 bg-background/90 px-3 py-2">
-          <span className="text-xs text-muted-foreground">{globalSaveStatusText}</span>
-          {!isReadOnly ? (
-            <Button
-              disabled={isSavingAnything}
-              onClick={() => {
-                void persistAllSections('manual');
-              }}
-              size="sm"
-              type="button"
-              variant="outline"
-            >
-              {isSavingAnything ? <LoaderCircle className="animate-spin" /> : <Save />}
-              Save all
-            </Button>
-          ) : null}
-        </div>
-      </div>
+    <div className="space-y-6">
+      <ReportSectionHeader
+        actions={
+          <div className="inline-flex items-center gap-3 rounded-2xl border border-border/60 bg-background/90 px-3 py-2">
+            <span className="text-xs text-muted-foreground">{globalSaveStatusText}</span>
+            {!isReadOnly ? (
+              <Button
+                disabled={isSavingAnything}
+                onClick={() => {
+                  void persistAllSections('manual');
+                }}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                {isSavingAnything ? <LoaderCircle className="animate-spin" /> : <Save />}
+                Save all
+              </Button>
+            ) : null}
+          </div>
+        }
+        badges={
+          <>
+            <Badge variant="outline">Monthly insight questions</Badge>
+            <Badge variant="outline">
+              Categories complete: {completedCount}/{requiredCount}
+            </Badge>
+            <Badge variant="outline">Highlight screenshots: {highlightFilledCount}</Badge>
+            <Badge variant="outline">
+              {isReadOnly ? 'Read-only (reviewer)' : 'Auto-save enabled'}
+            </Badge>
+          </>
+        }
+        description="Step 1 records question count by category for charts. Step 2 captures highlight screenshots and an optional free-form note for presentation slides."
+        title={`Questions for ${monthLabel}`}
+      />
 
       <Card>
         <CardHeader>

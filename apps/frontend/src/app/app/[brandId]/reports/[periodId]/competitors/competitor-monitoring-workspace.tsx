@@ -23,6 +23,7 @@ import type {
   CompetitorMonitoringStatus,
   CompetitorOverviewResponse
 } from '@/lib/reporting-api';
+import { ReportSectionHeader } from '../report-section-header';
 
 type Props = {
   brandId: string;
@@ -603,40 +604,40 @@ export function CompetitorMonitoringWorkspace({
 
   return (
     <div className="space-y-6" data-testid="competitor-monitoring-workspace">
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge variant="outline">Monthly monitoring</Badge>
-        <Badge variant="outline">
-          {completeRequiredCount}/{requiredCount} required complete
-        </Badge>
-        <Badge variant="outline">{isReadOnly ? 'Read-only (reviewer)' : 'Auto-save enabled'}</Badge>
-      </div>
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="space-y-3">
-          <h1 className="font-serif text-5xl leading-none tracking-[-0.06em]">
-            Competitor monitoring for {monthLabel}
-          </h1>
-          <p className="max-w-3xl text-base leading-7 text-muted-foreground">
-            Track monthly competitor follower movement, choose activity mode, and attach evidence screenshots so the review team can capture slides quickly.
-          </p>
-        </div>
-        <div className="inline-flex items-center gap-3 rounded-2xl border border-border/60 bg-background/90 px-3 py-2">
-          <span className="text-xs text-muted-foreground">{globalSaveStatusText}</span>
-          {!isReadOnly ? (
-            <Button
-              disabled={isSavingAnything}
-              onClick={() => {
-                void persistAllRows('manual');
-              }}
-              size="sm"
-              type="button"
-              variant="outline"
-            >
-              {isSavingAnything ? <LoaderCircle className="animate-spin" /> : <Save />}
-              Save all
-            </Button>
-          ) : null}
-        </div>
-      </div>
+      <ReportSectionHeader
+        actions={
+          <div className="inline-flex items-center gap-3 rounded-2xl border border-border/60 bg-background/90 px-3 py-2">
+            <span className="text-xs text-muted-foreground">{globalSaveStatusText}</span>
+            {!isReadOnly ? (
+              <Button
+                disabled={isSavingAnything}
+                onClick={() => {
+                  void persistAllRows('manual');
+                }}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                {isSavingAnything ? <LoaderCircle className="animate-spin" /> : <Save />}
+                Save all
+              </Button>
+            ) : null}
+          </div>
+        }
+        badges={
+          <>
+            <Badge variant="outline">Monthly monitoring</Badge>
+            <Badge variant="outline">
+              {completeRequiredCount}/{requiredCount} required complete
+            </Badge>
+            <Badge variant="outline">
+              {isReadOnly ? 'Read-only (reviewer)' : 'Auto-save enabled'}
+            </Badge>
+          </>
+        }
+        description="Track monthly competitor follower movement, choose activity mode, and attach evidence screenshots so the review team can capture slides quickly."
+        title={`Competitor monitoring for ${monthLabel}`}
+      />
 
       {rows.length === 0 ? (
         <Card>

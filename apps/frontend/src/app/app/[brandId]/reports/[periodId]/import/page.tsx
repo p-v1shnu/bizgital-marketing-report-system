@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { AlertCircle, ArrowRight, Upload } from 'lucide-react';
 
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -30,6 +31,7 @@ import {
 
 import { createOrResumeDraftAction } from '../../actions';
 import { ReopenReportButton } from '../../reopen-report-button';
+import { ReportSectionHeader } from '../report-section-header';
 import { ReportWorkspaceShell } from '../workspace-shell';
 import { WorkspaceUnavailableCard } from '../workspace-unavailable-card';
 import { uploadImportJobAction } from './actions';
@@ -352,6 +354,11 @@ export default async function ImportPage({ params, searchParams }: ImportPagePro
   const shouldShowMappingFallback =
     resolvedSearchParams.mappingFallback === 'true' ||
     (!!latestJob && latestJob.status === 'ready_for_mapping' && !datasetPreview);
+  const isImportReadOnlyHeader =
+    isReadOnlyRole || isAwaitingDecision || isApproved || isRejected;
+  const latestImportBadgeLabel = latestJob
+    ? `Latest import: ${latestJob.status.replaceAll('_', ' ')}`
+    : 'No import file yet';
 
   return (
     <ReportWorkspaceShell
@@ -361,7 +368,7 @@ export default async function ImportPage({ params, searchParams }: ImportPagePro
       layout="canvas"
       periodId={periodId}
     >
-      <div className="space-y-5">
+      <div className="space-y-6">
         {(resolvedSearchParams?.message ||
           (resolvedSearchParams?.error && !shouldSuppressErrorBanner)) && (
           <div
@@ -376,6 +383,18 @@ export default async function ImportPage({ params, searchParams }: ImportPagePro
               : resolvedSearchParams?.message}
           </div>
         )}
+
+        <ReportSectionHeader
+          badges={
+            <>
+              <Badge variant="outline">Import workspace</Badge>
+              <Badge variant="outline">{editModeLabel(isImportReadOnlyHeader)}</Badge>
+              <Badge variant="outline">{latestImportBadgeLabel}</Badge>
+            </>
+          }
+          description="Upload monthly source files and maintain working table rows before continuing to downstream report sections."
+          title={`Import for ${detail.period.monthLabel}`}
+        />
 
         <details className="rounded-2xl border border-border/60 bg-background/55 px-4 py-3">
           <summary className="cursor-pointer list-none text-sm font-medium text-foreground">
