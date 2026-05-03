@@ -7,11 +7,15 @@
     "apps/frontend"
   ],
   "scripts": {
+    "dev": "concurrently -n backend,frontend -c yellow,cyan \"npm run dev:watch --workspace @bizgital-marketing-report/backend\" \"npm run dev --workspace @bizgital-marketing-report/frontend\"",
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "docker:up": "docker compose up --build",
     "docker:prod": "docker compose up -d --build",
     "docker:local": "docker compose -f docker-compose.local.yml up --build",
     "docker:local:detached": "docker compose -f docker-compose.local.yml up -d --build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
   }
 }

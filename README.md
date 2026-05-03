@@ -78,11 +78,19 @@ This repository is standardized for Docker-only runtime.
 Copy-Item .env.example .env
 ```
 
-2. Start the local stack:
+2. Start the local stack (frontend hot reload enabled):
 
 ```powershell
 docker compose -f docker-compose.local.yml up --build
 ```
+
+After first build, you can use:
+
+```powershell
+docker compose -f docker-compose.local.yml up
+```
+
+Frontend code changes should be visible after browser refresh (and usually auto-reload). Rebuild is only needed when dependencies or Dockerfiles change.
 
 3. Initialize database (first run only):
 

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { ReportWorkflowState } from '@prisma/client';
+import { ReportCadence, ReportWorkflowState } from '@prisma/client';
 
 import { PrismaService } from '../../prisma/prisma.service';
 import { CompetitorsService } from '../competitors/competitors.service';
@@ -16,6 +16,8 @@ type ReviewReadiness =
   ReportingDetailResponse['period']['reviewReadiness'] & {
     targetVersionId: string | null;
   };
+
+const FIRST_MONTH_DEFAULT_REMARK = 'First reporting month, no previous-month comparison.';
 
 @Injectable()
 export class ReviewReadinessService {
@@ -97,6 +99,7 @@ export class ReviewReadinessService {
       metricValues,
       manualHeaderMetrics,
       metricCommentary,
+      previousVersionIdForCommentary,
       competitorReadiness,
       questionReadiness,
       topContentStatus
@@ -110,6 +113,11 @@ export class ReviewReadinessService {
       this.metricsService.getDashboardMetricValuesForReportVersion(targetVersion.id),
       this.manualMetricsService.getReportManualMetrics(targetVersion.id),
       this.manualMetricsService.getReportMetricCommentary(targetVersion.id),
+      this.resolvePreviousVersionIdForCommentary({
+        brandId: period.brandId,
+        year: period.year,
+        month: period.month
+      }),
       this.competitorsService.getReadinessForReportVersion(targetVersion.id),
       this.questionsService.getReadinessForReportVersion(targetVersion.id),
       this.topContentService.getCurrentnessForReportVersion(targetVersion.id)
@@ -134,10 +142,16 @@ export class ReviewReadinessService {
     if (requireVideoCommentary) {
       requiredCommentaryKeys.push('video_views_3s');
     }
+    const isFirstReportingMonth = !previousVersionIdForCommentary;
     const metricCommentaryByKey = new Map(metricCommentary.map(item => [item.key, item]));
     const missingMetricRemarks = requiredCommentaryKeys.filter((key) => {
       const remark = metricCommentaryByKey.get(key)?.remark ?? null;
-      return !remark || remark.trim().length === 0;
+      if (remark && remark.trim().length > 0) {
+        return false;
+      }
+
+      // For the first reporting month, UI auto-fills a canonical default remark.
+      return !isFirstReportingMonth || FIRST_MONTH_DEFAULT_REMARK.trim().length === 0;
     });
     const missingMetricRemarkLabels = missingMetricRemarks.map((key) =>
       metricCommentaryByKey.get(key)?.label ?? key
@@ -310,5 +324,63 @@ export class ReviewReadinessService {
 
   private getDeferredModules(): ReviewReadiness['deferred'] {
     return [];
+  }
+
+  private async resolvePreviousVersionIdForCommentary(input: {
+    brandId: string;
+    year: number;
+    month: number;
+  }) {
+    const previousPeriod = await this.prisma.reportingPeriod.findFirst({
+      where: {
+        brandId: input.brandId,
+        cadence: ReportCadence.monthly,
+        deletedAt: null,
+        OR: [
+          {
+            year: {
+              lt: input.year
+            }
+          },
+          {
+            year: input.year,
+            month: {
+              lt: input.month
+            }
+          }
+        ]
+      },
+      include: {
+        reportVersions: {
+          orderBy: {
+            versionNo: 'desc'
+          }
+        }
+      },
+      orderBy: [{ year: 'desc' }, { month: 'desc' }]
+    });
+
+    if (!previousPeriod) {
+      return null;
+    }
+
+    const preferredOrder: ReportWorkflowState[] = [
+      ReportWorkflowState.approved,
+      ReportWorkflowState.submitted,
+      ReportWorkflowState.draft,
+      ReportWorkflowState.rejected,
+      ReportWorkflowState.superseded
+    ];
+
+    for (const state of preferredOrder) {
+      const matched = previousPeriod.reportVersions.find(
+        (version) => version.workflowState === state
+      );
+      if (matched) {
+        return matched.id;
+      }
+    }
+
+    return previousPeriod.reportVersions[0]?.id ?? null;
   }
 }

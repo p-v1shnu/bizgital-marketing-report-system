@@ -71,7 +71,10 @@ services:
       MEDIA_ORPHAN_CLEANUP_MAX_DELETE_PER_RUN: ${MEDIA_ORPHAN_CLEANUP_MAX_DELETE_PER_RUN:-500}
     ports:
       - "127.0.0.1:${BACKEND_PORT:-3003}:3003"
+    command: npm run dev:docker --workspace @bizgital-marketing-report/backend
     volumes:
+      - ./apps/backend:/workspace/apps/backend
+      - ./tsconfig.base.json:/workspace/tsconfig.base.json
       - ./storage:/workspace/storage
 
   frontend:
@@ -83,21 +86,29 @@ services:
     depends_on:
       - backend
     environment:
-      NODE_ENV: production
+      NODE_ENV: development
       PORT: 3000
       APP_ORIGIN: http://localhost:${FRONTEND_PORT:-3200}
       NEXT_PUBLIC_APP_NAME: BIZGITAL Marketing Report
       INTERNAL_API_BASE_URL: http://backend:3003/${API_PREFIX:-api}
       NEXT_PUBLIC_API_BASE_URL: http://localhost:${BACKEND_PORT:-3003}/${API_PREFIX:-api}
+      WATCHPACK_POLLING: "true"
+      CHOKIDAR_USEPOLLING: "true"
       AUTH_SESSION_SECRET: ${AUTH_SESSION_SECRET}
       INTERNAL_API_AUTH_SECRET: ${INTERNAL_API_AUTH_SECRET}
       MICROSOFT_CLIENT_ID: ${MICROSOFT_CLIENT_ID}
       MICROSOFT_CLIENT_SECRET: ${MICROSOFT_CLIENT_SECRET}
       MICROSOFT_TENANT_ID: ${MICROSOFT_TENANT_ID}
       MICROSOFT_REDIRECT_URI: ${MICROSOFT_REDIRECT_URI}
+    command: npm run dev:docker --workspace @bizgital-marketing-report/frontend
     ports:
       - "127.0.0.1:${FRONTEND_PORT:-3200}:3000"
+    volumes:
+      - ./apps/frontend:/workspace/apps/frontend
+      - ./tsconfig.base.json:/workspace/tsconfig.base.json
+      - frontend-next-data:/workspace/apps/frontend/.next
 
 volumes:
   mysql-data:
   minio-data:
+  frontend-next-data:

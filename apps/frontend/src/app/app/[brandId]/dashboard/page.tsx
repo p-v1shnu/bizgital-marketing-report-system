@@ -52,6 +52,7 @@ import { DashboardQuestionHighlightsCanvas } from './dashboard-question-highligh
 import { DashboardTopPostsSection } from './dashboard-top-posts-section';
 import { EngagementVideoChart, type EngagementVideoChartPoint } from './engagement-video-chart';
 import { DashboardContentPreviewScale } from './dashboard-content-preview-scale';
+import { DashboardRemarkCopyButton } from './dashboard-remark-copy-button';
 
 type DashboardPageProps = {
   params: Promise<{
@@ -89,6 +90,26 @@ const questionTrendColors = [
 ];
 const dashboardViewTabs = ['charts', 'content'] as const;
 type DashboardViewTab = (typeof dashboardViewTabs)[number];
+type DashboardRemarkMetricKey = 'views' | 'viewers' | 'engagement' | 'video_views_3s';
+type DashboardRemarkMetricItem = {
+  key: DashboardRemarkMetricKey;
+  label: string;
+  remark: string | null;
+  requiresRemark: boolean;
+  requirementDetail: string;
+  currentValue: number | null;
+  previousValue: number | null;
+  hasPreviousValue: boolean;
+  changePercent: number | null;
+};
+
+const dashboardRemarkMetricOrder: DashboardRemarkMetricKey[] = [
+  'views',
+  'viewers',
+  'engagement',
+  'video_views_3s'
+];
+const firstMonthDefaultRemark = 'First reporting month, no previous-month comparison.';
 
 function clampMonth(month: number) {
   return Math.min(Math.max(month, 1), 12);
@@ -278,6 +299,34 @@ function formatMetricValue(value: number | null) {
   return new Intl.NumberFormat('en-US', {
     maximumFractionDigits: value % 1 === 0 ? 0 : 2
   }).format(value);
+}
+
+function formatChangePercent(value: number | null) {
+  if (value === null || Number.isNaN(value)) {
+    return 'N/A';
+  }
+
+  const sign = value > 0 ? '+' : '';
+  return `${sign}${value.toFixed(1)}%`;
+}
+
+function formatSignedDelta(currentValue: number | null, previousValue: number | null) {
+  if (
+    currentValue === null ||
+    previousValue === null ||
+    Number.isNaN(currentValue) ||
+    Number.isNaN(previousValue)
+  ) {
+    return 'N/A';
+  }
+
+  const delta = currentValue - previousValue;
+  const sign = delta > 0 ? '+' : '';
+  const formatted = new Intl.NumberFormat('en-US', {
+    maximumFractionDigits: delta % 1 === 0 ? 0 : 2
+  }).format(delta);
+
+  return `${sign}${formatted}`;
 }
 
 function buildDashboardHref(
@@ -558,6 +607,20 @@ export default async function DashboardPage({
         pageFollowers,
         viewers,
         pageVisit,
+        metricCommentaryIsFirstReportingMonth:
+          datasetOverview?.metricCommentary.isFirstReportingMonth ?? false,
+        metricCommentaryItems:
+          datasetOverview?.metricCommentary.items.map((metric) => ({
+            key: metric.key,
+            label: metric.label,
+            remark: metric.remark,
+            requiresRemark: metric.requiresRemark,
+            requirementDetail: metric.requirementDetail,
+            currentValue: metric.currentValue,
+            previousValue: metric.previousValue,
+            hasPreviousValue: metric.hasPreviousValue,
+            changePercent: metric.changePercent
+          })) ?? null,
         contentCountPreview:
           datasetOverview?.contentCount.preview?.countedContentCount ?? null,
         contentCountApprovedSnapshot:
@@ -832,6 +895,8 @@ export default async function DashboardPage({
   let selectedTopContentOverview: TopContentOverviewResponse | null = null;
   let selectedQuestionOverview: QuestionOverviewResponse | null = null;
   let selectedCompetitorOverview: CompetitorOverviewResponse | null = null;
+  let selectedRemarkItems: DashboardRemarkMetricItem[] | null = null;
+  let selectedIsFirstReportingMonth = false;
   let selectedContentLoadErrors: string[] = [];
   let previousVisiblePeriodLabel: string | null = null;
   let previousFollowerByCompetitorId = new Map<string, number | null>();
@@ -857,6 +922,9 @@ export default async function DashboardPage({
       getDashboardSourceState(previousCalendarPeriod, includeSubmittedPreview) !== null
         ? previousCalendarPeriod
         : null;
+    const selectedEnhancement = enhancementByPeriodId.get(selectedContentPeriod.id);
+    selectedIsFirstReportingMonth = selectedEnhancement?.metricCommentaryIsFirstReportingMonth ?? false;
+    selectedRemarkItems = selectedEnhancement?.metricCommentaryItems ?? null;
 
     const [topResult, questionResult, competitorResult, previousCompetitorResult] =
       await Promise.allSettled([
@@ -1601,6 +1669,9 @@ export default async function DashboardPage({
 
                   <div className="flex flex-wrap items-center gap-2">
                     <Button asChild size="sm" variant="outline">
+                      <a href="#dashboard-content-metric-remarks">Metric remarks</a>
+                    </Button>
+                    <Button asChild size="sm" variant="outline">
                       <a href="#dashboard-content-top-3-views">Top 3 Views</a>
                     </Button>
                     <Button asChild size="sm" variant="outline">
@@ -1668,6 +1739,122 @@ export default async function DashboardPage({
                         </CardContent>
                       </Card>
                     ) : null}
+
+                    <Card
+                      className="border-slate-200 bg-white text-slate-900 shadow-sm dark:border-slate-200 dark:bg-white dark:text-slate-900"
+                      id="dashboard-content-metric-remarks"
+                    >
+                      <CardHeader>
+                        <CardTitle className="flex flex-wrap items-center justify-between gap-3">
+                          <span>Metric remarks</span>
+                          {selectedContentPeriodLabel ? (
+                            <Badge className={contentWhiteBadgeClassName} variant="outline">
+                              {selectedContentPeriodLabel}
+                            </Badge>
+                          ) : null}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        {!selectedRemarkItems ? (
+                          <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-4 text-sm text-slate-600">
+                            Metric commentary is unavailable for this month.
+                          </div>
+                        ) : (
+                          <div className="grid gap-3 lg:grid-cols-2">
+                            {dashboardRemarkMetricOrder.map((metricKey) => {
+                              const metric = selectedRemarkItems?.find(
+                                (entry) => entry.key === metricKey
+                              );
+                              if (!metric) {
+                                return null;
+                              }
+
+                              const isVideoNoDataMonth =
+                                metric.key === 'video_views_3s' &&
+                                !metric.requiresRemark &&
+                                (metric.currentValue ?? 0) === 0;
+                              const trimmedRemark = metric.remark?.trim() ?? '';
+                              const requirementDetail = metric.requirementDetail.trim();
+                              const displayRemark =
+                                trimmedRemark.length > 0
+                                  ? trimmedRemark
+                                  : isVideoNoDataMonth
+                                    ? 'No 3-second video views this month.'
+                                    : selectedIsFirstReportingMonth && metric.requiresRemark
+                                      ? firstMonthDefaultRemark
+                                    : metric.requiresRemark
+                                      ? 'Remark is required in report workspace.'
+                                      : 'No remark for this month.';
+                              const canCopy =
+                                trimmedRemark.length > 0 ||
+                                isVideoNoDataMonth ||
+                                (selectedIsFirstReportingMonth && metric.requiresRemark);
+                              const statusText = isVideoNoDataMonth
+                                ? 'No video this month'
+                                : metric.requiresRemark
+                                  ? 'Required'
+                                  : 'Optional';
+                              const showRequirementDetail =
+                                requirementDetail.length > 0 &&
+                                (!metric.requiresRemark ||
+                                  requirementDetail.toLowerCase().includes('waiting') ||
+                                  requirementDetail.toLowerCase().includes('import'));
+
+                              return (
+                                <article
+                                  className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4"
+                                  key={`dashboard-content-metric-remark-${metric.key}`}
+                                >
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <div className="space-y-1">
+                                      <h3 className="text-base font-semibold text-slate-900">{metric.label}</h3>
+                                      <div className="text-sm text-slate-600">
+                                        Change: {formatChangePercent(metric.changePercent)} (
+                                        {formatSignedDelta(metric.currentValue, metric.previousValue)})
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-sm font-medium text-slate-600">{statusText}</span>
+                                      <DashboardRemarkCopyButton disabled={!canCopy} text={displayRemark} />
+                                    </div>
+                                  </div>
+
+                                  <div className="grid grid-cols-2 gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                                    <div>
+                                      <div className="text-xs uppercase tracking-[0.12em] text-slate-500">Previous</div>
+                                      <div className="mt-1 font-medium text-slate-900">
+                                        {metric.hasPreviousValue
+                                          ? formatMetricValue(metric.previousValue)
+                                          : 'No previous'}
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <div className="text-xs uppercase tracking-[0.12em] text-slate-500">Current</div>
+                                      <div className="mt-1 font-medium text-slate-900">
+                                        {formatMetricValue(metric.currentValue)}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                    <div className="text-xs uppercase tracking-[0.12em] text-slate-500">
+                                      Remark
+                                    </div>
+                                    <div className="mt-1 whitespace-pre-wrap text-base text-slate-900">
+                                      {displayRemark}
+                                    </div>
+                                  </div>
+
+                                  {showRequirementDetail ? (
+                                    <p className="text-sm text-slate-500">{requirementDetail}</p>
+                                  ) : null}
+                                </article>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
 
                     <Card
                       className="border-slate-200 bg-white text-slate-900 shadow-sm dark:border-slate-200 dark:bg-white dark:text-slate-900"

@@ -18,6 +18,8 @@
     "start:e2e": "tsc -p tsconfig.build.json && node dist/main.js",
     "dev:stop": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$pids = Get-NetTCPConnection -LocalPort 3003 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique; if ($pids) { $pids | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }; Write-Host 'Stopped process(es) on port 3003.' } else { Write-Host 'No process found on port 3003.' }\"",
     "dev:restart": "npm run dev:stop && npm run dev",
+    "dev:watch": "set PORT=3003&& set APP_ORIGIN=http://localhost:3200&& set API_PREFIX=api&& set IMPORT_STORAGE_DIR=storage/imports&& tsx watch src/main.ts",
+    "dev:docker": "tsc -p tsconfig.build.json && node dist/main.js",
     "dev": "set PORT=3003&& set APP_ORIGIN=http://localhost:3200&& set API_PREFIX=api&& set IMPORT_STORAGE_DIR=storage/imports&& tsc -p tsconfig.build.json && node dist/main.js",
     "start:dev": "npm run dev",
     "typecheck": "tsc --noEmit"

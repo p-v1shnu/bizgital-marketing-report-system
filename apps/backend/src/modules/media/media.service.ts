@@ -251,14 +251,14 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
 
   private resolveAuthSessionSecret() {
     const configuredSecret = this.normalizeOptionalString(
-      this.configService.get<string>('AUTH_SESSION_SECRET')
+      this.getConfigValue('AUTH_SESSION_SECRET')
     );
 
     if (configuredSecret) {
       return configuredSecret;
     }
 
-    const nodeEnv = this.normalizeOptionalString(this.configService.get<string>('NODE_ENV'));
+    const nodeEnv = this.normalizeOptionalString(this.getConfigValue('NODE_ENV'));
     if (nodeEnv === 'production') {
       throw new ServiceUnavailableException('AUTH_SESSION_SECRET is required in production.');
     }
@@ -767,7 +767,7 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
 
   private setupCleanupSchedule() {
     const enabled = this.parseBoolean(
-      this.configService.get<string>('MEDIA_ORPHAN_CLEANUP_ENABLED'),
+      this.getConfigValue('MEDIA_ORPHAN_CLEANUP_ENABLED'),
       DEFAULT_ORPHAN_CLEANUP_ENABLED
     );
 
@@ -778,7 +778,7 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
 
     const intervalHours = this.clamp(
       this.parsePositiveInteger(
-        this.configService.get<string>('MEDIA_ORPHAN_CLEANUP_INTERVAL_HOURS'),
+        this.getConfigValue('MEDIA_ORPHAN_CLEANUP_INTERVAL_HOURS'),
         DEFAULT_ORPHAN_CLEANUP_INTERVAL_HOURS
       ),
       1,
@@ -786,7 +786,7 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
     );
     const startupDelayMinutes = this.clamp(
       this.parsePositiveInteger(
-        this.configService.get<string>('MEDIA_ORPHAN_CLEANUP_INITIAL_DELAY_MINUTES'),
+        this.getConfigValue('MEDIA_ORPHAN_CLEANUP_INITIAL_DELAY_MINUTES'),
         DEFAULT_ORPHAN_CLEANUP_INITIAL_DELAY_MINUTES
       ),
       1,
@@ -809,7 +809,7 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
 
   private async runScheduledCleanup() {
     const maxDelete = this.parsePositiveInteger(
-      this.configService.get<string>('MEDIA_ORPHAN_CLEANUP_MAX_DELETE_PER_RUN'),
+      this.getConfigValue('MEDIA_ORPHAN_CLEANUP_MAX_DELETE_PER_RUN'),
       DEFAULT_ORPHAN_CLEANUP_MAX_DELETE_PER_RUN
     );
     const minAgeHours = this.resolveOrphanCleanupMinAgeHours(null);
@@ -1063,18 +1063,18 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
     const accessKey = this.readRequiredEnv('MEDIA_S3_ACCESS_KEY');
     const secretKey = this.readRequiredEnv('MEDIA_S3_SECRET_KEY');
     const region =
-      this.normalizeOptionalString(this.configService.get<string>('MEDIA_S3_REGION')) ??
+      this.normalizeOptionalString(this.getConfigValue('MEDIA_S3_REGION')) ??
       'us-east-1';
     const forcePathStyle = this.parseBoolean(
-      this.configService.get<string>('MEDIA_S3_FORCE_PATH_STYLE'),
+      this.getConfigValue('MEDIA_S3_FORCE_PATH_STYLE'),
       true
     );
     const uploadMaxBytes = this.parsePositiveInteger(
-      this.configService.get<string>('MEDIA_UPLOAD_MAX_BYTES'),
+      this.getConfigValue('MEDIA_UPLOAD_MAX_BYTES'),
       DEFAULT_UPLOAD_MAX_BYTES
     );
     const expiresCandidate = this.parsePositiveInteger(
-      this.configService.get<string>('MEDIA_PRESIGN_EXPIRES_SECONDS'),
+      this.getConfigValue('MEDIA_PRESIGN_EXPIRES_SECONDS'),
       DEFAULT_PRESIGN_EXPIRES_SECONDS
     );
     const presignExpiresSeconds = Math.min(
@@ -1082,7 +1082,7 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
       Math.max(MIN_PRESIGN_EXPIRES_SECONDS, expiresCandidate)
     );
     const readExpiresCandidate = this.parsePositiveInteger(
-      this.configService.get<string>('MEDIA_READ_PRESIGN_EXPIRES_SECONDS'),
+      this.getConfigValue('MEDIA_READ_PRESIGN_EXPIRES_SECONDS'),
       DEFAULT_READ_PRESIGN_EXPIRES_SECONDS
     );
     const readPresignExpiresSeconds = Math.min(
@@ -1090,7 +1090,7 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
       Math.max(MIN_READ_PRESIGN_EXPIRES_SECONDS, readExpiresCandidate)
     );
     const publicBaseUrl =
-      this.normalizeOptionalString(this.configService.get<string>('MEDIA_S3_PUBLIC_BASE_URL')) ??
+      this.normalizeOptionalString(this.getConfigValue('MEDIA_S3_PUBLIC_BASE_URL')) ??
       `${this.trimTrailingSlash(endpoint)}/${bucket}`;
 
     return {
@@ -1140,7 +1140,7 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
   }
 
   private readRequiredEnv(name: string) {
-    const value = this.normalizeOptionalString(this.configService.get<string>(name));
+    const value = this.normalizeOptionalString(this.getConfigValue(name));
 
     if (!value) {
       throw new ServiceUnavailableException(
@@ -1270,7 +1270,7 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
     }
 
     const parsedFromEnv = this.parsePositiveInteger(
-      this.configService.get<string>('MEDIA_ORPHAN_CLEANUP_MIN_AGE_HOURS'),
+      this.getConfigValue('MEDIA_ORPHAN_CLEANUP_MIN_AGE_HOURS'),
       DEFAULT_ORPHAN_CLEANUP_MIN_AGE_HOURS
     );
 
@@ -1299,6 +1299,10 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
 
   private clamp(value: number, min: number, max: number) {
     return Math.min(max, Math.max(min, value));
+  }
+
+  private getConfigValue(name: string) {
+    return this.configService?.get<string>(name) ?? process.env[name];
   }
 
   private isMissingObjectError(error: unknown) {

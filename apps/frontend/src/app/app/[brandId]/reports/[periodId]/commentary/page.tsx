@@ -110,6 +110,27 @@ export default async function CommentaryPage({ params }: CommentaryPageProps) {
         canCreateOrResumeDraft
       })
     : null;
+  const firstMonthDefaultRemark = 'First reporting month, no previous-month comparison.';
+  const displayedRequiredCount = dataset.metricCommentary.items.filter(
+    (item) => item.requiresRemark
+  ).length;
+  const displayedCompletedCount = dataset.metricCommentary.items.filter((item) => {
+    if (!item.requiresRemark) {
+      return false;
+    }
+
+    const savedRemark = item.remark?.trim() ?? '';
+    if (savedRemark.length > 0) {
+      return true;
+    }
+
+    if (!dataset.metricCommentary.isFirstReportingMonth) {
+      return false;
+    }
+
+    return firstMonthDefaultRemark.trim().length > 0;
+  }).length;
+  const displayedMissingCount = Math.max(0, displayedRequiredCount - displayedCompletedCount);
 
   return (
     <ReportWorkspaceShell
@@ -138,15 +159,15 @@ export default async function CommentaryPage({ params }: CommentaryPageProps) {
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-muted-foreground">
             <div>
-              Required remarks: {dataset.metricCommentary.summary.requiredCount}
+              Required remarks: {displayedRequiredCount}
             </div>
             <div>
-              Completed remarks: {dataset.metricCommentary.summary.completedCount}
+              Completed remarks: {displayedCompletedCount}
             </div>
             <div>
-              Missing remarks: {dataset.metricCommentary.summary.missingCount}
+              Missing remarks: {displayedMissingCount}
             </div>
-            {dataset.metricCommentary.summary.missingCount > 0 ? (
+            {displayedMissingCount > 0 ? (
               <div className="rounded-xl border border-amber-500/25 bg-amber-500/8 px-3 py-2 text-amber-700 dark:text-amber-300">
                 Step stays in progress until all required graph remarks are complete.
               </div>
