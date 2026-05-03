@@ -42,15 +42,9 @@ export class ReviewReadinessService {
         targetVersionId: null,
         overall: 'not_ready',
         canSubmit: false,
-        blockingCount: 7,
+        blockingCount: 6,
         summary: 'Create the first draft before review readiness can be evaluated.',
         checks: [
-          {
-            key: 'draft_exists',
-            label: 'Draft exists',
-            passed: false,
-            detail: 'Create or revise a draft before this month can be submitted.'
-          },
           {
             key: 'dataset_materialized',
             label: 'Dataset materialized',
@@ -124,9 +118,6 @@ export class ReviewReadinessService {
 
     const hasDraft = !!currentDraft;
     const latestWorkflowState = latestVersion?.workflowState ?? null;
-    const hasLockedReviewVersion =
-      latestWorkflowState === ReportWorkflowState.submitted ||
-      latestWorkflowState === ReportWorkflowState.approved;
     const manualMonthlyInputsComplete =
       manualHeaderMetrics.viewers !== null &&
       manualHeaderMetrics.viewers > 0 &&
@@ -164,16 +155,6 @@ export class ReviewReadinessService {
     const requiredTopContentCardsExist = topContentStatus.isCurrent;
 
     const checks: ReviewReadiness['checks'] = [
-      {
-        key: 'draft_exists',
-        label: 'Draft exists',
-        passed: hasDraft || hasLockedReviewVersion,
-        detail: hasDraft
-          ? `Draft v${currentDraft.versionNo} is active for this reporting month.`
-          : hasLockedReviewVersion
-            ? this.getLockedVersionDetail(latestWorkflowState)
-          : this.getNoDraftDetail(latestVersion?.workflowState ?? null)
-      },
       {
         key: 'dataset_materialized',
         label: 'Dataset materialized',
@@ -291,34 +272,6 @@ export class ReviewReadinessService {
     }
 
     return `${blockingCount} blocking check${blockingCount === 1 ? '' : 's'} still need attention before submit.`;
-  }
-
-  private getNoDraftDetail(workflowState: ReportWorkflowState | null) {
-    if (workflowState === ReportWorkflowState.submitted) {
-      return 'The latest version is already submitted and no editable draft is active.';
-    }
-
-    if (workflowState === ReportWorkflowState.approved) {
-      return 'The latest version is approved. Create a new revision draft to make changes.';
-    }
-
-    if (workflowState === ReportWorkflowState.rejected) {
-      return 'The latest version is rejected. Create a revision draft to continue fixing it.';
-    }
-
-    return 'Create or revise a draft before this month can be submitted.';
-  }
-
-  private getLockedVersionDetail(workflowState: ReportWorkflowState | null) {
-    if (workflowState === ReportWorkflowState.submitted) {
-      return 'The submitted version is complete and is currently waiting for an approval decision.';
-    }
-
-    if (workflowState === ReportWorkflowState.approved) {
-      return 'The approved version remains available for dashboard and review history.';
-    }
-
-    return 'The latest locked version is available for review.';
   }
 
   private getDeferredModules(): ReviewReadiness['deferred'] {

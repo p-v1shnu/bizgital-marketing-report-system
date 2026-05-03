@@ -13,7 +13,6 @@ export type ReportingPeriodWithVersions = ReportingPeriod & {
 };
 
 export type ReviewReadinessCheckKey =
-  | 'draft_exists'
   | 'dataset_materialized'
   | 'metric_snapshot_current'
   | 'metric_commentary_complete'
