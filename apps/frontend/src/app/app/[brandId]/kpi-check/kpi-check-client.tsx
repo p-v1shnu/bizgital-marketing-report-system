@@ -309,6 +309,7 @@ function findHeaderIndexByCandidates(headers: string[], candidates: string[]) {
 function buildKpiCards(input: {
   parsedCsv: ParsedCsv;
   viewersManualValue: number | null;
+  pageFollowersManualValue: number | null;
   planItems: BrandKpiPlanResponse['items'];
   formulas: ComputedFormulaResponse[];
   mappingRules: ImportColumnMappingRule[];
@@ -348,16 +349,20 @@ function buildKpiCards(input: {
       }
 
       if (canonicalMetricKey === 'page_followers') {
+        const actualValue = input.pageFollowersManualValue;
         return {
           id: item.id,
           label: item.kpi.label,
           sourceLabel: 'Page Followers (manual monthly input)',
           sourceColumnName: null,
           targetValue: item.targetValue,
-          actualValue: null,
-          varianceValue: null,
-          rowCoverage: 0,
-          note: 'Not included in this quick check form yet.'
+          actualValue,
+          varianceValue:
+            actualValue !== null && item.targetValue !== null
+              ? actualValue - item.targetValue
+              : null,
+          rowCoverage: actualValue === null ? 0 : 1,
+          note: actualValue === null ? 'Please input Page Followers value.' : null
         };
       }
 
@@ -445,6 +450,9 @@ function buildKpiCards(input: {
         if (input.viewersManualValue !== null) {
           rowMap.Viewers = String(input.viewersManualValue);
         }
+        if (input.pageFollowersManualValue !== null) {
+          rowMap['Page Followers'] = String(input.pageFollowersManualValue);
+        }
 
         const result = evaluateFormulaExpression({
           expression: formula.expression,
@@ -499,8 +507,33 @@ export function KpiCheckClient({
   const [parsedCsv, setParsedCsv] = useState<ParsedCsv | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [viewersInput, setViewersInput] = useState('');
+  const [pageFollowersInput, setPageFollowersInput] = useState('');
 
   const viewersManualValue = useMemo(() => parseNumber(viewersInput), [viewersInput]);
+  const pageFollowersManualValue = useMemo(
+    () => parseNumber(pageFollowersInput),
+    [pageFollowersInput]
+  );
+  const hasViewersManualTarget = useMemo(
+    () =>
+      planItems.some(
+        (item) =>
+          item.kpi.sourceType === 'canonical_metric' &&
+          item.kpi.canonicalMetricKey === 'viewers'
+      ),
+    [planItems]
+  );
+  const hasPageFollowersManualTarget = useMemo(
+    () =>
+      planItems.some(
+        (item) =>
+          item.kpi.sourceType === 'canonical_metric' &&
+          item.kpi.canonicalMetricKey === 'page_followers'
+      ),
+    [planItems]
+  );
+  const hasAnyManualInput = hasViewersManualTarget || hasPageFollowersManualTarget;
+
   const cards = useMemo(() => {
     if (!parsedCsv) {
       return [] as KpiCheckCard[];
@@ -509,11 +542,12 @@ export function KpiCheckClient({
     return buildKpiCards({
       parsedCsv,
       viewersManualValue,
+      pageFollowersManualValue,
       planItems,
       formulas,
       mappingRules
     });
-  }, [formulas, mappingRules, parsedCsv, planItems, viewersManualValue]);
+  }, [formulas, mappingRules, parsedCsv, planItems, viewersManualValue, pageFollowersManualValue]);
 
   async function onFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.currentTarget.files?.[0] ?? null;
@@ -552,7 +586,7 @@ export function KpiCheckClient({
             KPI targets are loaded from brand KPI plan year {planYear}.
           </div>
 
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className={`grid gap-3 ${hasAnyManualInput ? 'md:grid-cols-2' : ''}`}>
             <div className="space-y-2">
               <label className="text-sm font-medium" htmlFor="kpi-check-csv-file-input">
                 Upload CSV
@@ -565,18 +599,35 @@ export function KpiCheckClient({
               />
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium" htmlFor="kpi-check-viewers-input">
-                Viewers (manual input)
-              </label>
-              <Input
-                id="kpi-check-viewers-input"
-                inputMode="numeric"
-                onChange={(event) => setViewersInput(event.currentTarget.value)}
-                placeholder="e.g. 500000"
-                value={viewersInput}
-              />
-            </div>
+            {hasViewersManualTarget ? (
+              <div className="space-y-2">
+                <label className="text-sm font-medium" htmlFor="kpi-check-viewers-input">
+                  Viewers (manual input)
+                </label>
+                <Input
+                  id="kpi-check-viewers-input"
+                  inputMode="numeric"
+                  onChange={(event) => setViewersInput(event.currentTarget.value)}
+                  placeholder="e.g. 500000"
+                  value={viewersInput}
+                />
+              </div>
+            ) : null}
+
+            {hasPageFollowersManualTarget ? (
+              <div className="space-y-2">
+                <label className="text-sm font-medium" htmlFor="kpi-check-page-followers-input">
+                  Page Followers (manual input)
+                </label>
+                <Input
+                  id="kpi-check-page-followers-input"
+                  inputMode="numeric"
+                  onChange={(event) => setPageFollowersInput(event.currentTarget.value)}
+                  placeholder="e.g. 125000"
+                  value={pageFollowersInput}
+                />
+              </div>
+            ) : null}
           </div>
 
           {uploadError ? (
