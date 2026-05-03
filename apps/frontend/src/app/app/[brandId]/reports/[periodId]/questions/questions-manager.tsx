@@ -614,9 +614,7 @@ export function QuestionsManager({
               Categories complete: {completedCount}/{requiredCount}
             </Badge>
             <Badge variant="outline">Highlight screenshots: {highlightFilledCount}</Badge>
-            <Badge variant="outline">
-              {isReadOnly ? 'Read-only (reviewer)' : 'Auto-save enabled'}
-            </Badge>
+            {!isReadOnly ? <Badge variant="outline">Auto-save enabled</Badge> : null}
           </>
         }
         description="Step 1 records question count by category for charts. Step 2 captures highlight screenshots and an optional free-form note for presentation slides."
@@ -889,19 +887,7 @@ export function QuestionsManager({
               Complete question count for all assigned categories in {monthLabel}.
             </CardContent>
           </Card>
-        ) : (
-          <Card className="border-emerald-500/25 bg-emerald-500/8">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-3">
-                <CheckCircle2 className="text-emerald-700 dark:text-emerald-300" />
-                Question section ready
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="text-sm leading-6 text-emerald-700 dark:text-emerald-300">
-              Every active question category has monthly count input.
-            </CardContent>
-          </Card>
-        )}
+        ) : null}
 
         {requiredCount === 0 ? (
           <Card className="border-amber-500/25 bg-amber-500/8">

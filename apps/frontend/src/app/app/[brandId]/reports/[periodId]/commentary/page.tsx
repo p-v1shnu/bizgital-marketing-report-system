@@ -18,47 +18,6 @@ type CommentaryPageProps = {
   }>;
 };
 
-function buildReadOnlyReason(options: {
-  isReadOnlyRole: boolean;
-  isAwaitingDecision: boolean;
-  isApproved: boolean;
-  isRejected: boolean;
-  canCreateOrResumeDraft: boolean;
-}) {
-  const { isReadOnlyRole, isAwaitingDecision, isApproved, isRejected, canCreateOrResumeDraft } =
-    options;
-
-  if (isReadOnlyRole) {
-    if (isAwaitingDecision) {
-      return 'Submitted - awaiting decision: this commentary section is read-only (locked).';
-    }
-
-    if (isApproved) {
-      return 'Approved: this commentary section is read-only (locked).';
-    }
-
-    return 'This account has read-only report access.';
-  }
-
-  if (isAwaitingDecision) {
-    return 'Submitted - awaiting decision: commentary is read-only (locked) until reviewer decision.';
-  }
-
-  if (isApproved) {
-    return 'Approved: commentary is read-only (locked). Create a revision from Reports to continue editing.';
-  }
-
-  if (isRejected) {
-    return 'Changes requested: commentary is read-only (locked). Create a revision from Reports to continue editing.';
-  }
-
-  if (canCreateOrResumeDraft) {
-    return 'Read-only (locked): no active draft. Create or resume a draft to continue editing.';
-  }
-
-  return 'Read-only (locked): editing is unavailable for this month in the current mode.';
-}
-
 export default async function CommentaryPage({ params }: CommentaryPageProps) {
   const { brandId, periodId } = await params;
   const authContext = await getAuthContext();
@@ -102,15 +61,6 @@ export default async function CommentaryPage({ params }: CommentaryPageProps) {
     !isApproved &&
     !isRejected;
   const isReadOnly = isReadOnlyRole || !detail.period.currentDraftVersionId;
-  const readOnlyReason = isReadOnly
-    ? buildReadOnlyReason({
-        isReadOnlyRole,
-        isAwaitingDecision,
-        isApproved,
-        isRejected,
-        canCreateOrResumeDraft
-      })
-    : null;
   const displayedRequiredCount = dataset.metricCommentary.items.filter(
     (item) => item.requiresRemark
   ).length;
@@ -167,11 +117,7 @@ export default async function CommentaryPage({ params }: CommentaryPageProps) {
               <div className="rounded-xl border border-amber-500/25 bg-amber-500/8 px-3 py-2 text-amber-700 dark:text-amber-300">
                 Step stays in progress until all required graph remarks are complete.
               </div>
-            ) : (
-              <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/8 px-3 py-2 text-emerald-700 dark:text-emerald-300">
-                Commentary is complete for this month.
-              </div>
-            )}
+            ) : null}
           </CardContent>
         </Card>
 
@@ -183,7 +129,6 @@ export default async function CommentaryPage({ params }: CommentaryPageProps) {
           isFirstReportingMonth={dataset.metricCommentary.isFirstReportingMonth}
           isReadOnly={isReadOnly}
           periodId={periodId}
-          readOnlyReason={readOnlyReason}
           viewersInputReady={dataset.metricCommentary.viewersInputReady}
         />
       </div>

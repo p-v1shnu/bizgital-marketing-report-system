@@ -9,8 +9,6 @@ import {
 
 import { ReportWorkspaceShell } from '../workspace-shell';
 import { WorkspaceUnavailableCard } from '../workspace-unavailable-card';
-import { ReopenReportButton } from '../../reopen-report-button';
-import { RequestChangesButton } from '../../request-changes-button';
 import { TopContentManager } from './top-content-manager';
 
 type TopContentPageProps = {
@@ -85,15 +83,6 @@ export default async function TopContentPage({
     auth.brandMemberships.find(membership => membership.brandCode === brandId) ?? null;
   const reportAccess = getMembershipReportAccess(currentMembership);
   const isReadOnly = reportAccess.isReadOnly || !detail.period.currentDraftVersionId;
-  const canRequestEditAccess =
-    reportAccess.canCreateReports &&
-    !reportAccess.canApproveReports &&
-    detail.period.availableActions.canReopenLatest &&
-    !!detail.period.latestVersionId;
-  const canReviewerRequestChanges =
-    reportAccess.canApproveReports &&
-    detail.period.availableActions.canReopenLatest &&
-    !!detail.period.latestVersionId;
   const canOpenMapping = auth.brandMemberships.some(
     (membership) => membership.role === 'admin'
   );
@@ -122,38 +111,6 @@ export default async function TopContentPage({
           <Card className="border-rose-500/25 bg-rose-500/8">
             <CardContent className="pt-6 text-sm text-rose-700 dark:text-rose-300">
               {resolvedSearchParams.error}
-            </CardContent>
-          </Card>
-        ) : null}
-
-        {isReadOnly && (canRequestEditAccess || canReviewerRequestChanges) ? (
-          <Card className="border-amber-500/25 bg-amber-500/8">
-            <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6">
-              <div className="text-sm text-amber-700 dark:text-amber-300">
-                Top Content is locked in this submitted/approved version. Reopen first to upload or paste screenshots.
-              </div>
-              {canRequestEditAccess ? (
-                <ReopenReportButton
-                  brandId={brandId}
-                  periodId={periodId}
-                  redirectTo="import"
-                  triggerLabel="Request changes"
-                  triggerVariant="outline"
-                  versionId={detail.period.latestVersionId!}
-                  year={detail.period.year}
-                />
-              ) : null}
-              {canReviewerRequestChanges ? (
-                <RequestChangesButton
-                  brandId={brandId}
-                  periodId={periodId}
-                  redirectTo="import"
-                  triggerLabel="Request changes"
-                  triggerVariant="outline"
-                  versionId={detail.period.latestVersionId!}
-                  year={detail.period.year}
-                />
-              ) : null}
             </CardContent>
           </Card>
         ) : null}

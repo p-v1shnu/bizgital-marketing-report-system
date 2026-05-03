@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Circle,
@@ -630,9 +629,7 @@ export function CompetitorMonitoringWorkspace({
             <Badge variant="outline">
               {completeRequiredCount}/{requiredCount} required complete
             </Badge>
-            <Badge variant="outline">
-              {isReadOnly ? 'Read-only (reviewer)' : 'Auto-save enabled'}
-            </Badge>
+            {!isReadOnly ? <Badge variant="outline">Auto-save enabled</Badge> : null}
           </>
         }
         description="Track monthly competitor follower movement, choose activity mode, and attach evidence screenshots so the review team can capture slides quickly."
@@ -1028,22 +1025,14 @@ export function CompetitorMonitoringWorkspace({
                   </div>
                 </div>
 
-                <div
-                  data-testid="monitoring-readiness-banner"
-                  className={`rounded-2xl border p-4 text-sm ${requiredCount === 0 || completeRequiredCount === requiredCount ? 'border-emerald-500/25 bg-emerald-500/8 text-emerald-700 dark:text-emerald-300' : 'border-amber-500/25 bg-amber-500/8 text-amber-700 dark:text-amber-300'}`}
-                >
-                  {requiredCount === 0 ? (
-                    <span className="inline-flex items-center gap-2"><CheckCircle2 className="size-4" />No active competitors required this month</span>
-                  ) : completeRequiredCount === requiredCount ? (
-                    <span className="inline-flex items-center gap-2"><CheckCircle2 className="size-4" />Competitor section ready</span>
-                  ) : (
-                    <span>Complete monitoring for all active assigned competitors before submit.</span>
-                  )}
-                </div>
-
-                <Button asChild variant="outline">
-                  <Link href={`/app/${brandId}/reports/${periodId}/review`}>Back to review center</Link>
-                </Button>
+                {requiredCount > 0 && completeRequiredCount < requiredCount ? (
+                  <div
+                    data-testid="monitoring-readiness-banner"
+                    className="rounded-2xl border border-amber-500/25 bg-amber-500/8 p-4 text-sm text-amber-700 dark:text-amber-300"
+                  >
+                    Complete monitoring for all active assigned competitors before submit.
+                  </div>
+                ) : null}
               </CardContent>
             </Card>
           ) : null}

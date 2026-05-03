@@ -110,7 +110,6 @@ type Props = {
   initialVisibleSourceKeys: string[];
   isWorkingTableEditable: boolean;
   isReadOnly: boolean;
-  readOnlyReason: string | null;
   topContentManualRowsExcluded: boolean;
 };
 
@@ -694,7 +693,6 @@ export function ImportWorkingTable({
   initialVisibleSourceKeys,
   isWorkingTableEditable,
   isReadOnly,
-  readOnlyReason,
   topContentManualRowsExcluded
 }: Props) {
   const scheduleRefresh = useDebouncedRefresh(1200);
@@ -1848,7 +1846,7 @@ export function ImportWorkingTable({
 
   const manualHeaderStatus = (() => {
     if (isReadOnly) {
-      return readOnlyReason ?? 'Read-only (locked)';
+      return 'No changes yet';
     }
 
     if (manualHeaderValidationMessage) {
@@ -1993,12 +1991,6 @@ export function ImportWorkingTable({
       {!isWorkingTableEditable ? (
         <div className="rounded-2xl border border-amber-500/25 bg-amber-500/8 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
           Source rows are ready. Standardized fields unlock after the latest import maps to draft dataset rows.
-        </div>
-      ) : null}
-
-      {isReadOnly ? (
-        <div className="rounded-2xl border border-slate-500/25 bg-slate-500/8 px-4 py-3 text-sm text-slate-700 dark:text-slate-300">
-          {readOnlyReason ?? 'Read-only (locked): this report cannot be edited in the current mode.'}
         </div>
       ) : null}
 

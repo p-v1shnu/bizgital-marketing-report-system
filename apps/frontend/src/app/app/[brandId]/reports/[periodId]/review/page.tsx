@@ -221,12 +221,12 @@ export default async function ReviewPage({ params }: ReviewPageProps) {
                     </div>
                   ) : (
                     <div className="rounded-2xl border border-amber-500/25 bg-amber-500/8 p-4 text-sm leading-6 text-amber-700 dark:text-amber-300">
-                      Submitted and waiting for approver decision. Inputs remain locked until a decision is made.
+                      Submitted and waiting for approver decision.
                     </div>
                   )
                 ) : isPublished ? (
                   <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/8 p-4 text-sm leading-6 text-emerald-700 dark:text-emerald-300">
-                    Approved. This month is complete and now read-only.
+                    Approved. This month is complete.
                   </div>
                 ) : firstActionableHref ? (
                   <Button asChild className="w-full" variant="secondary">

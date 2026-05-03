@@ -30,7 +30,6 @@ type Props = {
   periodId: string;
   importHref: string;
   isReadOnly: boolean;
-  readOnlyReason: string | null;
   isFirstReportingMonth: boolean;
   firstMonthDefaultRemark: string;
   viewersInputReady: boolean;
@@ -160,7 +159,6 @@ export function MetricCommentaryManager({
   periodId,
   importHref,
   isReadOnly,
-  readOnlyReason,
   isFirstReportingMonth,
   firstMonthDefaultRemark,
   viewersInputReady,
@@ -292,7 +290,7 @@ export function MetricCommentaryManager({
 
   const statusText = (() => {
     if (isReadOnly) {
-      return readOnlyReason ?? 'Read-only (locked)';
+      return 'No changes yet';
     }
     if (hasValidationError) {
       return 'Complete required remarks before this step can pass.';
@@ -350,12 +348,6 @@ export function MetricCommentaryManager({
               <Link href={importHref}>Go to Import</Link>
             </Button>
           </div>
-        </div>
-      ) : null}
-
-      {isReadOnly ? (
-        <div className="rounded-2xl border border-slate-500/25 bg-slate-500/8 px-4 py-3 text-sm text-slate-700 dark:text-slate-300">
-          {readOnlyReason ?? 'Read-only (locked): this report cannot be edited in the current mode.'}
         </div>
       ) : null}
 

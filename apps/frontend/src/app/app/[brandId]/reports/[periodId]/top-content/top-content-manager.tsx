@@ -331,9 +331,7 @@ export function TopContentManager({
             <Badge variant="outline">
               {`Coverage: ${filledScreenshotCount}/${requiredSlotCount}`}
             </Badge>
-            <Badge variant="outline">
-              {isReadOnly ? 'Read-only (reviewer)' : 'Auto-save enabled'}
-            </Badge>
+            {!isReadOnly ? <Badge variant="outline">Auto-save enabled</Badge> : null}
           </>
         }
         description={
@@ -379,15 +377,6 @@ export function TopContentManager({
         }
         title={`Top content for ${monthLabel}`}
       />
-
-      {isReadOnly ? (
-        <Card className="border-amber-500/25 bg-amber-500/10">
-          <CardContent className="pt-6 text-sm text-amber-700 dark:text-amber-300">
-            Top Content is currently read-only in this version. If you still need to add or replace
-            screenshots, reopen this month to draft mode first, then upload images in each card.
-          </CardContent>
-        </Card>
-      ) : null}
 
       <div className="grid gap-5">
         {SLOT_ORDER.map(slotKey => {
@@ -454,13 +443,13 @@ export function TopContentManager({
 
                         <div className="space-y-2">
                           <div className="text-xs text-muted-foreground">
-                            {isReadOnly
-                              ? 'Read-only for reviewer'
-                              : card.saveState === 'saving'
+                            {card.saveState === 'saving'
                                 ? 'Saving...'
                                 : card.dirty
                                   ? 'Pending auto-save...'
-                                  : 'Auto-save standby'}
+                                  : isReadOnly
+                                    ? 'No changes yet'
+                                    : 'Auto-save standby'}
                           </div>
 
                           {card.saveState === 'error' && card.saveError ? (

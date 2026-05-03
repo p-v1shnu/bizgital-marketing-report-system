@@ -21,13 +21,7 @@ import {
   type ImportJobListResponse,
   type ReportingDetailResponse
 } from '@/lib/reporting-api';
-import {
-  editModeLabel,
-  sectionStatusLabel,
-  sectionTone,
-  workflowProgress,
-  workflowStepNumber
-} from '@/lib/reporting-ui';
+import { sectionStatusLabel, sectionTone, workflowProgress, workflowStepNumber } from '@/lib/reporting-ui';
 
 import { createOrResumeDraftAction } from '../../actions';
 import { ReopenReportButton } from '../../reopen-report-button';
@@ -136,52 +130,6 @@ function statusBannerClass(kind: 'success' | 'error') {
 
 function normalizeLabel(value: string) {
   return value.toLowerCase().replace(/\s+/g, ' ').trim();
-}
-
-function lockedImportReason(options: {
-  isReadOnlyRole: boolean;
-  isAwaitingDecision: boolean;
-  isApproved: boolean;
-  isRejected: boolean;
-  canCreateOrResumeDraft: boolean;
-}) {
-  const {
-    isReadOnlyRole,
-    isAwaitingDecision,
-    isApproved,
-    isRejected,
-    canCreateOrResumeDraft
-  } = options;
-
-  if (isReadOnlyRole) {
-    if (isAwaitingDecision) {
-      return 'Submitted - awaiting decision: this import view is read-only (locked).';
-    }
-
-    if (isApproved) {
-      return 'Approved: this import view is read-only (locked).';
-    }
-
-    return 'This account has read-only report access.';
-  }
-
-  if (isAwaitingDecision) {
-    return 'Submitted - awaiting decision: this import view is read-only (locked) until reviewer decision.';
-  }
-
-  if (isApproved) {
-    return 'Approved: this import view is read-only (locked). Create a revision from Reports to continue editing.';
-  }
-
-  if (isRejected) {
-    return 'Changes requested: this import view is read-only (locked). Create a revision from Reports to continue editing.';
-  }
-
-  if (canCreateOrResumeDraft) {
-    return 'Read-only (locked): no active draft. Create or resume a draft to continue editing.';
-  }
-
-  return 'Read-only (locked): editing is unavailable for this month in the current mode.';
 }
 
 function mergeCompanyFormatFields(
@@ -314,15 +262,6 @@ export default async function ImportPage({ params, searchParams }: ImportPagePro
   const canAccessPeriodMapping = canCreateReports && !isReadOnlyRole;
   const hasSourceRows = !!sourcePreview && sourcePreview.rows.length > 0;
   const isReadOnly = isReadOnlyRole || !detail.period.currentDraftVersionId;
-  const readOnlyReason = isReadOnly
-    ? lockedImportReason({
-        isReadOnlyRole,
-        isAwaitingDecision,
-        isApproved,
-        isRejected,
-        canCreateOrResumeDraft
-      })
-    : null;
   const preferredSourcePositions =
     datasetPreview?.columns.map(column => column.sourcePosition) ?? [];
   const initialVisibleSourceKeys = sourcePreview
@@ -354,8 +293,6 @@ export default async function ImportPage({ params, searchParams }: ImportPagePro
   const shouldShowMappingFallback =
     resolvedSearchParams.mappingFallback === 'true' ||
     (!!latestJob && latestJob.status === 'ready_for_mapping' && !datasetPreview);
-  const isImportReadOnlyHeader =
-    isReadOnlyRole || isAwaitingDecision || isApproved || isRejected;
   const latestImportBadgeLabel = latestJob
     ? `Latest import: ${latestJob.status.replaceAll('_', ' ')}`
     : 'No import file yet';
@@ -388,7 +325,6 @@ export default async function ImportPage({ params, searchParams }: ImportPagePro
           badges={
             <>
               <Badge variant="outline">Import workspace</Badge>
-              <Badge variant="outline">{editModeLabel(isImportReadOnlyHeader)}</Badge>
               <Badge variant="outline">{latestImportBadgeLabel}</Badge>
             </>
           }
@@ -403,25 +339,9 @@ export default async function ImportPage({ params, searchParams }: ImportPagePro
           <div className="mt-3 grid gap-2">
             {activeWorkflowSections.map(section => (
               (() => {
-                const isImportSection = section.slug === 'import';
-                const isImportLockedView =
-                  isImportSection &&
-                  (isReadOnlyRole || isAwaitingDecision || isApproved || isRejected);
-                const statusClass = isImportLockedView
-                  ? 'rounded-full border border-slate-500/25 bg-slate-500/8 px-2 py-0.5 text-xs text-slate-700 dark:text-slate-300'
-                  : `rounded-full border px-2 py-0.5 text-xs ${sectionTone(section.status)}`;
-                const statusLabel = isImportLockedView
-                  ? editModeLabel(true)
-                  : sectionStatusLabel(section.status);
-                const detailLabel = isImportLockedView
-                  ? isAwaitingDecision
-                    ? 'Submitted data exists. Editing is locked while waiting for reviewer decision.'
-                    : isApproved
-                      ? 'Approved version is locked. Create a revision to make changes.'
-                    : isRejected
-                      ? 'Changes requested. Create a revision to continue editing.'
-                        : 'Submitted data exists. Editing is limited to users with create/edit permission.'
-                  : section.detail;
+                const statusClass = `rounded-full border px-2 py-0.5 text-xs ${sectionTone(section.status)}`;
+                const statusLabel = sectionStatusLabel(section.status);
+                const detailLabel = section.detail;
 
                 return (
                   <div
@@ -475,10 +395,10 @@ export default async function ImportPage({ params, searchParams }: ImportPagePro
               <div className="grid items-end gap-3 xl:grid-cols-[minmax(260px,1.2fr)_220px]">
                 <div className="flex h-11 items-center rounded-2xl border border-border/60 bg-background/60 px-4 text-sm text-muted-foreground">
                   {isReadOnlyRole
-                    ? `${editModeLabel(true)}: read-only access`
+                    ? 'Editing unavailable in current mode'
                     : canCreateOrResumeDraft
                       ? 'Draft required before upload'
-                      : 'Read-only (locked)'}
+                      : 'Editing unavailable in current mode'}
                 </div>
                 {isReadOnlyRole ? (
                   <div className="flex flex-wrap items-center justify-end gap-2">
@@ -574,7 +494,6 @@ export default async function ImportPage({ params, searchParams }: ImportPagePro
                   isWorkingTableEditable={isWorkingTableEditable}
                   manualHeader={datasetResult?.manualHeader ?? null}
                   periodId={periodId}
-                  readOnlyReason={readOnlyReason}
                   sourcePreview={sourcePreview}
                   topContentManualRowsExcluded={topContentPolicyResult.excludeManualRows}
                   uploadedFilename={latestJob?.originalFilename ?? null}

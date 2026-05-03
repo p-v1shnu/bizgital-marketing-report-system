@@ -17,7 +17,6 @@ import {
   type ReportingDetailResponse
 } from '@/lib/reporting-api';
 import {
-  editModeLabel,
   isReadOnlyMode,
   readinessHelpText,
   recommendedWorkflowAction,
@@ -150,6 +149,14 @@ export async function ReportWorkspaceShell({
   const isRecommendedSectionActive =
     recommendedAction.section?.slug === activeSection;
   const readOnlyMode = isReadOnlyMode(detail);
+  const globalReadOnlyLabel =
+    detail.period.reviewReadiness.overall === 'awaiting_decision'
+      ? 'Read-only (awaiting decision)'
+      : detail.period.reviewReadiness.overall === 'published'
+        ? 'Read-only (approved)'
+        : readOnlyMode
+          ? 'Read-only'
+          : null;
   const sectionLinks: SectionLink[] = visibleWorkspaceSections(detail).map((section) => ({
     ...section,
     href: reportSectionHref(brandId, periodId, section.slug)
@@ -174,6 +181,7 @@ export async function ReportWorkspaceShell({
         <div className="flex flex-wrap items-center gap-3">
           <Badge variant="outline">{detail.brand.name}</Badge>
           <Badge variant="outline">{detail.period.monthLabel}</Badge>
+          {globalReadOnlyLabel ? <Badge variant="outline">{globalReadOnlyLabel}</Badge> : null}
           <Link
             className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm transition ${kpiPreview.toneClassName}`}
             href={kpiHref}
@@ -198,6 +206,7 @@ export async function ReportWorkspaceShell({
       <div className="flex flex-wrap items-center gap-3">
         <Badge variant="outline">{detail.brand.name}</Badge>
         <Badge variant="outline">{detail.period.monthLabel}</Badge>
+        {globalReadOnlyLabel ? <Badge variant="outline">{globalReadOnlyLabel}</Badge> : null}
         <Link
           className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm transition ${kpiPreview.toneClassName}`}
           href={kpiHref}
@@ -228,9 +237,6 @@ export async function ReportWorkspaceShell({
                 </Badge>
                 <Badge variant="outline">
                   {readinessOpenItemsLabel(detail.period.reviewReadiness.blockingCount)}
-                </Badge>
-                <Badge variant="outline">
-                  {editModeLabel(readOnlyMode)}
                 </Badge>
               </div>
               <p>{readinessHelpText(detail.period.reviewReadiness.overall)}</p>
