@@ -1,4 +1,8 @@
 import type { ImportJobStatus, MappingTargetField, ReportWorkflowState } from '@prisma/client';
+import type {
+  ReportMetricApplicability,
+  ReportMetricCommentaryKey
+} from '../manual-metrics/manual-metrics.types';
 
 import type {
   CanonicalFieldDataType,
@@ -47,6 +51,27 @@ export type DatasetOverviewResponse = {
     viewers: string | null;
     pageFollowers: string | null;
     pageVisit: string | null;
+  };
+  metricCommentary: {
+    isFirstReportingMonth: boolean;
+    viewersInputReady: boolean;
+    items: Array<{
+      key: ReportMetricCommentaryKey;
+      label: string;
+      applicability: ReportMetricApplicability;
+      remark: string | null;
+      requiresRemark: boolean;
+      requirementDetail: string;
+      currentValue: number | null;
+      previousValue: number | null;
+      hasPreviousValue: boolean;
+      changePercent: number | null;
+    }>;
+    summary: {
+      requiredCount: number;
+      completedCount: number;
+      missingCount: number;
+    };
   };
   contentCount: {
     preview: {
@@ -124,6 +149,13 @@ export type UpdateDatasetValuesInput = {
     viewers?: string | null;
     pageFollowers?: string | null;
     pageVisit?: string | null;
+  };
+  metricCommentary?: {
+    entries: Array<{
+      key: ReportMetricCommentaryKey;
+      applicability?: ReportMetricApplicability | null;
+      remark?: string | null;
+    }>;
   };
 };
 

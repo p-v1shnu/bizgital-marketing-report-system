@@ -44,6 +44,7 @@ type ReportWorkspaceShellProps = {
     | 'top-content'
     | 'competitors'
     | 'questions'
+    | 'commentary'
     | 'review'
     | 'history';
   detail: ReportingDetailResponse;

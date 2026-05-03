@@ -1,8 +1,13 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 
 import { PrismaService } from '../../prisma/prisma.service';
+import { REPORT_METRIC_COMMENTARY_KEYS } from './manual-metrics.types';
 import type {
   ManualHeaderMetricValues,
+  ReportMetricApplicability,
+  ReportMetricCommentaryEntry,
+  ReportMetricCommentaryKey,
+  UpdateReportMetricCommentaryInput,
   UpdateManualHeaderMetricInput
 } from './manual-metrics.types';
 
@@ -12,7 +17,20 @@ type RawManualMetricRow = {
   page_visit: string | number | null;
 };
 
+type RawMetricCommentaryRow = {
+  metric_key: string;
+  applicability: string;
+  remark: string | null;
+};
+
 const MANUAL_HEADER_MAX_VALUE = 999_999_999_999_999;
+const MAX_METRIC_COMMENTARY_REMARK_LENGTH = 4_000;
+const REPORT_METRIC_LABELS: Record<ReportMetricCommentaryKey, string> = {
+  views: 'Total Views',
+  viewers: 'Total Viewers',
+  engagement: 'Total Engagement',
+  video_views_3s: 'Total 3-second Video Views'
+};
 
 @Injectable()
 export class ManualMetricsService {
@@ -81,6 +99,83 @@ export class ManualMetricsService {
     return this.getReportManualMetrics(reportVersionId);
   }
 
+  async getReportMetricCommentary(
+    reportVersionId: string
+  ): Promise<ReportMetricCommentaryEntry[]> {
+    await this.ensureCommentaryStorage();
+
+    const rows = await this.prisma.$queryRawUnsafe<RawMetricCommentaryRow[]>(
+      `
+      SELECT metric_key, applicability, remark
+      FROM report_metric_commentaries
+      WHERE report_version_id = ?
+      `,
+      reportVersionId
+    );
+    const byKey = new Map(rows.map((row) => [row.metric_key, row]));
+
+    return [...REPORT_METRIC_COMMENTARY_KEYS].map((key) => {
+      const raw = byKey.get(key) ?? null;
+      return {
+        key,
+        label: REPORT_METRIC_LABELS[key],
+        applicability: this.normalizeApplicability(raw?.applicability),
+        remark: this.normalizeRemark(raw?.remark)
+      };
+    });
+  }
+
+  async upsertReportMetricCommentary(
+    reportVersionId: string,
+    input: UpdateReportMetricCommentaryInput
+  ) {
+    await this.ensureCommentaryStorage();
+
+    if (!Array.isArray(input.entries) || input.entries.length === 0) {
+      return this.getReportMetricCommentary(reportVersionId);
+    }
+
+    const seen = new Set<ReportMetricCommentaryKey>();
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const entry of input.entries) {
+        if (!entry || !this.isMetricCommentaryKey(entry.key)) {
+          throw new BadRequestException('Metric commentary key is invalid.');
+        }
+
+        if (seen.has(entry.key)) {
+          continue;
+        }
+        seen.add(entry.key);
+
+        const applicability = this.normalizeApplicability(entry.applicability);
+        const remark = this.normalizeRemark(entry.remark);
+
+        await tx.$executeRawUnsafe(
+          `
+          INSERT INTO report_metric_commentaries (
+            report_version_id,
+            metric_key,
+            applicability,
+            remark,
+            updated_at
+          ) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP(3))
+          ON DUPLICATE KEY UPDATE
+            applicability = VALUES(applicability),
+            remark = VALUES(remark),
+            updated_at = CURRENT_TIMESTAMP(3)
+          `,
+          reportVersionId,
+          entry.key,
+          applicability,
+          remark
+        );
+      }
+    });
+
+    return this.getReportMetricCommentary(reportVersionId);
+  }
+
   private async ensureStorage() {
     await this.prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS report_manual_metrics (
@@ -91,6 +186,20 @@ export class ManualMetricsService {
         created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
         updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
         PRIMARY KEY (report_version_id)
+      ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    `);
+  }
+
+  private async ensureCommentaryStorage() {
+    await this.prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS report_metric_commentaries (
+        report_version_id VARCHAR(191) NOT NULL,
+        metric_key VARCHAR(64) NOT NULL,
+        applicability VARCHAR(16) NOT NULL DEFAULT 'applicable',
+        remark LONGTEXT NULL,
+        created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (report_version_id, metric_key)
       ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
     `);
   }
@@ -108,8 +217,8 @@ export class ManualMetricsService {
       throw new BadRequestException(`${label} must be a whole number.`);
     }
 
-    if (parsed < 0) {
-      throw new BadRequestException(`${label} must be 0 or more.`);
+    if (parsed <= 0) {
+      throw new BadRequestException(`${label} must be greater than 0.`);
     }
 
     if (parsed > MANUAL_HEADER_MAX_VALUE) {
@@ -128,5 +237,28 @@ export class ManualMetricsService {
 
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  private normalizeApplicability(
+    value: string | null | undefined
+  ): ReportMetricApplicability {
+    return String(value ?? '')
+      .toLowerCase()
+      .trim() === 'na'
+      ? 'na'
+      : 'applicable';
+  }
+
+  private normalizeRemark(value: string | null | undefined) {
+    const normalized = String(value ?? '').trim();
+    if (!normalized) {
+      return null;
+    }
+
+    return normalized.slice(0, MAX_METRIC_COMMENTARY_REMARK_LENGTH);
+  }
+
+  private isMetricCommentaryKey(value: string): value is ReportMetricCommentaryKey {
+    return (REPORT_METRIC_COMMENTARY_KEYS as readonly string[]).includes(value);
   }
 }

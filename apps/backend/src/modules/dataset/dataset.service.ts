@@ -4,7 +4,11 @@ import {
   Injectable,
   NotFoundException
 } from '@nestjs/common';
-import { MappingTargetField, ReportWorkflowState } from '@prisma/client';
+import {
+  MappingTargetField,
+  ReportCadence,
+  ReportWorkflowState
+} from '@prisma/client';
 
 import { PrismaService } from '../../prisma/prisma.service';
 import { BrandsService } from '../brands/brands.service';
@@ -34,6 +38,8 @@ import type {
   DatasetOverviewResponse,
   UpdateDatasetValuesInput
 } from './dataset.types';
+import { REPORT_METRIC_COMMENTARY_KEYS } from '../manual-metrics/manual-metrics.types';
+import type { ReportMetricCommentaryKey } from '../manual-metrics/manual-metrics.types';
 
 const DATASET_PREVIEW_LIMIT = 5;
 const MANUAL_EXTENDED_TARGET_FIELDS: MappingTargetField[] = [
@@ -45,6 +51,12 @@ const MANUAL_EXTENDED_TARGET_FIELDS: MappingTargetField[] = [
   MappingTargetField.published_at
 ];
 const MANUAL_EXTENDED_TARGET_FIELD_SET = new Set<MappingTargetField>(MANUAL_EXTENDED_TARGET_FIELDS);
+const METRIC_COMMENTARY_LABELS: Record<ReportMetricCommentaryKey, string> = {
+  views: 'Total Views',
+  viewers: 'Total Viewers',
+  engagement: 'Total Engagement',
+  video_views_3s: 'Total 3-second Video Views'
+};
 
 @Injectable()
 export class DatasetService {
@@ -109,6 +121,11 @@ export class DatasetService {
       period.reportVersions.find(
         version => version.workflowState === ReportWorkflowState.approved
       ) ?? null;
+    const metricCommentaryOverview = await this.buildMetricCommentaryOverview({
+      brandId: brand.id,
+      period,
+      targetVersionId: targetVersion?.id ?? null
+    });
     const [contentCountPreview, approvedContentCountSnapshot] = await Promise.all([
       targetVersion
         ? this.topContentService.getContentCountPreviewForReportVersion(targetVersion.id)
@@ -193,6 +210,7 @@ export class DatasetService {
         pageFollowers: this.toStringValue(manualHeaderMetrics.pageFollowers),
         pageVisit: this.toStringValue(manualHeaderMetrics.pageVisit)
       },
+      metricCommentary: metricCommentaryOverview,
       contentCount: {
         preview: contentCountPreview
           ? {
@@ -449,15 +467,17 @@ export class DatasetService {
     const hasManualFormulaRowsUpdate =
       Array.isArray(input.manualFormulaRows) && input.manualFormulaRows.length > 0;
     const hasManualHeaderUpdate = input.manualHeader !== undefined;
+    const hasMetricCommentaryUpdate = input.metricCommentary !== undefined;
 
     if (
       !hasRowUpdates &&
       !hasManualSourceRowsUpdate &&
       !hasManualFormulaRowsUpdate &&
-      !hasManualHeaderUpdate
+      !hasManualHeaderUpdate &&
+      !hasMetricCommentaryUpdate
     ) {
       throw new BadRequestException(
-        'At least one dataset row, manual source row, manual formula row, or manual header update is required.'
+        'At least one dataset row, manual source row, manual formula row, manual header update, or metric commentary update is required.'
       );
     }
 
@@ -654,6 +674,13 @@ export class DatasetService {
       );
     }
 
+    if (hasMetricCommentaryUpdate) {
+      await this.manualMetricsService.upsertReportMetricCommentary(
+        currentDraft.id,
+        input.metricCommentary ?? { entries: [] }
+      );
+    }
+
     if (hasManualSourceRowsUpdate) {
       await this.upsertManualSourceRows(currentDraft.id, input.manualSourceRows ?? []);
     }
@@ -665,6 +692,9 @@ export class DatasetService {
     if (hasRowUpdates || hasManualSourceRowsUpdate) {
       await this.topContentService.refreshForReportVersion(currentDraft.id);
     }
+    if (hasRowUpdates || hasManualSourceRowsUpdate || hasManualFormulaRowsUpdate) {
+      await this.clearVideoViewsCommentaryWhenNoData(currentDraft.id);
+    }
 
     return {
       updatedRowCount: input.rows.length,
@@ -673,6 +703,212 @@ export class DatasetService {
         0
       )
     };
+  }
+
+  private async buildMetricCommentaryOverview(input: {
+    brandId: string;
+    period: {
+      id: string;
+      year: number;
+      month: number;
+    };
+    targetVersionId: string | null;
+  }): Promise<DatasetOverviewResponse['metricCommentary']> {
+    const { brandId, period, targetVersionId } = input;
+
+    if (!targetVersionId) {
+      const emptyItems = [...REPORT_METRIC_COMMENTARY_KEYS].map((key) => ({
+        key,
+        label: METRIC_COMMENTARY_LABELS[key],
+        applicability: 'applicable' as const,
+        remark: null,
+        requiresRemark: key !== 'video_views_3s',
+        requirementDetail:
+          key === 'video_views_3s'
+            ? 'Required only when this month 3-second Video Views total is greater than 0.'
+            : 'Required',
+        currentValue: null,
+        previousValue: null,
+        hasPreviousValue: false,
+        changePercent: null
+      }));
+
+      return {
+        isFirstReportingMonth: true,
+        viewersInputReady: false,
+        items: emptyItems,
+        summary: {
+          requiredCount: emptyItems.filter((item) => item.requiresRemark).length,
+          completedCount: 0,
+          missingCount: emptyItems.filter((item) => item.requiresRemark).length
+        }
+      };
+    }
+
+    const [entries, currentValues, manualHeaderMetrics, previousVersionId] = await Promise.all([
+      this.manualMetricsService.getReportMetricCommentary(targetVersionId),
+      this.metricsService.getDashboardMetricValuesForReportVersion(targetVersionId),
+      this.manualMetricsService.getReportManualMetrics(targetVersionId),
+      this.resolvePreviousVersionIdForCommentary({
+        brandId,
+        year: period.year,
+        month: period.month
+      })
+    ]);
+
+    const previousValues = previousVersionId
+      ? await this.metricsService.getDashboardMetricValuesForReportVersion(previousVersionId)
+      : null;
+    const hasPreviousValue = !!previousVersionId;
+    const viewersInputReady =
+      manualHeaderMetrics.viewers !== null && manualHeaderMetrics.viewers > 0;
+    const requireVideoCommentary = (currentValues.video_views_3s ?? 0) > 0;
+
+    const items = entries.map((entry) => {
+      const currentValue = this.pickDashboardValueForMetric(currentValues, entry.key);
+      const previousValue = previousValues
+        ? this.pickDashboardValueForMetric(previousValues, entry.key)
+        : null;
+      const requiresRemark =
+        entry.key === 'video_views_3s'
+          ? requireVideoCommentary
+          : entry.key === 'viewers'
+            ? viewersInputReady
+            : true;
+      return {
+        ...entry,
+        remark: requiresRemark ? entry.remark : null,
+        requiresRemark,
+        requirementDetail:
+          entry.key === 'video_views_3s'
+            ? requiresRemark
+              ? 'Required because this month 3-second Video Views total is greater than 0.'
+              : 'Optional because this month 3-second Video Views total is 0.'
+            : entry.key === 'viewers'
+              ? requiresRemark
+                ? 'Required'
+                : 'Waiting for Viewers input from Import.'
+              : 'Required',
+        currentValue,
+        previousValue,
+        hasPreviousValue,
+        changePercent: this.calculateChangePercent(currentValue, previousValue)
+      };
+    });
+
+    const requiredItems = items.filter((item) => item.requiresRemark);
+    const completedCount = requiredItems.filter(
+      (item) => item.remark !== null && item.remark.trim().length > 0
+    ).length;
+
+    return {
+      isFirstReportingMonth: !hasPreviousValue,
+      viewersInputReady,
+      items,
+      summary: {
+        requiredCount: requiredItems.length,
+        completedCount,
+        missingCount: Math.max(0, requiredItems.length - completedCount)
+      }
+    };
+  }
+
+  private async clearVideoViewsCommentaryWhenNoData(reportVersionId: string) {
+    const dashboardValues =
+      await this.metricsService.getDashboardMetricValuesForReportVersion(reportVersionId);
+
+    if ((dashboardValues.video_views_3s ?? 0) > 0) {
+      return;
+    }
+
+    await this.manualMetricsService.upsertReportMetricCommentary(reportVersionId, {
+      entries: [
+        {
+          key: 'video_views_3s',
+          remark: null
+        }
+      ]
+    });
+  }
+
+  private async resolvePreviousVersionIdForCommentary(input: {
+    brandId: string;
+    year: number;
+    month: number;
+  }) {
+    const previousPeriod = await this.prisma.reportingPeriod.findFirst({
+      where: {
+        brandId: input.brandId,
+        cadence: ReportCadence.monthly,
+        deletedAt: null,
+        OR: [
+          {
+            year: {
+              lt: input.year
+            }
+          },
+          {
+            year: input.year,
+            month: {
+              lt: input.month
+            }
+          }
+        ]
+      },
+      include: {
+        reportVersions: {
+          orderBy: {
+            versionNo: 'desc'
+          }
+        }
+      },
+      orderBy: [{ year: 'desc' }, { month: 'desc' }]
+    });
+
+    if (!previousPeriod) {
+      return null;
+    }
+
+    const preferredOrder: ReportWorkflowState[] = [
+      ReportWorkflowState.approved,
+      ReportWorkflowState.submitted,
+      ReportWorkflowState.draft,
+      ReportWorkflowState.rejected,
+      ReportWorkflowState.superseded
+    ];
+
+    for (const state of preferredOrder) {
+      const matched = previousPeriod.reportVersions.find(
+        (version) => version.workflowState === state
+      );
+      if (matched) {
+        return matched.id;
+      }
+    }
+
+    return previousPeriod.reportVersions[0]?.id ?? null;
+  }
+
+  private pickDashboardValueForMetric(
+    values: {
+      views: number | null;
+      viewers: number | null;
+      engagement: number | null;
+      video_views_3s: number | null;
+      page_followers: number | null;
+      page_visit: number | null;
+    },
+    key: ReportMetricCommentaryKey
+  ) {
+    return values[key];
+  }
+
+  private calculateChangePercent(currentValue: number | null, previousValue: number | null) {
+    if (currentValue === null || previousValue === null || previousValue === 0) {
+      return null;
+    }
+
+    return ((currentValue - previousValue) / Math.abs(previousValue)) * 100;
   }
 
   private toStringValue(value: number | null) {

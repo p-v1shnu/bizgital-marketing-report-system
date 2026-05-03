@@ -378,8 +378,11 @@ export class ReportingService {
     const manualMonthlyInputsComplete =
       manualHeaderMetrics !== null &&
       manualHeaderMetrics.viewers !== null &&
+      manualHeaderMetrics.viewers > 0 &&
       manualHeaderMetrics.pageFollowers !== null &&
-      manualHeaderMetrics.pageVisit !== null;
+      manualHeaderMetrics.pageFollowers > 0 &&
+      manualHeaderMetrics.pageVisit !== null &&
+      manualHeaderMetrics.pageVisit > 0;
     const metricCellsReady = metricsVersionId
       ? (await this.prisma.datasetCell.count({
           where: {
@@ -403,6 +406,10 @@ export class ReportingService {
     const questionEvidenceReady =
       reviewReadiness.checks.find(
         (check) => check.key === 'question_evidence_complete'
+      ) ?? null;
+    const metricCommentaryReady =
+      reviewReadiness.checks.find(
+        (check) => check.key === 'metric_commentary_complete'
       ) ?? null;
     const topContentReadinessCheck =
       reviewReadiness.checks.find(
@@ -481,6 +488,14 @@ export class ReportingService {
         label: 'Questions',
         status: questionEvidenceReady?.passed ? 'ready' : hasDraft ? 'pending' : 'blocked',
         detail: questionEvidenceReady?.detail ?? 'Question monitoring is required before submit.'
+      },
+      {
+        slug: 'commentary',
+        label: 'Commentary',
+        status: metricCommentaryReady?.passed ? 'ready' : hasDraft ? 'pending' : 'blocked',
+        detail:
+          metricCommentaryReady?.detail ??
+          'Complete graph remarks for all required metrics before submit.'
       },
       {
         slug: 'review',
@@ -1214,6 +1229,7 @@ export class ReportingService {
       competitorMonitoringCount,
       questionEvidenceCount,
       metricSnapshotCount,
+      metricCommentaryCount,
       manualSourceRowsSettingCount,
       manualFormulaRowsSettingCount
     ] = await Promise.all([
@@ -1235,6 +1251,14 @@ export class ReportingService {
       tx.metricSnapshot.count({
         where: { reportVersionId: versionId }
       }),
+      tx.$queryRawUnsafe<Array<{ count: number }>>(
+        `
+        SELECT COUNT(*) AS count
+        FROM report_metric_commentaries
+        WHERE report_version_id = ?
+        `,
+        versionId
+      ).then((rows) => Number(rows[0]?.count ?? 0)).catch(() => 0),
       tx.globalUiSetting.count({
         where: {
           settingKey: toManualSourceRowsSettingKey(versionId)
@@ -1254,6 +1278,7 @@ export class ReportingService {
       competitorMonitoringCount > 0 ||
       questionEvidenceCount > 0 ||
       metricSnapshotCount > 0 ||
+      metricCommentaryCount > 0 ||
       manualSourceRowsSettingCount > 0 ||
       manualFormulaRowsSettingCount > 0
     );
@@ -1282,6 +1307,7 @@ export class ReportingService {
     await this.cloneCompetitorEvidence(tx, sourceVersionId, draftVersionId);
     await this.cloneQuestionEvidence(tx, sourceVersionId, draftVersionId);
     await this.cloneManualHeaderMetrics(tx, sourceVersionId, draftVersionId);
+    await this.cloneMetricCommentaries(tx, sourceVersionId, draftVersionId);
     await this.cloneManualSourceRowsSetting(tx, sourceVersionId, draftVersionId);
     await this.cloneManualFormulaRowsSetting(tx, sourceVersionId, draftVersionId);
   }
@@ -1715,6 +1741,52 @@ export class ReportingService {
         viewers = VALUES(viewers),
         page_followers = VALUES(page_followers),
         page_visit = VALUES(page_visit),
+        updated_at = CURRENT_TIMESTAMP(3)
+      `,
+      draftVersionId,
+      sourceVersionId
+    );
+  }
+
+  private async cloneMetricCommentaries(
+    tx: Prisma.TransactionClient,
+    sourceVersionId: string,
+    draftVersionId: string
+  ) {
+    await tx.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS report_metric_commentaries (
+        report_version_id VARCHAR(191) NOT NULL,
+        metric_key VARCHAR(64) NOT NULL,
+        applicability VARCHAR(16) NOT NULL DEFAULT 'applicable',
+        remark LONGTEXT NULL,
+        created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (report_version_id, metric_key)
+      ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    `);
+
+    await tx.$executeRawUnsafe(
+      `
+      INSERT INTO report_metric_commentaries (
+        report_version_id,
+        metric_key,
+        applicability,
+        remark,
+        created_at,
+        updated_at
+      )
+      SELECT
+        ?,
+        metric_key,
+        applicability,
+        remark,
+        CURRENT_TIMESTAMP(3),
+        CURRENT_TIMESTAMP(3)
+      FROM report_metric_commentaries
+      WHERE report_version_id = ?
+      ON DUPLICATE KEY UPDATE
+        applicability = VALUES(applicability),
+        remark = VALUES(remark),
         updated_at = CURRENT_TIMESTAMP(3)
       `,
       draftVersionId,

@@ -21,6 +21,7 @@ type WorkspaceSectionPageProps = {
       | 'top-content'
       | 'competitors'
       | 'questions'
+      | 'commentary'
       | 'review'
       | 'history';
   }>;

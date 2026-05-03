@@ -16,6 +16,7 @@ export type ReviewReadinessCheckKey =
   | 'draft_exists'
   | 'dataset_materialized'
   | 'metric_snapshot_current'
+  | 'metric_commentary_complete'
   | 'competitor_evidence_complete'
   | 'question_evidence_complete'
   | 'required_top_content_cards_exist';
@@ -170,6 +171,7 @@ export type ReportingDetailResponse = {
           | 'top-content'
           | 'competitors'
           | 'questions'
+          | 'commentary'
           | 'review'
           | 'history';
         label: string;

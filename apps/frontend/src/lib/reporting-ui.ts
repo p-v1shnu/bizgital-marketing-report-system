@@ -15,6 +15,7 @@ export const CORE_WORKFLOW_SECTION_ORDER = [
   'top-content',
   'competitors',
   'questions',
+  'commentary',
   'review'
 ] as const satisfies ReadonlyArray<WorkspaceSectionSlug>;
 

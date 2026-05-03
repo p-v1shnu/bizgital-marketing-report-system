@@ -41,7 +41,7 @@ export class ReviewReadinessService {
         targetVersionId: null,
         overall: 'not_ready',
         canSubmit: false,
-        blockingCount: 6,
+        blockingCount: 7,
         summary: 'Create the first draft before review readiness can be evaluated.',
         checks: [
           {
@@ -61,6 +61,12 @@ export class ReviewReadinessService {
             label: 'Metric snapshot exists and is current',
             passed: false,
             detail: 'Generate a metric snapshot for the current draft before submit.'
+          },
+          {
+            key: 'metric_commentary_complete',
+            label: 'Metric commentary complete',
+            passed: false,
+            detail: 'Complete graph remarks for all required metrics before submit.'
           },
           {
             key: 'competitor_evidence_complete',
@@ -88,7 +94,9 @@ export class ReviewReadinessService {
     const [
       datasetRowCount,
       metricSnapshotStatus,
+      metricValues,
       manualHeaderMetrics,
+      metricCommentary,
       competitorReadiness,
       questionReadiness,
       topContentStatus
@@ -99,7 +107,9 @@ export class ReviewReadinessService {
         }
       }),
       this.metricsService.getSnapshotStatusForReportVersion(targetVersion.id),
+      this.metricsService.getDashboardMetricValuesForReportVersion(targetVersion.id),
       this.manualMetricsService.getReportManualMetrics(targetVersion.id),
+      this.manualMetricsService.getReportMetricCommentary(targetVersion.id),
       this.competitorsService.getReadinessForReportVersion(targetVersion.id),
       this.questionsService.getReadinessForReportVersion(targetVersion.id),
       this.topContentService.getCurrentnessForReportVersion(targetVersion.id)
@@ -112,8 +122,28 @@ export class ReviewReadinessService {
       latestWorkflowState === ReportWorkflowState.approved;
     const manualMonthlyInputsComplete =
       manualHeaderMetrics.viewers !== null &&
+      manualHeaderMetrics.viewers > 0 &&
       manualHeaderMetrics.pageFollowers !== null &&
-      manualHeaderMetrics.pageVisit !== null;
+      manualHeaderMetrics.pageFollowers > 0 &&
+      manualHeaderMetrics.pageVisit !== null &&
+      manualHeaderMetrics.pageVisit > 0;
+    const requireVideoCommentary = (metricValues.video_views_3s ?? 0) > 0;
+    const requiredCommentaryKeys: Array<
+      'views' | 'viewers' | 'engagement' | 'video_views_3s'
+    > = ['views', 'viewers', 'engagement'];
+    if (requireVideoCommentary) {
+      requiredCommentaryKeys.push('video_views_3s');
+    }
+    const metricCommentaryByKey = new Map(metricCommentary.map(item => [item.key, item]));
+    const missingMetricRemarks = requiredCommentaryKeys.filter((key) => {
+      const remark = metricCommentaryByKey.get(key)?.remark ?? null;
+      return !remark || remark.trim().length === 0;
+    });
+    const missingMetricRemarkLabels = missingMetricRemarks.map((key) =>
+      metricCommentaryByKey.get(key)?.label ?? key
+    );
+    const metricCommentaryComplete =
+      manualMonthlyInputsComplete && missingMetricRemarks.length === 0;
     const datasetMaterialized = datasetRowCount > 0;
     const metricSnapshotItemCount = metricSnapshotStatus.summary.metricCount;
     const metricSnapshotCurrent =
@@ -147,7 +177,21 @@ export class ReviewReadinessService {
           ? `Metric snapshot is present for this ${hasDraft ? 'draft' : 'version'} and includes ${metricSnapshotItemCount} metric item${metricSnapshotItemCount === 1 ? '' : 's'}.`
           : !manualMonthlyInputsComplete
             ? 'Complete Manual monthly inputs (Viewers, Page Followers, Page Visit) in Import before this month can be marked ready.'
-          : metricSnapshotStatus.detail
+            : metricSnapshotStatus.detail
+      },
+      {
+        key: 'metric_commentary_complete',
+        label: 'Metric commentary complete',
+        passed: metricCommentaryComplete,
+        detail: !manualMonthlyInputsComplete
+          ? 'Complete Manual monthly inputs (Viewers, Page Followers, Page Visit) in Import before adding commentary.'
+          : metricCommentaryComplete
+            ? `${requiredCommentaryKeys.length}/${requiredCommentaryKeys.length} required graph remarks are complete.`
+            : `Complete Graph remarks for required metrics (${missingMetricRemarkLabels.join(', ')}). ${
+                requireVideoCommentary
+                  ? ''
+                  : '3-second Video Views remark is optional because this month total is 0.'
+              }`
       },
       {
         key: 'competitor_evidence_complete',

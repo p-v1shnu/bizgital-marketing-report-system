@@ -499,7 +499,8 @@ function toManualHeaderPayload(values: {
 }
 
 function normalizeManualHeaderInput(value: string) {
-  return value.replace(/[^\d]/g, '');
+  const digitsOnly = value.replace(/[^\d]/g, '');
+  return digitsOnly.replace(/^0+/, '');
 }
 
 function validateManualHeaderValue(value: string) {
@@ -513,8 +514,8 @@ function validateManualHeaderValue(value: string) {
     return 'Enter a whole number.';
   }
 
-  if (parsed < 0) {
-    return 'Enter 0 or more.';
+  if (parsed <= 0) {
+    return 'Enter a number greater than 0.';
   }
 
   if (parsed > manualHeaderMaxValue) {
@@ -1979,6 +1980,9 @@ export function ImportWorkingTable({
       <div className="space-y-3 rounded-2xl border border-border/60 bg-background/55 px-4 py-4">
         <div className="space-y-1">
           <div className="text-sm font-medium text-foreground">Manual monthly inputs</div>
+          <div className="text-xs text-muted-foreground">
+            Viewers, Page Followers, and Page Visit must be whole numbers greater than 0.
+          </div>
         </div>
         <div className="grid gap-3 md:grid-cols-3">
           <div className="space-y-2">
@@ -1990,10 +1994,10 @@ export function ImportWorkingTable({
               disabled={isReadOnly}
               inputMode="numeric"
               max={manualHeaderMaxValue}
-              min={0}
+              min={1}
               name="manual__header__viewers"
               onChange={event => updateManualHeaderValue('viewers', event.currentTarget.value)}
-              placeholder="0"
+              placeholder="Enter value"
               type="text"
               value={manualHeaderValues.viewers}
             />
@@ -2010,10 +2014,10 @@ export function ImportWorkingTable({
               disabled={isReadOnly}
               inputMode="numeric"
               max={manualHeaderMaxValue}
-              min={0}
+              min={1}
               name="manual__header__followers"
               onChange={event => updateManualHeaderValue('pageFollowers', event.currentTarget.value)}
-              placeholder="0"
+              placeholder="Enter value"
               type="text"
               value={manualHeaderValues.pageFollowers}
             />
@@ -2030,10 +2034,10 @@ export function ImportWorkingTable({
               disabled={isReadOnly}
               inputMode="numeric"
               max={manualHeaderMaxValue}
-              min={0}
+              min={1}
               name="manual__header__page_visit"
               onChange={event => updateManualHeaderValue('pageVisit', event.currentTarget.value)}
-              placeholder="0"
+              placeholder="Enter value"
               type="text"
               value={manualHeaderValues.pageVisit}
             />

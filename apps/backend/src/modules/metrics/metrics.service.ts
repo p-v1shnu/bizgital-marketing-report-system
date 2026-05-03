@@ -426,17 +426,12 @@ export class MetricsService {
       ).value;
     }
 
+    const canonicalEngagementActual = await this.getCanonicalMetricActualFromDataset(
+      reportVersionId,
+      MappingTargetField.engagement
+    );
     if (values.engagement === null) {
-      values.engagement = (
-        await this.getCanonicalMetricActualFromDataset(
-          reportVersionId,
-          MappingTargetField.engagement
-        )
-      ).value;
-    }
-
-    if (values.engagement !== null) {
-      return values;
+      values.engagement = canonicalEngagementActual.value;
     }
 
     const systemEngagementFormulaIds = await this.getSystemEngagementFormulaIds();

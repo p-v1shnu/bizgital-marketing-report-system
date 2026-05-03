@@ -11,6 +11,12 @@ export type CanonicalTargetField =
   | 'page_followers'
   | 'engagement'
   | 'video_views_3s';
+export type ReportMetricCommentaryKey =
+  | 'views'
+  | 'viewers'
+  | 'engagement'
+  | 'video_views_3s';
+export type ReportMetricApplicability = 'applicable' | 'na';
 
 export type CanonicalFieldDataType = 'string' | 'number' | 'date' | 'url';
 export type CanonicalFieldInputType = 'text' | 'number' | 'date' | 'url';
@@ -46,6 +52,7 @@ export type ReviewReadinessCheckKey =
   | 'draft_exists'
   | 'dataset_materialized'
   | 'metric_snapshot_current'
+  | 'metric_commentary_complete'
   | 'competitor_evidence_complete'
   | 'question_evidence_complete'
   | 'required_top_content_cards_exist';
@@ -219,6 +226,7 @@ export type ReportingDetailResponse = {
           | 'top-content'
           | 'competitors'
           | 'questions'
+          | 'commentary'
           | 'review'
           | 'history';
         label: string;
@@ -749,6 +757,27 @@ export type DatasetOverviewResponse = {
     viewers: string | null;
     pageFollowers: string | null;
     pageVisit: string | null;
+  };
+  metricCommentary: {
+    isFirstReportingMonth: boolean;
+    viewersInputReady: boolean;
+    items: Array<{
+      key: ReportMetricCommentaryKey;
+      label: string;
+      applicability: ReportMetricApplicability;
+      remark: string | null;
+      requiresRemark: boolean;
+      requirementDetail: string;
+      currentValue: number | null;
+      previousValue: number | null;
+      hasPreviousValue: boolean;
+      changePercent: number | null;
+    }>;
+    summary: {
+      requiredCount: number;
+      completedCount: number;
+      missingCount: number;
+    };
   };
   contentCount: {
     preview: {

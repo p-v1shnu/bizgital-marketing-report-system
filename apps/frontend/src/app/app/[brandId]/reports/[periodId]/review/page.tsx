@@ -41,6 +41,7 @@ const checklistSectionHref: Record<string, string | null> = {
   draft_exists: null,
   dataset_materialized: 'import',
   metric_snapshot_current: 'metrics',
+  metric_commentary_complete: 'commentary',
   competitor_evidence_complete: 'competitors',
   question_evidence_complete: 'questions',
   required_top_content_cards_exist: 'top-content'
