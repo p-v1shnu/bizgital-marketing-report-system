@@ -117,6 +117,19 @@ type Props = {
 const manualStoragePrefix = 'bizgital-marketing-report.import.manual-values';
 const manualHeaderMaxValue = 999_999_999_999_999;
 const MANUAL_CONTENT_STYLE_SOURCE_LABEL = 'Content Style';
+const MANUAL_MEDIA_FORMAT_SOURCE_LABEL = 'Media Format';
+const MANUAL_RELATED_PRODUCT_SOURCE_LABEL = 'Related Product';
+const MANUAL_CONTENT_OBJECTIVE_SOURCE_LABEL = 'Content Objective';
+const MANUAL_CAMPAIGN_BASE_SOURCE_LABEL = 'Is campaign content';
+const MANUAL_CAMPAIGN_NAME_SOURCE_LABEL = 'Campaign Name';
+const MANUAL_SOURCE_LABEL_BY_KEY: Partial<Record<ManualKey, string>> = {
+  content_style: MANUAL_CONTENT_STYLE_SOURCE_LABEL,
+  media_format: MANUAL_MEDIA_FORMAT_SOURCE_LABEL,
+  related_product: MANUAL_RELATED_PRODUCT_SOURCE_LABEL,
+  content_objective: MANUAL_CONTENT_OBJECTIVE_SOURCE_LABEL,
+  campaign_base: MANUAL_CAMPAIGN_BASE_SOURCE_LABEL,
+  campaign_name: MANUAL_CAMPAIGN_NAME_SOURCE_LABEL
+};
 const sourcePreviewPopoverPadding = 12;
 const sourcePreviewPopoverWidth = 480;
 const sourcePreviewPopoverHeight = 680;
@@ -1399,7 +1412,7 @@ export function ImportWorkingTable({
       return nextManualValues;
     });
 
-    if (key === 'content_style' && nextManualValues) {
+    if (MANUAL_SOURCE_LABEL_BY_KEY[key] && nextManualValues) {
       void saveManualRowsValues(
         manualDatasetRowUpdates,
         manualSourceRowUpdates,
@@ -1651,9 +1664,14 @@ export function ImportWorkingTable({
     const sourceRowsByRowNumber = new Map(
       sourceRows.map((row) => [row.rowNumber, { ...row.values }])
     );
-    const contentStyleManagedRowNumbers: number[] = [];
+    const sourceManagedRowNumbers: number[] = [];
     for (const [rowKey, rowValues] of Object.entries(manualValuesForPersist)) {
-      if (!Object.prototype.hasOwnProperty.call(rowValues, 'content_style')) {
+      const managedKeys = Object.keys(rowValues).filter(
+        (candidate): candidate is ManualKey =>
+          Object.prototype.hasOwnProperty.call(MANUAL_SOURCE_LABEL_BY_KEY, candidate) &&
+          typeof MANUAL_SOURCE_LABEL_BY_KEY[candidate as ManualKey] === 'string'
+      );
+      if (managedKeys.length === 0) {
         continue;
       }
 
@@ -1679,11 +1697,18 @@ export function ImportWorkingTable({
       const mergedValues = {
         ...(sourceRowsByRowNumber.get(rowNumber) ?? {})
       };
-      const normalizedContentStyle = normalizeInputValue(rowValues.content_style ?? null);
-      if (normalizedContentStyle !== null) {
-        mergedValues[MANUAL_CONTENT_STYLE_SOURCE_LABEL] = normalizedContentStyle;
-      } else {
-        delete mergedValues[MANUAL_CONTENT_STYLE_SOURCE_LABEL];
+      for (const managedKey of managedKeys) {
+        const sourceLabel = MANUAL_SOURCE_LABEL_BY_KEY[managedKey];
+        if (!sourceLabel) {
+          continue;
+        }
+
+        const normalizedValue = normalizeInputValue(rowValues[managedKey] ?? null);
+        if (normalizedValue !== null) {
+          mergedValues[sourceLabel] = normalizedValue;
+        } else {
+          delete mergedValues[sourceLabel];
+        }
       }
 
       if (Object.keys(mergedValues).length === 0) {
@@ -1692,11 +1717,11 @@ export function ImportWorkingTable({
         sourceRowsByRowNumber.set(rowNumber, mergedValues);
       }
 
-      contentStyleManagedRowNumbers.push(rowNumber);
+      sourceManagedRowNumbers.push(rowNumber);
     }
     const sourceRowNumbers = [
       ...sourceRows.map((row) => row.rowNumber),
-      ...contentStyleManagedRowNumbers
+      ...sourceManagedRowNumbers
     ];
     const manualSourceRowsToPersist = Array.from(
       new Set([...sourceRowNumbers, ...currentManualRowNumbers, ...rowNumbersToClear])

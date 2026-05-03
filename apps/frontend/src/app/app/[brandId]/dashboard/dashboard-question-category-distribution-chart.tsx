@@ -5,7 +5,6 @@ import {
   BarChart,
   CartesianGrid,
   LabelList,
-  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis
@@ -105,87 +104,87 @@ export function DashboardQuestionCategoryDistributionChart({
           </div>
         </div>
         <div className={cn(isCaptureCanvas ? 'min-h-0 flex-1' : null)} style={isCaptureCanvas ? undefined : { height: chartHeight }}>
-          <ResponsiveContainer height="100%" width="100%">
-            <BarChart
-              data={points}
-              layout="vertical"
-              margin={{
-                top: presentationMode ? 12 : 10,
-                right: chartRightMargin,
-                left: presentationMode ? 34 : 24,
-                bottom: chartBottomMargin
+          <BarChart
+            data={points}
+            layout="vertical"
+            margin={{
+              top: presentationMode ? 12 : 10,
+              right: chartRightMargin,
+              left: presentationMode ? 34 : 24,
+              bottom: chartBottomMargin
+            }}
+            responsive
+            style={{ height: '100%', width: '100%' }}
+          >
+            {showGridLines ? (
+              <CartesianGrid
+                horizontal={false}
+                opacity={0.88}
+                stroke={presentationMode ? 'rgba(148,163,184,0.58)' : 'rgba(148,163,184,0.46)'}
+                strokeDasharray="4 4"
+                strokeWidth={1.1}
+              />
+            ) : null}
+            <XAxis
+              axisLine={false}
+              minTickGap={Math.max(16, Math.round(axisTickSize * 1.6))}
+              tick={{ fill: axisTickColor, fontSize: axisTickSize, fontWeight: 700 }}
+              tickFormatter={(value) => formatCount(Number(value ?? 0))}
+              tickMargin={xAxisTickMargin}
+              tickLine={false}
+              type="number"
+            />
+            <YAxis
+              axisLine={false}
+              dataKey="label"
+              tick={{ fill: axisTickColor, fontSize: axisTickSize, fontWeight: 700 }}
+              tickLine={false}
+              type="category"
+              width={yAxisWidth}
+            />
+            <Tooltip
+              content={({ active, payload }) => {
+                if (!active || !payload?.length) {
+                  return null;
+                }
+
+                const point = payload[0]?.payload as
+                  | DashboardQuestionCategoryDistributionPoint
+                  | undefined;
+                if (!point) {
+                  return null;
+                }
+
+                return (
+                  <div className="min-w-[220px] rounded-xl border border-border/60 bg-background/95 p-3 shadow-xl backdrop-blur">
+                    <div className="text-base font-semibold text-foreground">{point.label}</div>
+                    <div className="mt-2 flex items-center justify-between gap-4 text-sm">
+                      <div className="text-muted-foreground">Questions</div>
+                      <div className="font-semibold text-foreground">{formatCount(point.count)}</div>
+                    </div>
+                  </div>
+                );
               }}
+              cursor={{ fill: 'rgba(148,163,184,0.08)' }}
+            />
+            <Bar
+              barSize={barSize}
+              dataKey="count"
+              fill="#10b981"
+              radius={[0, 12, 12, 0]}
             >
-              {showGridLines ? (
-                <CartesianGrid
-                  horizontal={false}
-                  opacity={0.88}
-                  stroke={presentationMode ? 'rgba(148,163,184,0.58)' : 'rgba(148,163,184,0.46)'}
-                  strokeDasharray="4 4"
-                  strokeWidth={1.1}
+              {showValueLabels ? (
+                <LabelList
+                  dataKey="count"
+                  fill="#334155"
+                  fontSize={valueLabelFontSize}
+                  fontWeight={700}
+                  formatter={(value) => formatCount(Number(value ?? 0))}
+                  position="right"
                 />
               ) : null}
-              <XAxis
-                axisLine={false}
-                minTickGap={Math.max(16, Math.round(axisTickSize * 1.6))}
-                tick={{ fill: axisTickColor, fontSize: axisTickSize, fontWeight: 700 }}
-                tickFormatter={(value) => formatCount(Number(value ?? 0))}
-                tickMargin={xAxisTickMargin}
-                tickLine={false}
-                type="number"
-              />
-              <YAxis
-                axisLine={false}
-                dataKey="label"
-                tick={{ fill: axisTickColor, fontSize: axisTickSize, fontWeight: 700 }}
-                tickLine={false}
-                type="category"
-                width={yAxisWidth}
-              />
-              <Tooltip
-                content={({ active, payload }) => {
-                  if (!active || !payload?.length) {
-                    return null;
-                  }
-
-                  const point = payload[0]?.payload as
-                    | DashboardQuestionCategoryDistributionPoint
-                    | undefined;
-                  if (!point) {
-                    return null;
-                  }
-
-                  return (
-                    <div className="min-w-[220px] rounded-xl border border-border/60 bg-background/95 p-3 shadow-xl backdrop-blur">
-                      <div className="text-base font-semibold text-foreground">{point.label}</div>
-                      <div className="mt-2 flex items-center justify-between gap-4 text-sm">
-                        <div className="text-muted-foreground">Questions</div>
-                        <div className="font-semibold text-foreground">{formatCount(point.count)}</div>
-                      </div>
-                    </div>
-                  );
-                }}
-                cursor={{ fill: 'rgba(148,163,184,0.08)' }}
-              />
-              <Bar
-                barSize={barSize}
-                dataKey="count"
-                fill="#10b981"
-                radius={[0, 12, 12, 0]}
-              >
-                {showValueLabels ? (
-                  <LabelList
-                    dataKey="count"
-                    fill="#334155"
-                    fontSize={valueLabelFontSize}
-                    fontWeight={700}
-                    formatter={(value) => formatCount(Number(value ?? 0))}
-                    position="right"
-                  />
-                ) : null}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+            </Bar>
+          </BarChart>
         </div>
       </div>
     </div>

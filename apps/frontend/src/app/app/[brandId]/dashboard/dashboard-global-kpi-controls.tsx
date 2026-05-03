@@ -1012,7 +1012,14 @@ export function DashboardGlobalKpiControls({
     <>
       <Button
         className="h-9 rounded-xl px-3"
-        onClick={() => setPresentationMode(!presentationMode)}
+        onClick={() => {
+          const next = !presentationMode;
+          if (next) {
+            // Keep slide capture mode on the PPT-friendly ratio by default.
+            setChartCaptureAspect('9_10');
+          }
+          setPresentationMode(next);
+        }}
         size="sm"
         type="button"
         variant={presentationMode ? 'default' : 'outline'}

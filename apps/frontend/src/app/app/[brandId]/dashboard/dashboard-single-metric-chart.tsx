@@ -7,7 +7,6 @@ import {
   CartesianGrid,
   LabelList,
   ReferenceLine,
-  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis
@@ -102,99 +101,99 @@ export function DashboardSingleMetricChart({
     : 'h-[340px] w-full rounded-[24px] border border-slate-200 bg-white p-3 sm:h-[380px]';
 
   const chartElement = (
-    <ResponsiveContainer height="100%" width="100%">
-      <BarChart
-        data={points}
-        margin={{
-          top: presentationMode ? 28 : 22,
-          right: presentationMode ? 16 : 10,
-          left: presentationMode ? 2 : -4,
-          bottom: presentationMode ? 12 : 8
-        }}
-      >
-        {showGridLines ? (
-          <CartesianGrid
-            opacity={0.88}
-            stroke={presentationMode ? 'rgba(148,163,184,0.58)' : 'rgba(148,163,184,0.46)'}
-            strokeDasharray="4 4"
-            strokeWidth={1.1}
-          />
-        ) : null}
-        <XAxis
-          axisLine={false}
-          dataKey="label"
-          tick={{ fill: axisTickColor, fontSize: axisTickSize, fontWeight: 500 }}
-          tickLine={false}
+    <BarChart
+      data={points}
+      margin={{
+        top: presentationMode ? 28 : 22,
+        right: presentationMode ? 16 : 10,
+        left: presentationMode ? 2 : -4,
+        bottom: presentationMode ? 12 : 8
+      }}
+      responsive
+      style={{ height: '100%', width: '100%' }}
+    >
+      {showGridLines ? (
+        <CartesianGrid
+          opacity={0.88}
+          stroke={presentationMode ? 'rgba(148,163,184,0.58)' : 'rgba(148,163,184,0.46)'}
+          strokeDasharray="4 4"
+          strokeWidth={1.1}
         />
-        <YAxis
-          axisLine={false}
-          tick={{ fill: axisTickColor, fontSize: axisTickSize }}
-          tickFormatter={formatCompactNumber}
-          tickLine={false}
-          width={presentationMode ? 78 : 54}
-        />
-        <Tooltip
-          content={({ active, payload }) => {
-            if (!active || !payload?.length) {
-              return null;
-            }
-            const point = payload[0]?.payload as DashboardSingleMetricPoint | undefined;
-            if (!point) {
-              return null;
-            }
+      ) : null}
+      <XAxis
+        axisLine={false}
+        dataKey="label"
+        tick={{ fill: axisTickColor, fontSize: axisTickSize, fontWeight: 500 }}
+        tickLine={false}
+      />
+      <YAxis
+        axisLine={false}
+        tick={{ fill: axisTickColor, fontSize: axisTickSize }}
+        tickFormatter={formatCompactNumber}
+        tickLine={false}
+        width={presentationMode ? 78 : 54}
+      />
+      <Tooltip
+        content={({ active, payload }) => {
+          if (!active || !payload?.length) {
+            return null;
+          }
+          const point = payload[0]?.payload as DashboardSingleMetricPoint | undefined;
+          if (!point) {
+            return null;
+          }
 
-            return (
-              <div className="min-w-[220px] rounded-xl border border-border/60 bg-background/95 p-3 shadow-xl backdrop-blur">
-                <div className="text-sm font-semibold text-foreground">
-                  {point.monthYearLabel}
-                </div>
-                <div className="mt-2 flex items-center justify-between gap-4 text-xs">
-                  <div className="text-muted-foreground">{seriesName}</div>
-                  <div className="font-medium text-foreground">
-                    {formatFullNumber(point.value)}
-                  </div>
-                </div>
-                {point.statusLabel ? (
-                  <div className="mt-2 flex items-center justify-between gap-4 border-t border-border/60 pt-2 text-xs">
-                    <div className="text-muted-foreground">Status</div>
-                    <div className="font-medium text-foreground">{point.statusLabel}</div>
-                  </div>
-                ) : null}
+          return (
+            <div className="min-w-[220px] rounded-xl border border-border/60 bg-background/95 p-3 shadow-xl backdrop-blur">
+              <div className="text-sm font-semibold text-foreground">
+                {point.monthYearLabel}
               </div>
-            );
+              <div className="mt-2 flex items-center justify-between gap-4 text-xs">
+                <div className="text-muted-foreground">{seriesName}</div>
+                <div className="font-medium text-foreground">
+                  {formatFullNumber(point.value)}
+                </div>
+              </div>
+              {point.statusLabel ? (
+                <div className="mt-2 flex items-center justify-between gap-4 border-t border-border/60 pt-2 text-xs">
+                  <div className="text-muted-foreground">Status</div>
+                  <div className="font-medium text-foreground">{point.statusLabel}</div>
+                </div>
+              ) : null}
+            </div>
+          );
+        }}
+        cursor={{ fill: 'rgba(148,163,184,0.08)' }}
+      />
+      {showKpiGoalLines && selectedGoal != null ? (
+        <ReferenceLine
+          ifOverflow="extendDomain"
+          label={{
+            value: `Goal ${formatFullNumber(selectedGoal)}`,
+            position: 'insideTopRight',
+            fill: goalLineColor,
+            fontSize: goalLabelFontSize,
+            fontWeight: 600
           }}
-          cursor={{ fill: 'rgba(148,163,184,0.08)' }}
+          stroke={goalLineColor}
+          strokeDasharray="8 5"
+          strokeWidth={2}
+          y={selectedGoal}
         />
-        {showKpiGoalLines && selectedGoal != null ? (
-          <ReferenceLine
-            ifOverflow="extendDomain"
-            label={{
-              value: `Goal ${formatFullNumber(selectedGoal)}`,
-              position: 'insideTopRight',
-              fill: goalLineColor,
-              fontSize: goalLabelFontSize,
-              fontWeight: 600
-            }}
-            stroke={goalLineColor}
-            strokeDasharray="8 5"
-            strokeWidth={2}
-            y={selectedGoal}
+      ) : null}
+      <Bar dataKey="value" fill={color} name={seriesName} radius={[8, 8, 0, 0]}>
+        {showValueLabels ? (
+          <LabelList
+            dataKey="value"
+            fill="#334155"
+            fontSize={valueLabelFontSize}
+            fontWeight={600}
+            formatter={(value) => formatFullNumber(Number(value ?? 0))}
+            position="top"
           />
         ) : null}
-        <Bar dataKey="value" fill={color} name={seriesName} radius={[8, 8, 0, 0]}>
-          {showValueLabels ? (
-            <LabelList
-              dataKey="value"
-              fill="#334155"
-              fontSize={valueLabelFontSize}
-              fontWeight={600}
-              formatter={(value) => formatFullNumber(Number(value ?? 0))}
-              position="top"
-            />
-          ) : null}
-        </Bar>
-      </BarChart>
-    </ResponsiveContainer>
+      </Bar>
+    </BarChart>
   );
 
   return (

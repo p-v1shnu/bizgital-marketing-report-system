@@ -416,6 +416,14 @@ export class ReportingService {
         (check) => check.key === 'required_top_content_cards_exist'
       ) ?? null;
     const topContentReady = topContentReadinessCheck?.passed ?? false;
+    const topContentReadinessDetail = topContentReadinessCheck?.detail?.trim() ?? '';
+    const topContentHasScreenshotGap =
+      /screenshot evidence is still incomplete/i.test(topContentReadinessDetail) ||
+      /screenshot evidence is incomplete/i.test(topContentReadinessDetail);
+    const isLockedSubmittedOrApproved =
+      !hasDraft &&
+      (listItem.latestVersionState === ReportWorkflowState.submitted ||
+        listItem.latestVersionState === ReportWorkflowState.approved);
 
     const sections: ReportingDetailResponse['period']['workspace']['sections'] = [
       {
@@ -467,9 +475,23 @@ export class ReportingService {
       {
         slug: 'top-content',
         label: 'Top Content',
-        status: topContentReady ? 'ready' : metricSnapshotCurrent ? 'pending' : 'blocked',
+        status: topContentReady
+          ? 'ready'
+          : isLockedSubmittedOrApproved
+            ? 'pending'
+            : topContentHasScreenshotGap
+              ? 'pending'
+            : metricSnapshotCurrent
+              ? 'pending'
+              : 'blocked',
         detail: topContentReady
           ? 'Required top content highlight cards already exist for review.'
+          : isLockedSubmittedOrApproved
+            ? listItem.latestVersionState === ReportWorkflowState.submitted
+              ? 'Latest version is submitted and locked. Use Request changes to reopen before adding Top Content screenshots.'
+              : 'Latest version is approved and locked. Create revision to update Top Content screenshots.'
+          : topContentHasScreenshotGap
+            ? topContentReadinessDetail
           : metricSnapshotCurrent
             ? (topContentReadinessCheck?.detail ??
               'Metrics are ready. Open Top Content to generate the required highlight cards.')

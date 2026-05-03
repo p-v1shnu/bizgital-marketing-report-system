@@ -941,6 +941,36 @@ export type TopContentOverviewResponse = {
     label: string;
     excludeManualRows: boolean;
   };
+  monthlySummary: {
+    contentByMediaFormat: Array<{
+      valueKey: string;
+      label: string;
+      count: number;
+    }>;
+    contentByContentObjective: Array<{
+      valueKey: string;
+      label: string;
+      count: number;
+    }>;
+    contentByContentStyle: Array<{
+      valueKey: string;
+      label: string;
+      count: number;
+    }>;
+    contentByRelatedProduct: Array<{
+      valueKey: string;
+      label: string;
+      count: number;
+    }>;
+    contentByCampaign: Array<{
+      valueKey: string;
+      label: string;
+      count: number;
+    }>;
+    totalContentCount: number;
+    campaignPostCount: number;
+    unassignCount: number;
+  };
   cards: Array<{
     id: string;
     slotKey: 'top_views' | 'top_engagement' | 'top_reach';
@@ -2333,10 +2363,20 @@ export async function getMetricsKpiPreview(
 
 export async function getTopContentOverview(
   brandId: string,
-  periodId: string
+  periodId: string,
+  options?: {
+    reportVersionId?: string | null;
+  }
 ): Promise<TopContentOverviewResponse> {
+  const query = new URLSearchParams();
+  if (options?.reportVersionId) {
+    query.set('reportVersionId', options.reportVersionId);
+  }
+  const queryString = query.toString();
   const response = await fetch(
-    `${getBackendApiBaseUrl()}/brands/${brandId}/reporting-periods/${periodId}/top-content`,
+    `${getBackendApiBaseUrl()}/brands/${brandId}/reporting-periods/${periodId}/top-content${
+      queryString ? `?${queryString}` : ''
+    }`,
     {
       cache: 'no-store'
     }

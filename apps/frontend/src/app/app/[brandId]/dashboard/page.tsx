@@ -1,5 +1,17 @@
 import Link from 'next/link';
-import { AlertCircle, BarChart3, Filter, Layers3 } from 'lucide-react';
+import {
+  AlertCircle,
+  BarChart3,
+  Eye,
+  FileBarChart2,
+  Filter,
+  Layers3,
+  Megaphone,
+  Palette,
+  Package,
+  Target,
+  Users
+} from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -53,6 +65,7 @@ import { DashboardTopPostsSection } from './dashboard-top-posts-section';
 import { EngagementVideoChart, type EngagementVideoChartPoint } from './engagement-video-chart';
 import { DashboardContentPreviewScale } from './dashboard-content-preview-scale';
 import { DashboardRemarkCopyButton } from './dashboard-remark-copy-button';
+import { DashboardContentPeriodPicker } from './dashboard-content-period-picker';
 
 type DashboardPageProps = {
   params: Promise<{
@@ -78,6 +91,8 @@ const chartCardClassName =
   'border-slate-200 bg-white text-slate-900 shadow-sm dark:border-slate-200 dark:bg-white dark:text-slate-900';
 const contentWhiteBadgeClassName =
   'border-slate-300 bg-slate-100 text-slate-800 dark:border-slate-300 dark:bg-slate-100 dark:text-slate-800';
+const contentSurfaceCardClassName =
+  'rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4';
 const questionTrendColors = [
   '#10b981',
   '#f59e0b',
@@ -327,6 +342,32 @@ function formatSignedDelta(currentValue: number | null, previousValue: number | 
   }).format(delta);
 
   return `${sign}${formatted}`;
+}
+
+function getChangeToneClassName(changePercent: number | null) {
+  if (changePercent === null || Number.isNaN(changePercent) || changePercent === 0) {
+    return 'text-slate-600';
+  }
+
+  if (changePercent > 0) {
+    return 'text-emerald-700';
+  }
+
+  return 'text-rose-700';
+}
+
+function calculatePercentChange(currentValue: number | null, previousValue: number | null) {
+  if (
+    currentValue === null ||
+    previousValue === null ||
+    Number.isNaN(currentValue) ||
+    Number.isNaN(previousValue) ||
+    previousValue === 0
+  ) {
+    return null;
+  }
+
+  return ((currentValue - previousValue) / Math.abs(previousValue)) * 100;
 }
 
 function buildDashboardHref(
@@ -665,6 +706,40 @@ export default async function DashboardPage({
   const submittedMetricValuesByPeriodId = new Map(
     submittedMetricValues.map((entry) => [entry.periodId, entry.values] as const)
   );
+  const resolvePageFollowersValue = (item: ReportingListItem | null) => {
+    if (!item) {
+      return null;
+    }
+
+    const sourceState = getDashboardSourceState(item, includeSubmittedPreview) ?? 'approved';
+    const submittedValues = submittedMetricValuesByPeriodId.get(item.id);
+    const enhancement = enhancementByPeriodId.get(item.id);
+    const snapshotValue = getApprovedSnapshotMetric(item, 'page_followers');
+
+    return sourceState === 'submitted_preview'
+      ? submittedValues?.page_followers ?? enhancement?.pageFollowers ?? null
+      : snapshotValue ?? enhancement?.pageFollowers ?? null;
+  };
+  const resolvePageVisitValue = (item: ReportingListItem | null) => {
+    if (!item) {
+      return null;
+    }
+
+    const enhancement = enhancementByPeriodId.get(item.id);
+    return enhancement?.pageVisit ?? null;
+  };
+  const resolveContentCountValue = (item: ReportingListItem | null) => {
+    if (!item) {
+      return null;
+    }
+
+    const sourceState = getDashboardSourceState(item, includeSubmittedPreview) ?? 'approved';
+    const enhancement = enhancementByPeriodId.get(item.id);
+
+    return sourceState === 'submitted_preview'
+      ? enhancement?.contentCountPreview ?? enhancement?.contentCountApprovedSnapshot ?? null
+      : enhancement?.contentCountApprovedSnapshot ?? enhancement?.contentCountPreview ?? null;
+  };
 
   const chartPoints: EngagementVideoChartPoint[] = dashboardItemsForChart.map((item) => {
     const sourceState = getDashboardSourceState(item, includeSubmittedPreview) ?? 'approved';
@@ -925,10 +1000,16 @@ export default async function DashboardPage({
     const selectedEnhancement = enhancementByPeriodId.get(selectedContentPeriod.id);
     selectedIsFirstReportingMonth = selectedEnhancement?.metricCommentaryIsFirstReportingMonth ?? false;
     selectedRemarkItems = selectedEnhancement?.metricCommentaryItems ?? null;
+    const selectedContentReportVersionId =
+      selectedContentSourceState === 'submitted_preview'
+        ? selectedContentPeriod.latestVersionId
+        : selectedContentPeriod.currentApprovedVersionId;
 
     const [topResult, questionResult, competitorResult, previousCompetitorResult] =
       await Promise.allSettled([
-        getTopContentOverview(brandId, selectedContentPeriod.id),
+        getTopContentOverview(brandId, selectedContentPeriod.id, {
+          reportVersionId: selectedContentReportVersionId
+        }),
         getQuestionOverview(brandId, selectedContentPeriod.id),
         getCompetitorOverview(brandId, selectedContentPeriod.id),
         previousVisiblePeriod
@@ -1067,24 +1148,65 @@ export default async function DashboardPage({
   const selectedContentSubmittedMetrics = selectedContentPeriod
     ? submittedMetricValuesByPeriodId.get(selectedContentPeriod.id)
     : null;
+  const selectedPreviousCalendarYear =
+    selectedContentPeriod && selectedContentPeriod.month === 1
+      ? selectedContentPeriod.year - 1
+      : selectedContentPeriod?.year ?? null;
+  const selectedPreviousCalendarMonth =
+    selectedContentPeriod && selectedContentPeriod.month === 1
+      ? 12
+      : selectedContentPeriod
+        ? selectedContentPeriod.month - 1
+        : null;
+  const selectedPreviousCalendarPeriod =
+    selectedPreviousCalendarYear !== null && selectedPreviousCalendarMonth !== null
+      ? (items.find(
+          (item) =>
+            item.year === selectedPreviousCalendarYear &&
+            item.month === selectedPreviousCalendarMonth
+        ) ?? null)
+      : null;
+  const selectedPreviousVisiblePeriod =
+    selectedPreviousCalendarPeriod &&
+    getDashboardSourceState(selectedPreviousCalendarPeriod, includeSubmittedPreview) !== null
+      ? selectedPreviousCalendarPeriod
+      : null;
   const ownBrandFollowerCount =
     selectedContentPeriod && selectedContentSourceState !== null
-      ? selectedContentSourceState === 'submitted_preview'
-        ? selectedContentSubmittedMetrics?.page_followers ?? selectedContentEnhancement?.pageFollowers ?? null
-        : getApprovedSnapshotMetric(selectedContentPeriod, 'page_followers') ??
-          selectedContentEnhancement?.pageFollowers ??
-          null
+      ? resolvePageFollowersValue(selectedContentPeriod)
       : null;
   const ownBrandMonthlyPostCount =
     selectedContentPeriod && selectedContentSourceState !== null
-      ? selectedContentSourceState === 'submitted_preview'
-        ? selectedContentEnhancement?.contentCountPreview ??
-          selectedContentEnhancement?.contentCountApprovedSnapshot ??
-          null
-        : selectedContentEnhancement?.contentCountApprovedSnapshot ??
-          selectedContentEnhancement?.contentCountPreview ??
-          null
+      ? resolveContentCountValue(selectedContentPeriod)
       : null;
+  const previousPageFollowers =
+    selectedContentSourceState !== null ? resolvePageFollowersValue(selectedPreviousVisiblePeriod) : null;
+  const currentPageVisit =
+    selectedContentSourceState !== null ? resolvePageVisitValue(selectedContentPeriod) : null;
+  const previousPageVisit =
+    selectedContentSourceState !== null ? resolvePageVisitValue(selectedPreviousVisiblePeriod) : null;
+  const pageFollowersChangePercent = calculatePercentChange(ownBrandFollowerCount, previousPageFollowers);
+  const pageVisitChangePercent = calculatePercentChange(currentPageVisit, previousPageVisit);
+  const selectedMonthlyMediaBreakdown =
+    selectedTopContentOverview?.monthlySummary?.contentByMediaFormat ?? [];
+  const selectedMonthlyContentObjectiveBreakdown =
+    selectedTopContentOverview?.monthlySummary?.contentByContentObjective ?? [];
+  const selectedMonthlyContentStyleBreakdown =
+    selectedTopContentOverview?.monthlySummary?.contentByContentStyle ?? [];
+  const selectedMonthlyRelatedProductBreakdown =
+    selectedTopContentOverview?.monthlySummary?.contentByRelatedProduct ?? [];
+  const selectedMonthlyCampaignBreakdown =
+    selectedTopContentOverview?.monthlySummary?.contentByCampaign ?? [];
+  const selectedMonthlyContentTotal =
+    selectedTopContentOverview?.monthlySummary?.totalContentCount ?? ownBrandMonthlyPostCount ?? 0;
+  const selectedMonthlyCampaignPostCount =
+    selectedTopContentOverview?.monthlySummary?.campaignPostCount ?? 0;
+  const contentPeriodOptions = filteredItems.map((item) => ({
+    id: item.id,
+    label: `${monthLabel(item.year, item.month)} - ${statusLabelForDashboardSource(
+      getDashboardSourceState(item, includeSubmittedPreview)
+    )}`
+  }));
   const ownBrandSummary =
     selectedContentPeriod && selectedContentSourceState !== null
       ? {
@@ -1640,34 +1762,23 @@ export default async function DashboardPage({
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <form className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]" method="get">
-                    <input name="startYear" type="hidden" value={String(resolvedStartYear)} />
-                    <input name="startMonth" type="hidden" value={String(resolvedStartMonth)} />
-                    <input name="endYear" type="hidden" value={String(resolvedEndYear)} />
-                    <input name="endMonth" type="hidden" value={String(resolvedEndMonth)} />
-                    <input name="view" type="hidden" value="content" />
-                    {includeSubmittedPreview ? (
-                      <input name="includeSubmittedPreview" type="hidden" value="1" />
-                    ) : null}
-                    <select
+                  <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)]">
+                    <DashboardContentPeriodPicker
                       className={selectClassName}
-                      defaultValue={selectedContentPeriod?.id ?? ''}
-                      name="selectedPeriodId"
-                    >
-                      {filteredItems.map((item) => (
-                        <option key={`content-period-${item.id}`} value={item.id}>
-                          {`${monthLabel(item.year, item.month)} - ${statusLabelForDashboardSource(
-                            getDashboardSourceState(item, includeSubmittedPreview)
-                          )}`}
-                        </option>
-                      ))}
-                    </select>
-                    <Button className="h-11" type="submit">
-                      Show month
-                    </Button>
-                  </form>
+                      endMonth={resolvedEndMonth}
+                      endYear={resolvedEndYear}
+                      includeSubmittedPreview={includeSubmittedPreview}
+                      options={contentPeriodOptions}
+                      selectedPeriodId={selectedContentPeriod?.id ?? ''}
+                      startMonth={resolvedStartMonth}
+                      startYear={resolvedStartYear}
+                    />
+                  </div>
 
                   <div className="flex flex-wrap items-center gap-2">
+                    <Button asChild size="sm" variant="outline">
+                      <a href="#dashboard-content-monthly-summary">Monthly summary</a>
+                    </Button>
                     <Button asChild size="sm" variant="outline">
                       <a href="#dashboard-content-metric-remarks">Metric remarks</a>
                     </Button>
@@ -1742,6 +1853,192 @@ export default async function DashboardPage({
 
                     <Card
                       className="border-slate-200 bg-white text-slate-900 shadow-sm dark:border-slate-200 dark:bg-white dark:text-slate-900"
+                      id="dashboard-content-monthly-summary"
+                    >
+                      <CardHeader>
+                        <CardTitle className="flex flex-wrap items-center justify-between gap-3">
+                          <span>Monthly summary for slide</span>
+                          {selectedContentPeriodLabel ? (
+                            <Badge className={contentWhiteBadgeClassName} variant="outline">
+                              {selectedContentPeriodLabel}
+                            </Badge>
+                          ) : null}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <div className="grid gap-3 md:grid-cols-3">
+                          <article className={contentSurfaceCardClassName}>
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="text-xs uppercase tracking-[0.12em] text-slate-500">
+                                Amount of contents
+                              </div>
+                              <span className="rounded-full bg-emerald-100 p-2 text-emerald-700">
+                                <Layers3 className="h-4 w-4" />
+                              </span>
+                            </div>
+                            <div className="mt-2 flex flex-wrap items-end justify-between gap-2">
+                              <div className="text-3xl font-semibold leading-none text-slate-900">
+                                {formatMetricValue(selectedMonthlyContentTotal)}
+                              </div>
+                              <div className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                                <Megaphone className="h-3.5 w-3.5" />
+                                Campaign posts {formatMetricValue(selectedMonthlyCampaignPostCount)}
+                              </div>
+                            </div>
+                            <div className="mt-3 space-y-1.5 text-sm text-slate-700">
+                              {selectedMonthlyMediaBreakdown.length === 0 ? (
+                                <div className="text-slate-500">No media format data.</div>
+                              ) : (
+                                selectedMonthlyMediaBreakdown.map((item) => (
+                                  <div
+                                    className="flex items-center justify-between gap-3"
+                                    key={`media-summary-${item.valueKey}`}
+                                  >
+                                    <span>{item.label}</span>
+                                    <span className="font-medium">{formatMetricValue(item.count)}</span>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                            {selectedMonthlyCampaignBreakdown.length > 0 ? (
+                              <div className="mt-3 border-t border-slate-200 pt-2">
+                                <div className="text-[11px] uppercase tracking-[0.12em] text-slate-500">
+                                  Campaign breakdown
+                                </div>
+                                <div className="mt-1 space-y-1 text-sm text-slate-700">
+                                  {selectedMonthlyCampaignBreakdown.slice(0, 3).map((item) => (
+                                    <div
+                                      className="flex items-center justify-between gap-3"
+                                      key={`campaign-summary-${item.valueKey}`}
+                                    >
+                                      <span>{item.label}</span>
+                                      <span className="font-medium">{formatMetricValue(item.count)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null}
+                          </article>
+
+                          <article className={contentSurfaceCardClassName}>
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="text-xs uppercase tracking-[0.12em] text-slate-500">
+                                Page Visits
+                              </div>
+                              <span className="rounded-full bg-sky-100 p-2 text-sky-700">
+                                <Eye className="h-4 w-4" />
+                              </span>
+                            </div>
+                            <div className="mt-2 text-3xl font-semibold leading-none text-slate-900">
+                              {formatMetricValue(currentPageVisit)}
+                            </div>
+                            <div
+                              className={`mt-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium ${getChangeToneClassName(pageVisitChangePercent)}`}
+                            >
+                              Change: {formatChangePercent(pageVisitChangePercent)} (
+                              {formatSignedDelta(currentPageVisit, previousPageVisit)})
+                            </div>
+                          </article>
+
+                          <article className={contentSurfaceCardClassName}>
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="text-xs uppercase tracking-[0.12em] text-slate-500">
+                                Page Followers
+                              </div>
+                              <span className="rounded-full bg-indigo-100 p-2 text-indigo-700">
+                                <Users className="h-4 w-4" />
+                              </span>
+                            </div>
+                            <div className="mt-2 text-3xl font-semibold leading-none text-slate-900">
+                              {formatMetricValue(ownBrandFollowerCount)}
+                            </div>
+                            <div
+                              className={`mt-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium ${getChangeToneClassName(pageFollowersChangePercent)}`}
+                            >
+                              Change: {formatChangePercent(pageFollowersChangePercent)} (
+                              {formatSignedDelta(ownBrandFollowerCount, previousPageFollowers)})
+                            </div>
+                          </article>
+                        </div>
+
+                        <div className="mt-3 grid gap-3 md:grid-cols-3">
+                          <article className={contentSurfaceCardClassName}>
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="text-xs uppercase tracking-[0.12em] text-slate-500">
+                                Content Objective
+                              </div>
+                              <Target className="h-4 w-4 text-sky-700" />
+                            </div>
+                            <div className="mt-2 space-y-1.5 text-sm text-slate-700">
+                              {selectedMonthlyContentObjectiveBreakdown.length === 0 ? (
+                                <div className="text-slate-500">No content objective data.</div>
+                              ) : (
+                                selectedMonthlyContentObjectiveBreakdown.map((item) => (
+                                  <div
+                                    className="flex items-center justify-between gap-3"
+                                    key={`objective-summary-${item.valueKey}`}
+                                  >
+                                    <span>{item.label}</span>
+                                    <span className="font-medium">{formatMetricValue(item.count)}</span>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          </article>
+
+                          <article className={contentSurfaceCardClassName}>
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="text-xs uppercase tracking-[0.12em] text-slate-500">
+                                Content Style
+                              </div>
+                              <Palette className="h-4 w-4 text-violet-700" />
+                            </div>
+                            <div className="mt-2 space-y-1.5 text-sm text-slate-700">
+                              {selectedMonthlyContentStyleBreakdown.length === 0 ? (
+                                <div className="text-slate-500">No content style data.</div>
+                              ) : (
+                                selectedMonthlyContentStyleBreakdown.map((item) => (
+                                  <div
+                                    className="flex items-center justify-between gap-3"
+                                    key={`style-summary-${item.valueKey}`}
+                                  >
+                                    <span>{item.label}</span>
+                                    <span className="font-medium">{formatMetricValue(item.count)}</span>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          </article>
+
+                          <article className={contentSurfaceCardClassName}>
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="text-xs uppercase tracking-[0.12em] text-slate-500">
+                                Related Product
+                              </div>
+                              <Package className="h-4 w-4 text-orange-700" />
+                            </div>
+                            <div className="mt-2 space-y-1.5 text-sm text-slate-700">
+                              {selectedMonthlyRelatedProductBreakdown.length === 0 ? (
+                                <div className="text-slate-500">No related product data.</div>
+                              ) : (
+                                selectedMonthlyRelatedProductBreakdown.map((item) => (
+                                  <div
+                                    className="flex items-center justify-between gap-3"
+                                    key={`related-product-summary-${item.valueKey}`}
+                                  >
+                                    <span>{item.label}</span>
+                                    <span className="font-medium">{formatMetricValue(item.count)}</span>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          </article>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card
+                      className="border-slate-200 bg-white text-slate-900 shadow-sm dark:border-slate-200 dark:bg-white dark:text-slate-900"
                       id="dashboard-content-metric-remarks"
                     >
                       <CardHeader>
@@ -1794,6 +2091,11 @@ export default async function DashboardPage({
                                 : metric.requiresRemark
                                   ? 'Required'
                                   : 'Optional';
+                              const statusPillClassName = isVideoNoDataMonth
+                                ? 'border-slate-300 bg-slate-100 text-slate-700'
+                                : metric.requiresRemark
+                                  ? 'border-amber-200 bg-amber-50 text-amber-700'
+                                  : 'border-emerald-200 bg-emerald-50 text-emerald-700';
                               const showRequirementDetail =
                                 requirementDetail.length > 0 &&
                                 (!metric.requiresRemark ||
@@ -1802,25 +2104,36 @@ export default async function DashboardPage({
 
                               return (
                                 <article
-                                  className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4"
+                                  className="space-y-3 rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4"
                                   key={`dashboard-content-metric-remark-${metric.key}`}
                                 >
                                   <div className="flex flex-wrap items-center justify-between gap-2">
                                     <div className="space-y-1">
-                                      <h3 className="text-base font-semibold text-slate-900">{metric.label}</h3>
-                                      <div className="text-sm text-slate-600">
+                                      <h3 className="flex items-center gap-2 text-base font-semibold text-slate-900">
+                                        <FileBarChart2 className="h-4 w-4 text-slate-500" />
+                                        {metric.label}
+                                      </h3>
+                                      <div
+                                        className={`text-sm font-medium ${getChangeToneClassName(
+                                          metric.changePercent
+                                        )}`}
+                                      >
                                         Change: {formatChangePercent(metric.changePercent)} (
                                         {formatSignedDelta(metric.currentValue, metric.previousValue)})
                                       </div>
                                     </div>
                                     <div className="flex items-center gap-2">
-                                      <span className="text-sm font-medium text-slate-600">{statusText}</span>
+                                      <span
+                                        className={`rounded-full border px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.08em] ${statusPillClassName}`}
+                                      >
+                                        {statusText}
+                                      </span>
                                       <DashboardRemarkCopyButton disabled={!canCopy} text={displayRemark} />
                                     </div>
                                   </div>
 
-                                  <div className="grid grid-cols-2 gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                                    <div>
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
                                       <div className="text-xs uppercase tracking-[0.12em] text-slate-500">Previous</div>
                                       <div className="mt-1 font-medium text-slate-900">
                                         {metric.hasPreviousValue
@@ -1828,7 +2141,7 @@ export default async function DashboardPage({
                                           : 'No previous'}
                                       </div>
                                     </div>
-                                    <div>
+                                    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
                                       <div className="text-xs uppercase tracking-[0.12em] text-slate-500">Current</div>
                                       <div className="mt-1 font-medium text-slate-900">
                                         {formatMetricValue(metric.currentValue)}
@@ -1836,7 +2149,7 @@ export default async function DashboardPage({
                                     </div>
                                   </div>
 
-                                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                  <div className="rounded-lg border border-slate-200 bg-white p-3">
                                     <div className="text-xs uppercase tracking-[0.12em] text-slate-500">
                                       Remark
                                     </div>

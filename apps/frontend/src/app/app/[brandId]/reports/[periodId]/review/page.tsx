@@ -211,7 +211,7 @@ export default async function ReviewPage({ params }: ReviewPageProps) {
                   canReopenForEditing ? (
                     <div className="space-y-3">
                       <div className="rounded-2xl border border-amber-500/25 bg-amber-500/8 p-4 text-sm leading-6 text-amber-700 dark:text-amber-300">
-                        Submitted and waiting for approver decision. You can request edit access to continue editing.
+                        Submitted and waiting for approver decision. You can request changes to continue editing.
                       </div>
                       <ReopenReportButton
                         brandId={brandId}

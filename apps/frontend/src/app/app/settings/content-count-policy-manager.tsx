@@ -33,8 +33,10 @@ export function ContentCountPolicyManager({
   return (
     <div className="space-y-4">
       <div className="rounded-[20px] border border-border/60 bg-background/60 p-4 text-sm text-muted-foreground">
-        Set how monthly content count is calculated in report summary. Approved reports keep
-        snapshot values and are not recalculated after policy changes.
+        Set how Monthly Summary is calculated in dashboard content. This policy controls both
+        total content count and all Monthly Summary breakdown sections (Media Format, Content
+        Objective, Content Style, Related Product, and Campaign). Approved reports keep snapshot
+        values and are not recalculated after policy changes.
       </div>
 
       <div className="rounded-[20px] border border-border/60 bg-background/60 p-4">
@@ -66,7 +68,8 @@ export function ContentCountPolicyManager({
             <div>
               <div className="font-medium text-foreground">CSV only (Exclude manual rows)</div>
               <div className="text-muted-foreground">
-                Count only source rows imported from CSV.
+                Use only CSV-imported rows for Monthly Summary total and all Monthly Summary
+                breakdown sections.
               </div>
             </div>
           </label>
@@ -81,7 +84,8 @@ export function ContentCountPolicyManager({
             <div>
               <div className="font-medium text-foreground">CSV + manual rows</div>
               <div className="text-muted-foreground">
-                Include manually added rows in monthly content count.
+                Include manually added rows in Monthly Summary total and all Monthly Summary
+                breakdown sections.
               </div>
             </div>
           </label>

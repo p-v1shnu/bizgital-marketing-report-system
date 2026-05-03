@@ -10,18 +10,22 @@ import { useDashboardGlobalKpiControls } from './dashboard-global-kpi-controls';
 type DashboardRemarkCopyButtonProps = {
   text: string;
   disabled?: boolean;
+  label?: string;
+  requirePresentationMode?: boolean;
 };
 
 type CopyState = 'idle' | 'copying' | 'copied' | 'error';
 
 export function DashboardRemarkCopyButton({
   text,
-  disabled = false
+  disabled = false,
+  label = 'Copy remark',
+  requirePresentationMode = true
 }: DashboardRemarkCopyButtonProps) {
   const { presentationMode } = useDashboardGlobalKpiControls();
   const [copyState, setCopyState] = useState<CopyState>('idle');
 
-  if (!presentationMode) {
+  if (requirePresentationMode && !presentationMode) {
     return null;
   }
 
@@ -41,14 +45,14 @@ export function DashboardRemarkCopyButton({
     }
   };
 
-  const label =
+  const buttonLabel =
     copyState === 'copying'
       ? 'Copying...'
       : copyState === 'copied'
         ? 'Copied'
         : copyState === 'error'
           ? 'Retry copy'
-          : 'Copy remark';
+          : label;
 
   return (
     <Button
@@ -67,7 +71,7 @@ export function DashboardRemarkCopyButton({
       ) : (
         <ClipboardCopy className="mr-1.5 size-3.5" />
       )}
-      {label}
+      {buttonLabel}
     </Button>
   );
 }

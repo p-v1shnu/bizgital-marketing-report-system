@@ -6,7 +6,6 @@ import {
   CartesianGrid,
   LabelList,
   Legend,
-  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis
@@ -74,131 +73,131 @@ export function DashboardQuestionCategoryTrendChart({
 
   return (
     <div className={chartContainerClassName} style={chartContainerStyle}>
-      <ResponsiveContainer height="100%" width="100%">
-        <BarChart
-          barCategoryGap="26%"
-          data={points}
-          margin={{
-            top: presentationMode ? 36 : 28,
-            right: presentationMode ? 18 : 12,
-            left: presentationMode ? 2 : -4,
-            bottom: presentationMode ? 16 : 10
-          }}
-        >
-          {showGridLines ? (
-            <CartesianGrid
-              opacity={0.88}
-              stroke={presentationMode ? 'rgba(148,163,184,0.58)' : 'rgba(148,163,184,0.46)'}
-              strokeDasharray="4 4"
-              strokeWidth={1.1}
-            />
-          ) : null}
-          <XAxis
-            axisLine={false}
-            dataKey="label"
-            tick={{ fill: axisTickColor, fontSize: axisTickSize, fontWeight: 500 }}
-            tickLine={false}
+      <BarChart
+        barCategoryGap="26%"
+        data={points}
+        margin={{
+          top: presentationMode ? 36 : 28,
+          right: presentationMode ? 18 : 12,
+          left: presentationMode ? 2 : -4,
+          bottom: presentationMode ? 16 : 10
+        }}
+        responsive
+        style={{ height: '100%', width: '100%' }}
+      >
+        {showGridLines ? (
+          <CartesianGrid
+            opacity={0.88}
+            stroke={presentationMode ? 'rgba(148,163,184,0.58)' : 'rgba(148,163,184,0.46)'}
+            strokeDasharray="4 4"
+            strokeWidth={1.1}
           />
-          <YAxis
-            axisLine={false}
-            tick={{ fill: axisTickColor, fontSize: axisTickSize }}
-            tickFormatter={(value) => formatCount(Number(value ?? 0))}
-            tickLine={false}
-            width={presentationMode ? 78 : 54}
-          />
-          <Tooltip
-            content={({ active, payload }) => {
-              if (!active || !payload?.length) {
-                return null;
-              }
+        ) : null}
+        <XAxis
+          axisLine={false}
+          dataKey="label"
+          tick={{ fill: axisTickColor, fontSize: axisTickSize, fontWeight: 500 }}
+          tickLine={false}
+        />
+        <YAxis
+          axisLine={false}
+          tick={{ fill: axisTickColor, fontSize: axisTickSize }}
+          tickFormatter={(value) => formatCount(Number(value ?? 0))}
+          tickLine={false}
+          width={presentationMode ? 78 : 54}
+        />
+        <Tooltip
+          content={({ active, payload }) => {
+            if (!active || !payload?.length) {
+              return null;
+            }
 
-              const point = payload[0]?.payload as DashboardQuestionCategoryTrendPoint | undefined;
-              if (!point) {
-                return null;
-              }
+            const point = payload[0]?.payload as DashboardQuestionCategoryTrendPoint | undefined;
+            if (!point) {
+              return null;
+            }
 
-              return (
-                <div className="min-w-[260px] rounded-xl border border-border/60 bg-background/95 p-3 shadow-xl backdrop-blur">
-                  <div className="text-sm font-semibold text-foreground">{point.monthYearLabel}</div>
-                  <div className="mt-2 space-y-1.5 text-xs">
-                    {series.map((item) => {
-                      const rawValue = point[item.dataKey];
-                      const value = typeof rawValue === 'number' ? rawValue : 0;
-                      if (value <= 0) {
-                        return null;
-                      }
+            return (
+              <div className="min-w-[260px] rounded-xl border border-border/60 bg-background/95 p-3 shadow-xl backdrop-blur">
+                <div className="text-sm font-semibold text-foreground">{point.monthYearLabel}</div>
+                <div className="mt-2 space-y-1.5 text-xs">
+                  {series.map((item) => {
+                    const rawValue = point[item.dataKey];
+                    const value = typeof rawValue === 'number' ? rawValue : 0;
+                    if (value <= 0) {
+                      return null;
+                    }
 
-                      return (
-                        <div className="flex items-center justify-between gap-4" key={item.id}>
-                          <div className="flex items-center gap-2 text-muted-foreground">
-                            <span
-                              className="inline-block size-2 rounded-full"
-                              style={{ backgroundColor: item.color }}
-                            />
-                            {item.label}
-                          </div>
-                          <div className="font-medium text-foreground">{formatCount(value)}</div>
+                    return (
+                      <div className="flex items-center justify-between gap-4" key={item.id}>
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <span
+                            className="inline-block size-2 rounded-full"
+                            style={{ backgroundColor: item.color }}
+                          />
+                          {item.label}
                         </div>
-                      );
-                    })}
-                  </div>
-                  <div className="mt-3 border-t border-border/60 pt-2 text-xs">
-                    <div className="flex items-center justify-between gap-4">
-                      <span className="text-muted-foreground">Total</span>
-                      <span className="font-semibold text-foreground">
-                        {formatCount(point.total)}
-                      </span>
-                    </div>
-                    {point.statusLabel ? (
-                      <div className="mt-2 flex items-center justify-between gap-4 border-t border-border/60 pt-2">
-                        <span className="text-muted-foreground">Status</span>
-                        <span className="font-medium text-foreground">{point.statusLabel}</span>
+                        <div className="font-medium text-foreground">{formatCount(value)}</div>
                       </div>
-                    ) : null}
-                  </div>
+                    );
+                  })}
                 </div>
-              );
-            }}
-            cursor={{ fill: 'rgba(148,163,184,0.08)' }}
+                <div className="mt-3 border-t border-border/60 pt-2 text-xs">
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-muted-foreground">Total</span>
+                    <span className="font-semibold text-foreground">
+                      {formatCount(point.total)}
+                    </span>
+                  </div>
+                  {point.statusLabel ? (
+                    <div className="mt-2 flex items-center justify-between gap-4 border-t border-border/60 pt-2">
+                      <span className="text-muted-foreground">Status</span>
+                      <span className="font-medium text-foreground">{point.statusLabel}</span>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            );
+          }}
+          cursor={{ fill: 'rgba(148,163,184,0.08)' }}
+        />
+        {showLegend ? (
+          <Legend
+            align="right"
+            formatter={(value) => (
+              <span className="font-medium" style={{ color: axisTickColor, fontSize: legendTextSize }}>
+                {value}
+              </span>
+            )}
+            iconSize={presentationMode ? 11 : 9}
+            verticalAlign="top"
           />
-          {showLegend ? (
-            <Legend
-              align="right"
-              formatter={(value) => (
-                <span className="font-medium" style={{ color: axisTickColor, fontSize: legendTextSize }}>
-                  {value}
-                </span>
-              )}
-              iconSize={presentationMode ? 11 : 9}
-              verticalAlign="top"
-            />
-          ) : null}
-          {series.map((item, index) => (
-            <Bar
-              dataKey={item.dataKey}
-              fill={item.color}
-              key={item.id}
-              name={item.label}
-              radius={index === series.length - 1 ? [6, 6, 0, 0] : [0, 0, 0, 0]}
-              stackId="question-total"
-            >
-              {showValueLabels ? (
-                <LabelList
-                  dataKey={item.dataKey}
-                  fill="#334155"
-                  fontSize={valueLabelFontSize}
-                  fontWeight={600}
-                  formatter={(value) => {
-                    const numericValue = Number(value ?? 0);
-                    return numericValue > 0 ? formatCount(numericValue) : '';
-                  }}
-                  position="insideStart"
-                />
-              ) : null}
-            </Bar>
-          ))}
-        </BarChart>
-      </ResponsiveContainer>
+        ) : null}
+        {series.map((item, index) => (
+          <Bar
+            dataKey={item.dataKey}
+            fill={item.color}
+            key={item.id}
+            name={item.label}
+            radius={index === series.length - 1 ? [6, 6, 0, 0] : [0, 0, 0, 0]}
+            stackId="question-total"
+          >
+            {showValueLabels ? (
+              <LabelList
+                dataKey={item.dataKey}
+                fill="#334155"
+                fontSize={valueLabelFontSize}
+                fontWeight={600}
+                formatter={(value) => {
+                  const numericValue = Number(value ?? 0);
+                  return numericValue > 0 ? formatCount(numericValue) : '';
+                }}
+                position="insideStart"
+              />
+            ) : null}
+          </Bar>
+        ))}
+      </BarChart>
     </div>
   );
 }

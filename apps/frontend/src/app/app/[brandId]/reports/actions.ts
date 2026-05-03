@@ -398,14 +398,30 @@ export async function reopenForEditingAction(formData: FormData) {
   const year = String(formData.get('year') ?? '');
   const periodId = String(formData.get('periodId') ?? '');
   const versionId = String(formData.get('versionId') ?? '');
+  const reason = String(formData.get('reason') ?? '').trim();
   const redirectTarget = resolveActionRedirectTarget(
     String(formData.get('redirectTo') ?? 'reports')
   );
 
+  if (!reason) {
+    redirectAfterPeriodAction({
+      brandId,
+      year,
+      periodId,
+      target: redirectTarget,
+      params: {
+        error: 'Please enter at least 1 character for the request note.'
+      }
+    });
+  }
+
   try {
     await assertReportCapability(brandId, 'create');
     const actor = await getActionActorPayload();
-    await postReportingAction(`/report-versions/${versionId}/reopen`, actor);
+    await postReportingAction(`/report-versions/${versionId}/reopen`, {
+      reason,
+      ...actor
+    });
     const autoRefreshCompleted =
       periodId ? await tryRefreshDerivedSnapshots(brandId, periodId) : false;
     revalidateBrandRealtimeSurfaces(brandId, periodId);

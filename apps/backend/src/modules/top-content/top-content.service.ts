@@ -95,21 +95,32 @@ type DatasetMetricValuesByRow = {
   contentStyleValueKeyByRowNumber: Map<number, string | null>;
 };
 
-type ContentStyleOptionLookup = {
+type DropdownOptionLookup = {
   valueKeySet: Set<string>;
   valueKeyByNormalizedLabel: Map<string, string>;
+  labelByValueKey: Map<string, string>;
 };
+type ContentStyleOptionLookup = DropdownOptionLookup;
+type MediaFormatOptionLookup = DropdownOptionLookup;
+type ContentObjectiveOptionLookup = DropdownOptionLookup;
+type RelatedProductOptionLookup = DropdownOptionLookup;
 
 const DEFAULT_REQUIRED_SOURCE_LABELS_BY_SLOT: Record<TopContentSlotKey, string> = {
   top_views: 'Views',
   top_engagement: 'Engagement',
-  top_reach: 'Reach'
+  top_reach: 'Viewers'
 };
 
 const DEFAULT_ENGAGEMENT_SOURCE_LABEL_A = 'Reactions, comments and shares';
 const DEFAULT_ENGAGEMENT_SOURCE_LABEL_B = 'Total clicks';
 const DEFAULT_PERMALINK_LABEL = 'Permalink';
 const DEFAULT_CONTENT_STYLE_LABEL = 'Content Style';
+const DEFAULT_CONTENT_OBJECTIVE_LABEL = 'Content Objective';
+const DEFAULT_RELATED_PRODUCT_LABEL = 'Related Product';
+const DEFAULT_MEDIA_FORMAT_LABEL = 'Media Format';
+const DEFAULT_CAMPAIGN_BASE_LABEL = 'Is campaign content';
+const DEFAULT_CAMPAIGN_NAME_LABEL = 'Campaign Name';
+const UNASSIGN_VALUE_KEY = 'unassign';
 
 type TopContentCountPolicySummary = {
   mode: ContentCountPolicyMode;
@@ -146,7 +157,8 @@ export class TopContentService {
 
   async getOverview(
     brandCode: string,
-    periodId: string
+    periodId: string,
+    reportVersionId?: string | null
   ): Promise<TopContentOverviewResponse> {
     const brand = await this.brandsService.getBrandByCodeOrThrow(brandCode);
     const period = await this.prisma.reportingPeriod.findUnique({
@@ -168,10 +180,21 @@ export class TopContentService {
       period.reportVersions.find((version) => version.workflowState === ReportWorkflowState.draft) ??
       null;
     const latestVersion = period.reportVersions[0] ?? null;
-    const targetVersion = currentDraft ?? latestVersion;
-    const dataSourcePolicy = await this.columnConfigService.getTopContentDataSourcePolicy();
+    const explicitTargetVersion = reportVersionId
+      ? period.reportVersions.find((version) => version.id === reportVersionId) ?? null
+      : null;
+    if (reportVersionId && !explicitTargetVersion) {
+      throw new NotFoundException('Requested report version was not found for this period.');
+    }
 
-    const baseResponse: Omit<TopContentOverviewResponse, 'readiness' | 'generation' | 'dataSourcePolicy' | 'cards'> = {
+    const targetVersion = explicitTargetVersion ?? currentDraft ?? latestVersion;
+    const dataSourcePolicy = await this.columnConfigService.getTopContentDataSourcePolicy();
+    const contentCountPolicy = await this.columnConfigService.getContentCountPolicy();
+
+    const baseResponse: Omit<
+      TopContentOverviewResponse,
+      'readiness' | 'generation' | 'dataSourcePolicy' | 'monthlySummary' | 'cards'
+    > = {
       brand: {
         id: brand.id,
         code: brand.code,
@@ -210,6 +233,16 @@ export class TopContentService {
           label: dataSourcePolicy.label,
           excludeManualRows: dataSourcePolicy.excludeManualRows
         },
+        monthlySummary: {
+          contentByMediaFormat: [],
+          contentByContentObjective: [],
+          contentByContentStyle: [],
+          contentByRelatedProduct: [],
+          contentByCampaign: [],
+          totalContentCount: 0,
+          campaignPostCount: 0,
+          unassignCount: 0
+        },
         cards: []
       };
     }
@@ -225,6 +258,10 @@ export class TopContentService {
       {
         skipRefresh: true
       }
+    );
+    const monthlySummary = await this.buildMonthlySummaryForReportVersion(
+      targetVersion.id,
+      contentCountPolicy
     );
 
     return {
@@ -245,6 +282,7 @@ export class TopContentService {
         label: dataSourcePolicy.label,
         excludeManualRows: dataSourcePolicy.excludeManualRows
       },
+      monthlySummary,
       cards: currentness.cards
     };
   }
@@ -1306,7 +1344,13 @@ export class TopContentService {
       );
 
     const viewsIndex = findColumnIndex(requiredSourceLabelsBySlot.top_views);
-    const reachIndex = findColumnIndex(requiredSourceLabelsBySlot.top_reach);
+    const reachIndex = findColumnIndexAny([
+      requiredSourceLabelsBySlot.top_reach,
+      'Viewers',
+      'Total Viewers',
+      'Reach',
+      'Total Reach'
+    ]);
     const engagementIndex = findColumnIndex(requiredSourceLabelsBySlot.top_engagement);
     const permalinkIndex = findColumnIndexAny([DEFAULT_PERMALINK_LABEL, 'Post URL']);
     const publishedAtIndex = findColumnIndexAny([
@@ -1528,6 +1572,165 @@ export class TopContentService {
     return map;
   }
 
+  private async getManualMediaFormatValueKeyByRow(reportVersionId: string) {
+    const setting = await this.prisma.globalUiSetting.findUnique({
+      where: {
+        settingKey: toManualSourceRowsSettingKey(reportVersionId)
+      },
+      select: {
+        valueJson: true
+      }
+    });
+    const rowsByRowNumber = parseManualSourceRowsSettingPayload(setting?.valueJson ?? null);
+    const map = new Map<number, string | null>();
+    const mediaFormatLookup = await this.getMediaFormatOptionLookup();
+
+    for (const [rowNumber, columns] of Object.entries(rowsByRowNumber)) {
+      const parsedRowNumber = Number(rowNumber);
+      if (!Number.isInteger(parsedRowNumber) || parsedRowNumber < 1) {
+        continue;
+      }
+
+      const mediaFormatEntry = Object.entries(columns).find(([columnLabel]) =>
+        this.isMediaFormatColumnLabel(columnLabel)
+      );
+      map.set(
+        parsedRowNumber,
+        this.resolveMediaFormatValueKey({
+          rawValues: Object.values(columns),
+          explicitValue: mediaFormatEntry ? mediaFormatEntry[1] : null,
+          lookup: mediaFormatLookup
+        })
+      );
+    }
+
+    return map;
+  }
+
+  private async getManualContentObjectiveValueKeyByRow(reportVersionId: string) {
+    const setting = await this.prisma.globalUiSetting.findUnique({
+      where: {
+        settingKey: toManualSourceRowsSettingKey(reportVersionId)
+      },
+      select: {
+        valueJson: true
+      }
+    });
+    const rowsByRowNumber = parseManualSourceRowsSettingPayload(setting?.valueJson ?? null);
+    const map = new Map<number, string | null>();
+    const contentObjectiveLookup = await this.getContentObjectiveOptionLookup();
+
+    for (const [rowNumber, columns] of Object.entries(rowsByRowNumber)) {
+      const parsedRowNumber = Number(rowNumber);
+      if (!Number.isInteger(parsedRowNumber) || parsedRowNumber < 1) {
+        continue;
+      }
+
+      const contentObjectiveEntry = Object.entries(columns).find(([columnLabel]) =>
+        this.isContentObjectiveColumnLabel(columnLabel)
+      );
+      map.set(
+        parsedRowNumber,
+        this.resolveDropdownValueKey({
+          rawValues: Object.values(columns),
+          explicitValue: contentObjectiveEntry ? contentObjectiveEntry[1] : null,
+          lookup: contentObjectiveLookup
+        })
+      );
+    }
+
+    return map;
+  }
+
+  private async getManualRelatedProductValueKeyByRow(reportVersionId: string) {
+    const setting = await this.prisma.globalUiSetting.findUnique({
+      where: {
+        settingKey: toManualSourceRowsSettingKey(reportVersionId)
+      },
+      select: {
+        valueJson: true
+      }
+    });
+    const rowsByRowNumber = parseManualSourceRowsSettingPayload(setting?.valueJson ?? null);
+    const map = new Map<number, string | null>();
+    const relatedProductLookup = await this.getRelatedProductOptionLookup();
+
+    for (const [rowNumber, columns] of Object.entries(rowsByRowNumber)) {
+      const parsedRowNumber = Number(rowNumber);
+      if (!Number.isInteger(parsedRowNumber) || parsedRowNumber < 1) {
+        continue;
+      }
+
+      const relatedProductEntry = Object.entries(columns).find(([columnLabel]) =>
+        this.isRelatedProductColumnLabel(columnLabel)
+      );
+      map.set(
+        parsedRowNumber,
+        this.resolveDropdownValueKey({
+          rawValues: Object.values(columns),
+          explicitValue: relatedProductEntry ? relatedProductEntry[1] : null,
+          lookup: relatedProductLookup
+        })
+      );
+    }
+
+    return map;
+  }
+
+  private async getManualCampaignBaseByRow(reportVersionId: string) {
+    const setting = await this.prisma.globalUiSetting.findUnique({
+      where: {
+        settingKey: toManualSourceRowsSettingKey(reportVersionId)
+      },
+      select: {
+        valueJson: true
+      }
+    });
+    const rowsByRowNumber = parseManualSourceRowsSettingPayload(setting?.valueJson ?? null);
+    const map = new Map<number, boolean | null>();
+
+    for (const [rowNumber, columns] of Object.entries(rowsByRowNumber)) {
+      const parsedRowNumber = Number(rowNumber);
+      if (!Number.isInteger(parsedRowNumber) || parsedRowNumber < 1) {
+        continue;
+      }
+
+      const campaignBaseEntry = Object.entries(columns).find(([columnLabel]) =>
+        this.isCampaignBaseColumnLabel(columnLabel)
+      );
+      map.set(parsedRowNumber, this.parseCampaignBaseValue(campaignBaseEntry?.[1] ?? null));
+    }
+
+    return map;
+  }
+
+  private async getManualCampaignNameByRow(reportVersionId: string) {
+    const setting = await this.prisma.globalUiSetting.findUnique({
+      where: {
+        settingKey: toManualSourceRowsSettingKey(reportVersionId)
+      },
+      select: {
+        valueJson: true
+      }
+    });
+    const rowsByRowNumber = parseManualSourceRowsSettingPayload(setting?.valueJson ?? null);
+    const map = new Map<number, string | null>();
+
+    for (const [rowNumber, columns] of Object.entries(rowsByRowNumber)) {
+      const parsedRowNumber = Number(rowNumber);
+      if (!Number.isInteger(parsedRowNumber) || parsedRowNumber < 1) {
+        continue;
+      }
+
+      const campaignNameEntry = Object.entries(columns).find(([columnLabel]) =>
+        this.isCampaignNameColumnLabel(columnLabel)
+      );
+      map.set(parsedRowNumber, this.normalizeTextOrNull(campaignNameEntry?.[1] ?? null));
+    }
+
+    return map;
+  }
+
   private mergeMapWithFallback(
     primary: Map<number, string | null>,
     fallback: Map<number, string | null> | null
@@ -1726,6 +1929,353 @@ export class TopContentService {
     };
   }
 
+  private async buildMonthlySummaryForReportVersion(
+    reportVersionId: string,
+    policy: ContentCountPolicyResponse
+  ): Promise<TopContentOverviewResponse['monthlySummary']> {
+    const [
+      latestImportJob,
+      datasetRows,
+      manualMediaFormatByRowNumber,
+      manualContentStyleByRowNumber,
+      manualContentObjectiveByRowNumber,
+      manualRelatedProductByRowNumber,
+      manualCampaignBaseByRowNumber,
+      manualCampaignNameByRowNumber,
+      mediaFormatLookup,
+      contentStyleLookup,
+      contentObjectiveLookup,
+      relatedProductLookup,
+      contentCount
+    ] =
+      await Promise.all([
+        this.prisma.importJob.findFirst({
+          where: {
+            reportVersionId
+          },
+          orderBy: {
+            createdAt: 'desc'
+          },
+          select: {
+            snapshotSourceType: true,
+            snapshotSheetName: true,
+            snapshotHeaderRow: true,
+            snapshotDataRows: true
+          }
+        }),
+        this.prisma.datasetRow.findMany({
+          where: {
+            reportVersionId
+          },
+          select: {
+            sourceRowNumber: true
+          }
+        }),
+        this.getManualMediaFormatValueKeyByRow(reportVersionId),
+        this.getManualContentStyleValueKeyByRow(reportVersionId),
+        this.getManualContentObjectiveValueKeyByRow(reportVersionId),
+        this.getManualRelatedProductValueKeyByRow(reportVersionId),
+        this.getManualCampaignBaseByRow(reportVersionId),
+        this.getManualCampaignNameByRow(reportVersionId),
+        this.getMediaFormatOptionLookup(),
+        this.getContentStyleOptionLookup(),
+        this.getContentObjectiveOptionLookup(),
+        this.getRelatedProductOptionLookup(),
+        this.buildContentCountSummary(reportVersionId, policy)
+      ]);
+    const headerCandidatesLookup = await this.getHeaderCandidatesLookup();
+    const snapshot = latestImportJob ? readImportJobSnapshot(latestImportJob) : null;
+    const csvRowCount = snapshot?.dataRows.length ?? 0;
+
+    const csvMediaFormatByRowNumber = new Map<number, string | null>();
+    const csvContentStyleByRowNumber = new Map<number, string | null>();
+    const csvContentObjectiveByRowNumber = new Map<number, string | null>();
+    const csvRelatedProductByRowNumber = new Map<number, string | null>();
+    const csvCampaignBaseByRowNumber = new Map<number, boolean | null>();
+    const csvCampaignNameByRowNumber = new Map<number, string | null>();
+    if (snapshot) {
+      const normalizedHeaders = snapshot.headerRow.map((header) =>
+        this.normalizeMetricLabel(header)
+      );
+      const findColumnIndex = (label: string) => {
+        const candidates = this.resolveHeaderCandidates([label], headerCandidatesLookup);
+        for (const candidate of candidates) {
+          const index = normalizedHeaders.findIndex(
+            (header) => header === this.normalizeMetricLabel(candidate)
+          );
+          if (index >= 0) {
+            return index;
+          }
+        }
+
+        return -1;
+      };
+      const findColumnIndexAny = (labels: string[]) =>
+        this.resolveHeaderCandidates(labels, headerCandidatesLookup).reduce(
+          (foundIndex, label) =>
+            foundIndex >= 0 ? foundIndex : findColumnIndex(label),
+          -1
+        );
+      const mediaFormatIndex = findColumnIndexAny([
+        DEFAULT_MEDIA_FORMAT_LABEL,
+        'Media format',
+        'Media type',
+        'Post format',
+        'Format'
+      ]);
+      const contentStyleIndex = findColumnIndexAny([
+        DEFAULT_CONTENT_STYLE_LABEL,
+        'Content style',
+        'Custom labels',
+        'Data comment'
+      ]);
+      const contentObjectiveIndex = findColumnIndexAny([
+        DEFAULT_CONTENT_OBJECTIVE_LABEL,
+        'Content objective',
+        'Objective',
+        'Post objective'
+      ]);
+      const relatedProductIndex = findColumnIndexAny([
+        DEFAULT_RELATED_PRODUCT_LABEL,
+        'Related product',
+        'Product'
+      ]);
+      const campaignBaseIndex = findColumnIndexAny([
+        DEFAULT_CAMPAIGN_BASE_LABEL,
+        'Campaign content',
+        'Is campaign'
+      ]);
+      const campaignNameIndex = findColumnIndexAny([
+        DEFAULT_CAMPAIGN_NAME_LABEL,
+        'Campaign'
+      ]);
+
+      snapshot.dataRows.forEach((row, index) => {
+        const rowNumber = index + 1;
+        const mediaFormatExplicitValue =
+          mediaFormatIndex >= 0 ? row[mediaFormatIndex] ?? null : null;
+        const mediaFormatValueKey = this.resolveMediaFormatValueKey({
+          rawValues: row,
+          explicitValue: mediaFormatExplicitValue,
+          lookup: mediaFormatLookup
+        });
+        csvMediaFormatByRowNumber.set(rowNumber, mediaFormatValueKey);
+
+        const contentStyleExplicitValue =
+          contentStyleIndex >= 0 ? row[contentStyleIndex] ?? null : null;
+        const contentStyleValueKey = this.resolveContentStyleValueKey({
+          rawValues: row,
+          explicitValue: contentStyleExplicitValue,
+          lookup: contentStyleLookup
+        });
+        csvContentStyleByRowNumber.set(rowNumber, contentStyleValueKey);
+
+        const contentObjectiveExplicitValue =
+          contentObjectiveIndex >= 0 ? row[contentObjectiveIndex] ?? null : null;
+        const contentObjectiveValueKey = this.resolveDropdownValueKey({
+          rawValues: [contentObjectiveExplicitValue],
+          explicitValue: contentObjectiveExplicitValue,
+          lookup: contentObjectiveLookup
+        });
+        csvContentObjectiveByRowNumber.set(rowNumber, contentObjectiveValueKey);
+
+        const relatedProductExplicitValue =
+          relatedProductIndex >= 0 ? row[relatedProductIndex] ?? null : null;
+        const relatedProductValueKey = this.resolveDropdownValueKey({
+          rawValues: [relatedProductExplicitValue],
+          explicitValue: relatedProductExplicitValue,
+          lookup: relatedProductLookup
+        });
+        csvRelatedProductByRowNumber.set(rowNumber, relatedProductValueKey);
+
+        const campaignBaseExplicitValue =
+          campaignBaseIndex >= 0 ? row[campaignBaseIndex] ?? null : null;
+        csvCampaignBaseByRowNumber.set(
+          rowNumber,
+          this.parseCampaignBaseValue(campaignBaseExplicitValue)
+        );
+
+        const campaignNameExplicitValue =
+          campaignNameIndex >= 0 ? row[campaignNameIndex] ?? null : null;
+        csvCampaignNameByRowNumber.set(
+          rowNumber,
+          this.normalizeTextOrNull(campaignNameExplicitValue)
+        );
+      });
+    }
+
+    const includedRowNumbers = (() => {
+      if (policy.mode === 'csv_only') {
+        return Array.from({ length: csvRowCount }, (_, index) => index + 1);
+      }
+
+      const manualRows = datasetRows
+        .map((row) => row.sourceRowNumber)
+        .filter((rowNumber) => rowNumber > csvRowCount)
+        .sort((left, right) => left - right);
+
+      return [
+        ...Array.from({ length: csvRowCount }, (_, index) => index + 1),
+        ...manualRows
+      ];
+    })();
+
+    const mediaFormatBreakdown = this.buildCategoricalBreakdown({
+      includedRowNumbers,
+      csvRowCount,
+      manualByRowNumber: manualMediaFormatByRowNumber,
+      csvByRowNumber: csvMediaFormatByRowNumber,
+      lookup: mediaFormatLookup
+    });
+    const contentStyleBreakdown = this.buildCategoricalBreakdown({
+      includedRowNumbers,
+      csvRowCount,
+      manualByRowNumber: manualContentStyleByRowNumber,
+      csvByRowNumber: csvContentStyleByRowNumber,
+      lookup: contentStyleLookup
+    });
+    const contentObjectiveBreakdown = this.buildCategoricalBreakdown({
+      includedRowNumbers,
+      csvRowCount,
+      manualByRowNumber: manualContentObjectiveByRowNumber,
+      csvByRowNumber: csvContentObjectiveByRowNumber,
+      lookup: contentObjectiveLookup
+    });
+    const relatedProductBreakdown = this.buildCategoricalBreakdown({
+      includedRowNumbers,
+      csvRowCount,
+      manualByRowNumber: manualRelatedProductByRowNumber,
+      csvByRowNumber: csvRelatedProductByRowNumber,
+      lookup: relatedProductLookup
+    });
+    const campaignBreakdown = this.buildCampaignBreakdown({
+      includedRowNumbers,
+      csvRowCount,
+      manualCampaignBaseByRowNumber,
+      manualCampaignNameByRowNumber,
+      csvCampaignBaseByRowNumber,
+      csvCampaignNameByRowNumber
+    });
+
+    return {
+      contentByMediaFormat: mediaFormatBreakdown.items,
+      contentByContentObjective: contentObjectiveBreakdown.items,
+      contentByContentStyle: contentStyleBreakdown.items,
+      contentByRelatedProduct: relatedProductBreakdown.items,
+      contentByCampaign: campaignBreakdown.items,
+      totalContentCount: contentCount.countedContentCount,
+      campaignPostCount: campaignBreakdown.campaignPostCount,
+      unassignCount: mediaFormatBreakdown.unassignCount
+    };
+  }
+
+  private buildCampaignBreakdown(input: {
+    includedRowNumbers: number[];
+    csvRowCount: number;
+    manualCampaignBaseByRowNumber: Map<number, boolean | null>;
+    manualCampaignNameByRowNumber: Map<number, string | null>;
+    csvCampaignBaseByRowNumber: Map<number, boolean | null>;
+    csvCampaignNameByRowNumber: Map<number, string | null>;
+  }) {
+    let campaignPostCount = 0;
+    const countByCampaign = new Map<string, number>();
+
+    for (const rowNumber of input.includedRowNumbers) {
+      const manualCampaignBase = input.manualCampaignBaseByRowNumber.get(rowNumber) ?? null;
+      const csvCampaignBase =
+        rowNumber <= input.csvRowCount
+          ? input.csvCampaignBaseByRowNumber.get(rowNumber) ?? null
+          : null;
+
+      const manualCampaignName = this.normalizeTextOrNull(
+        input.manualCampaignNameByRowNumber.get(rowNumber) ?? null
+      );
+      const csvCampaignName =
+        rowNumber <= input.csvRowCount
+          ? this.normalizeTextOrNull(input.csvCampaignNameByRowNumber.get(rowNumber) ?? null)
+          : null;
+
+      const campaignName = manualCampaignName ?? csvCampaignName;
+      const effectiveCampaignBase = manualCampaignBase ?? csvCampaignBase;
+      const isCampaignPost =
+        campaignName !== null || effectiveCampaignBase === true;
+
+      if (!isCampaignPost) {
+        continue;
+      }
+
+      campaignPostCount += 1;
+      const campaignValueKey = this.toOptionValueKey(campaignName) ?? UNASSIGN_VALUE_KEY;
+      countByCampaign.set(campaignValueKey, (countByCampaign.get(campaignValueKey) ?? 0) + 1);
+    }
+
+    const items = Array.from(countByCampaign.entries())
+      .map(([valueKey, count]) => ({
+        valueKey,
+        count,
+        label:
+          valueKey === UNASSIGN_VALUE_KEY ? 'Unassign' : this.toTitleCaseLabelFromValueKey(valueKey)
+      }))
+      .sort((left, right) => {
+        if (right.count !== left.count) {
+          return right.count - left.count;
+        }
+        return left.label.localeCompare(right.label);
+      });
+
+    return {
+      campaignPostCount,
+      items
+    };
+  }
+
+  private buildCategoricalBreakdown(input: {
+    includedRowNumbers: number[];
+    csvRowCount: number;
+    manualByRowNumber: Map<number, string | null>;
+    csvByRowNumber: Map<number, string | null>;
+    lookup: DropdownOptionLookup;
+  }) {
+    const countByValueKey = new Map<string, number>();
+    let unassignCount = 0;
+
+    for (const rowNumber of input.includedRowNumbers) {
+      const manualOverrideValueKey = input.manualByRowNumber.get(rowNumber) ?? null;
+      const csvSnapshotValueKey =
+        rowNumber <= input.csvRowCount ? input.csvByRowNumber.get(rowNumber) ?? null : null;
+      const rawValueKey = manualOverrideValueKey ?? csvSnapshotValueKey;
+      const valueKey = this.normalizeTextOrNull(rawValueKey) ?? UNASSIGN_VALUE_KEY;
+
+      if (valueKey === UNASSIGN_VALUE_KEY) {
+        unassignCount += 1;
+      }
+
+      countByValueKey.set(valueKey, (countByValueKey.get(valueKey) ?? 0) + 1);
+    }
+
+    const items = Array.from(countByValueKey.entries())
+      .map(([valueKey, count]) => ({
+        valueKey,
+        count,
+        label:
+          valueKey === UNASSIGN_VALUE_KEY
+            ? 'Unassign'
+            : input.lookup.labelByValueKey.get(valueKey) ??
+              this.toTitleCaseLabelFromValueKey(valueKey)
+      }))
+      .sort((left, right) => {
+        if (right.count !== left.count) {
+          return right.count - left.count;
+        }
+        return left.label.localeCompare(right.label);
+      });
+
+    return {
+      items,
+      unassignCount
+    };
+  }
+
   private resolveContentStyleValueKey(input: {
     rawValues: Array<string | null | undefined>;
     explicitValue: string | null | undefined;
@@ -1809,7 +2359,77 @@ export class TopContentService {
           option.label.toLowerCase().replace(/\s+/g, ' ').trim(),
           option.valueKey
         ])
-      )
+      ),
+      labelByValueKey: new Map(options.map((option) => [option.valueKey, option.label]))
+    };
+  }
+
+  private async getMediaFormatOptionLookup(): Promise<MediaFormatOptionLookup> {
+    const options = await this.prisma.globalCompanyFormatOption.findMany({
+      where: {
+        fieldKey: BrandDropdownFieldKey.media_format
+      },
+      select: {
+        valueKey: true,
+        label: true
+      }
+    });
+
+    return {
+      valueKeySet: new Set(options.map((option) => option.valueKey)),
+      valueKeyByNormalizedLabel: new Map(
+        options.map((option) => [
+          option.label.toLowerCase().replace(/\s+/g, ' ').trim(),
+          option.valueKey
+        ])
+      ),
+      labelByValueKey: new Map(options.map((option) => [option.valueKey, option.label]))
+    };
+  }
+
+  private async getContentObjectiveOptionLookup(): Promise<ContentObjectiveOptionLookup> {
+    const options = await this.prisma.globalCompanyFormatOption.findMany({
+      where: {
+        fieldKey: BrandDropdownFieldKey.content_objective
+      },
+      select: {
+        valueKey: true,
+        label: true
+      }
+    });
+
+    return {
+      valueKeySet: new Set(options.map((option) => option.valueKey)),
+      valueKeyByNormalizedLabel: new Map(
+        options.map((option) => [
+          option.label.toLowerCase().replace(/\s+/g, ' ').trim(),
+          option.valueKey
+        ])
+      ),
+      labelByValueKey: new Map(options.map((option) => [option.valueKey, option.label]))
+    };
+  }
+
+  private async getRelatedProductOptionLookup(): Promise<RelatedProductOptionLookup> {
+    const options = await this.prisma.globalCompanyFormatOption.findMany({
+      where: {
+        fieldKey: BrandDropdownFieldKey.related_product
+      },
+      select: {
+        valueKey: true,
+        label: true
+      }
+    });
+
+    return {
+      valueKeySet: new Set(options.map((option) => option.valueKey)),
+      valueKeyByNormalizedLabel: new Map(
+        options.map((option) => [
+          option.label.toLowerCase().replace(/\s+/g, ' ').trim(),
+          option.valueKey
+        ])
+      ),
+      labelByValueKey: new Map(options.map((option) => [option.valueKey, option.label]))
     };
   }
 
@@ -1829,6 +2449,191 @@ export class TopContentService {
       normalized.includes('custom label') ||
       normalized.includes('data comment')
     );
+  }
+
+  private isMediaFormatColumnLabel(rawLabel: string | null | undefined) {
+    const normalized = String(rawLabel ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .replace(/\s+/g, ' ');
+
+    if (!normalized) {
+      return false;
+    }
+
+    return (
+      normalized.includes('media format') ||
+      normalized.includes('media type') ||
+      normalized.includes('post format') ||
+      normalized === 'format'
+    );
+  }
+
+  private isContentObjectiveColumnLabel(rawLabel: string | null | undefined) {
+    const normalized = String(rawLabel ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .replace(/\s+/g, ' ');
+
+    if (!normalized) {
+      return false;
+    }
+
+    return (
+      normalized.includes('content objective') ||
+      normalized.includes('post objective') ||
+      normalized === 'objective'
+    );
+  }
+
+  private isRelatedProductColumnLabel(rawLabel: string | null | undefined) {
+    const normalized = String(rawLabel ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .replace(/\s+/g, ' ');
+
+    if (!normalized) {
+      return false;
+    }
+
+    return (
+      normalized.includes('related product') ||
+      normalized === 'product'
+    );
+  }
+
+  private isCampaignBaseColumnLabel(rawLabel: string | null | undefined) {
+    const normalized = String(rawLabel ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .replace(/\s+/g, ' ');
+
+    if (!normalized) {
+      return false;
+    }
+
+    return (
+      normalized.includes('is campaign content') ||
+      normalized.includes('campaign content') ||
+      normalized === 'is campaign'
+    );
+  }
+
+  private isCampaignNameColumnLabel(rawLabel: string | null | undefined) {
+    const normalized = String(rawLabel ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .replace(/\s+/g, ' ');
+
+    if (!normalized) {
+      return false;
+    }
+
+    return (
+      normalized.includes('campaign name') ||
+      normalized === 'campaign'
+    );
+  }
+
+  private parseCampaignBaseValue(rawValue: string | null | undefined) {
+    const normalized = String(rawValue ?? '')
+      .trim()
+      .toLowerCase();
+    if (!normalized) {
+      return null;
+    }
+
+    if (
+      normalized === 'true' ||
+      normalized === 'yes' ||
+      normalized === 'y' ||
+      normalized === '1'
+    ) {
+      return true;
+    }
+
+    if (
+      normalized === 'false' ||
+      normalized === 'no' ||
+      normalized === 'n' ||
+      normalized === '0'
+    ) {
+      return false;
+    }
+
+    return null;
+  }
+
+  private resolveMediaFormatValueKey(input: {
+    rawValues: Array<string | null | undefined>;
+    explicitValue: string | null | undefined;
+    lookup: MediaFormatOptionLookup;
+  }) {
+    return this.resolveDropdownValueKey(input);
+  }
+
+  private resolveDropdownValueKey(input: {
+    rawValues: Array<string | null | undefined>;
+    explicitValue: string | null | undefined;
+    lookup: DropdownOptionLookup;
+  }) {
+    const explicitCandidates = this.toContentStyleCandidates(input.explicitValue);
+    for (const candidate of explicitCandidates) {
+      const matched = this.matchDropdownCandidate(candidate, input.lookup);
+      if (matched) {
+        return matched;
+      }
+    }
+
+    const explicitFallbackValueKey = this.toOptionValueKey(input.explicitValue);
+    if (explicitFallbackValueKey) {
+      return explicitFallbackValueKey;
+    }
+
+    for (const rawValue of input.rawValues) {
+      const candidates = this.toContentStyleCandidates(rawValue);
+      for (const candidate of candidates) {
+        const matched = this.matchDropdownCandidate(candidate, input.lookup);
+        if (matched) {
+          return matched;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  private matchDropdownCandidate(
+    candidate: string,
+    lookup: DropdownOptionLookup
+  ) {
+    const normalizedLabel = candidate.toLowerCase().replace(/\s+/g, ' ').trim();
+    const byLabel = lookup.valueKeyByNormalizedLabel.get(normalizedLabel) ?? null;
+    if (byLabel) {
+      return byLabel;
+    }
+
+    const normalizedValueKey = this.toOptionValueKey(candidate);
+    if (normalizedValueKey && lookup.valueKeySet.has(normalizedValueKey)) {
+      return normalizedValueKey;
+    }
+
+    return null;
+  }
+
+  private toTitleCaseLabelFromValueKey(valueKey: string) {
+    return valueKey
+      .replace(/[-_]+/g, ' ')
+      .split(' ')
+      .map((part) => part.trim())
+      .filter((part) => part.length > 0)
+      .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
+      .join(' ');
   }
 
   private isContentStyleExcluded(

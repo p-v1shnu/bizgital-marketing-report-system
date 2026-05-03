@@ -8,6 +8,14 @@ import { sectionStatusLabel } from '@/lib/reporting-ui';
 
 import { ReportWorkspaceShell } from '../workspace-shell';
 import { WorkspaceUnavailableCard } from '../workspace-unavailable-card';
+import CommentaryPage from '../commentary/page';
+import CompetitorsPage from '../competitors/page';
+import ImportPage from '../import/page';
+import MappingPage from '../mapping/page';
+import MetricsPage from '../metrics/page';
+import QuestionsPage from '../questions/page';
+import ReviewPage from '../review/page';
+import TopContentPage from '../top-content/page';
 
 type WorkspaceSectionPageProps = {
   params: Promise<{
@@ -31,6 +39,39 @@ export default async function WorkspaceSectionPage({
   params
 }: WorkspaceSectionPageProps) {
   const { brandId, periodId, section } = await params;
+  const concreteParams = Promise.resolve({ brandId, periodId });
+
+  if (section === 'import') {
+    return <ImportPage params={concreteParams} />;
+  }
+
+  if (section === 'mapping') {
+    return <MappingPage params={concreteParams} />;
+  }
+
+  if (section === 'metrics') {
+    return <MetricsPage params={concreteParams} />;
+  }
+
+  if (section === 'top-content') {
+    return <TopContentPage params={concreteParams} />;
+  }
+
+  if (section === 'competitors') {
+    return <CompetitorsPage params={concreteParams} />;
+  }
+
+  if (section === 'questions') {
+    return <QuestionsPage params={concreteParams} />;
+  }
+
+  if (section === 'commentary') {
+    return <CommentaryPage params={concreteParams} />;
+  }
+
+  if (section === 'review') {
+    return <ReviewPage params={concreteParams} />;
+  }
 
   let detail: ReportingDetailResponse | null = null;
   let loadError: string | null = null;

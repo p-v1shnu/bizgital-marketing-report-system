@@ -35,6 +35,36 @@ export type TopContentOverviewResponse = {
     label: string;
     excludeManualRows: boolean;
   };
+  monthlySummary: {
+    contentByMediaFormat: Array<{
+      valueKey: string;
+      label: string;
+      count: number;
+    }>;
+    contentByContentObjective: Array<{
+      valueKey: string;
+      label: string;
+      count: number;
+    }>;
+    contentByContentStyle: Array<{
+      valueKey: string;
+      label: string;
+      count: number;
+    }>;
+    contentByRelatedProduct: Array<{
+      valueKey: string;
+      label: string;
+      count: number;
+    }>;
+    contentByCampaign: Array<{
+      valueKey: string;
+      label: string;
+      count: number;
+    }>;
+    totalContentCount: number;
+    campaignPostCount: number;
+    unassignCount: number;
+  };
   cards: Array<{
     id: string;
     slotKey: TopContentSlotKey;

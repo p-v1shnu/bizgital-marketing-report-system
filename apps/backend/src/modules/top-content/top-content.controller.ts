@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 
 import { TopContentService } from './top-content.service';
 
@@ -9,9 +9,10 @@ export class TopContentController {
   @Get()
   getOverview(
     @Param('brandId') brandCode: string,
-    @Param('periodId') periodId: string
+    @Param('periodId') periodId: string,
+    @Query('reportVersionId') reportVersionId?: string
   ) {
-    return this.topContentService.getOverview(brandCode, periodId);
+    return this.topContentService.getOverview(brandCode, periodId, reportVersionId);
   }
 
   @Post('regenerate')

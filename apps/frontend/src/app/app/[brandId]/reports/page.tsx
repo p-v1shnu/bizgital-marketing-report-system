@@ -235,7 +235,7 @@ function buildSecondaryActions(options: {
         periodId={item.id}
         redirectTo="reports"
         triggerClassName={inlineButtonClass}
-        triggerLabel="Request edit access"
+        triggerLabel="Request changes"
         triggerVariant={inlineButtonVariant}
         versionId={item.latestVersionId}
         year={selectedYear}

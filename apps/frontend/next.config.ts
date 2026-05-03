@@ -44,6 +44,15 @@ loadRootEnvForFrontend();
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  allowedDevOrigins: [
+    'localhost',
+    '127.0.0.1',
+    '0.0.0.0',
+    'http://localhost:3200',
+    'http://127.0.0.1:3200',
+    'http://localhost:3000',
+    'http://127.0.0.1:3000'
+  ],
   outputFileTracingRoot: path.resolve(__dirname, '../..')
 };
 

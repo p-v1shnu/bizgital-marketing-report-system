@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 
 import { Button } from '@/components/ui/button';
@@ -19,12 +19,16 @@ type ReopenReportButtonProps = {
   redirectTo?: 'reports' | 'import' | 'review';
 };
 
-function ReopenReportSubmitButton() {
+function ReopenReportSubmitButtonWithValidation({
+  canSubmit
+}: {
+  canSubmit: boolean;
+}) {
   const { pending } = useFormStatus();
 
   return (
-    <Button disabled={pending} size="sm" type="submit" variant="default">
-      {pending ? 'Sending request...' : 'Confirm request'}
+    <Button disabled={pending || !canSubmit} size="sm" type="submit" variant="default">
+      {pending ? 'Requesting...' : 'Confirm request changes'}
     </Button>
   );
 }
@@ -34,18 +38,26 @@ export function ReopenReportButton({
   periodId,
   year,
   versionId,
-  triggerLabel = 'Request edit access',
+  triggerLabel = 'Request changes',
   triggerVariant = 'outline',
   triggerClassName,
   redirectTo = 'reports'
 }: ReopenReportButtonProps) {
   const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState('');
+  const reasonFieldId = useId();
+  const trimmedReason = reason.trim();
 
   return (
     <>
       <Button
         className={triggerClassName}
-        onClick={() => setOpen(true)}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setReason('');
+          setOpen(true);
+        }}
         size="sm"
         type="button"
         variant={triggerVariant}
@@ -56,33 +68,57 @@ export function ReopenReportButton({
       {open ? (
         <ModalShell
           closeOnBackdropClick
-          description="This will reopen the submitted report and move workflow status back to in-progress."
-          onClose={() => setOpen(false)}
+          description="This will return the report to users with create/edit permission for immediate editing."
+          onClose={() => {
+            setOpen(false);
+            setReason('');
+          }}
           showCloseButton={false}
-          title="Request edit access for this report?"
+          title="Request changes on this report?"
           widthClassName="max-w-lg"
         >
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              The submitted version stays in history, and users with create/edit permission can continue editing immediately after reopen.
+              The current submission will leave awaiting-decision mode and move back to in-progress.
             </p>
 
-            <form action={reopenForEditingAction} className="flex flex-wrap gap-2">
+            <form action={reopenForEditingAction} className="space-y-3">
               <input name="brandId" type="hidden" value={brandId} />
               <input name="periodId" type="hidden" value={periodId} />
               <input name="versionId" type="hidden" value={versionId} />
               <input name="year" type="hidden" value={year} />
               <input name="redirectTo" type="hidden" value={redirectTo} />
+              <div className="space-y-2">
+                <label className="text-sm font-medium" htmlFor={reasonFieldId}>
+                  What should be fixed? (required)
+                </label>
+                <textarea
+                  className="min-h-24 w-full rounded-2xl border border-input bg-background/70 px-4 py-3 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/60"
+                  id={reasonFieldId}
+                  minLength={1}
+                  name="reason"
+                  onChange={event => setReason(event.currentTarget.value)}
+                  placeholder="Describe what needs to be corrected."
+                  required
+                  value={reason}
+                />
+                <p className="text-xs text-muted-foreground">Minimum 1 character.</p>
+              </div>
 
-              <Button
-                onClick={() => setOpen(false)}
-                size="sm"
-                type="button"
-                variant="outline"
-              >
-                Cancel
-              </Button>
-              <ReopenReportSubmitButton />
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  onClick={() => {
+                    setOpen(false);
+                    setReason('');
+                  }}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  Cancel
+                </Button>
+                <ReopenReportSubmitButtonWithValidation canSubmit={trimmedReason.length > 0} />
+              </div>
             </form>
           </div>
         </ModalShell>

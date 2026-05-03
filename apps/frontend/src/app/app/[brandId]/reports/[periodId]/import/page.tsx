@@ -483,7 +483,7 @@ export default async function ImportPage({ params, searchParams }: ImportPagePro
                       periodId={periodId}
                       redirectTo="import"
                       triggerClassName="h-11 w-full"
-                      triggerLabel="Request edit access"
+                      triggerLabel="Request changes"
                       triggerVariant="default"
                       versionId={detail.period.latestVersionId}
                       year={detail.period.year}

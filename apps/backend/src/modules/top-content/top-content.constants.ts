@@ -54,25 +54,25 @@ export const TOP_CONTENT_SLOTS: Array<{
   },
   {
     slotKey: 'top_reach',
-    slotLabel: 'Top 3 Reach',
+    slotLabel: 'Top 3 Viewers (Post)',
     metricKey: 'viewers',
-    metricLabelOverride: 'Reach',
+    metricLabelOverride: 'Viewers',
     rankPosition: 1,
     displayOrder: 7
   },
   {
     slotKey: 'top_reach',
-    slotLabel: 'Top 3 Reach',
+    slotLabel: 'Top 3 Viewers (Post)',
     metricKey: 'viewers',
-    metricLabelOverride: 'Reach',
+    metricLabelOverride: 'Viewers',
     rankPosition: 2,
     displayOrder: 8
   },
   {
     slotKey: 'top_reach',
-    slotLabel: 'Top 3 Reach',
+    slotLabel: 'Top 3 Viewers (Post)',
     metricKey: 'viewers',
-    metricLabelOverride: 'Reach',
+    metricLabelOverride: 'Viewers',
     rankPosition: 3,
     displayOrder: 9
   }

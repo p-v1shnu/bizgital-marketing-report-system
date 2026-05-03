@@ -34,7 +34,7 @@ const SLOT_ORDER = ['top_views', 'top_engagement', 'top_reach'] as const;
 const SLOT_LABEL_FALLBACK: Record<(typeof SLOT_ORDER)[number], string> = {
   top_views: 'Top 3 Views',
   top_engagement: 'Top 3 Engagement',
-  top_reach: 'Top 3 Reach'
+  top_reach: 'Top 3 Viewers (Post)'
 };
 
 function formatMetricValue(value: number) {
@@ -284,7 +284,7 @@ export function TopContentManager({
               Top content for {monthLabel}
             </h1>
             <p className="max-w-3xl text-base leading-7 text-muted-foreground">
-              System ranks the top 3 posts by Views, Engagement, and Reach from the imported CSV columns. Add screenshot evidence for every slot before submit.
+              System ranks the top 3 posts by Views, Engagement, and Viewers from the imported CSV columns. Add screenshot evidence for every slot before submit.
               {` `}
               {initialOverview.dataSourcePolicy.excludeManualRows
                 ? 'Manual rows are currently excluded by policy.'
@@ -323,6 +323,15 @@ export function TopContentManager({
           </div>
         </div>
       </div>
+
+      {isReadOnly ? (
+        <Card className="border-amber-500/25 bg-amber-500/10">
+          <CardContent className="pt-6 text-sm text-amber-700 dark:text-amber-300">
+            Top Content is currently read-only in this version. If you still need to add or replace
+            screenshots, reopen this month to draft mode first, then upload images in each card.
+          </CardContent>
+        </Card>
+      ) : null}
 
       <div className="grid gap-5">
         {SLOT_ORDER.map(slotKey => {

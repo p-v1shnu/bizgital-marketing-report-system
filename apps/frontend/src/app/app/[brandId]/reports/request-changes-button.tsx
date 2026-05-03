@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 
 import { Button } from '@/components/ui/button';
@@ -45,13 +45,16 @@ export function RequestChangesButton({
 }: RequestChangesButtonProps) {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState('');
+  const reasonFieldId = useId();
   const trimmedReason = reason.trim();
 
   return (
     <>
       <Button
         className={triggerClassName}
-        onClick={() => {
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
           setReason('');
           setOpen(true);
         }}
@@ -86,12 +89,12 @@ export function RequestChangesButton({
               <input name="year" type="hidden" value={year} />
               <input name="redirectTo" type="hidden" value={redirectTo} />
               <div className="space-y-2">
-                <label className="text-sm font-medium" htmlFor={`request-changes-reason-${versionId}`}>
+                <label className="text-sm font-medium" htmlFor={reasonFieldId}>
                   What should be fixed? (required)
                 </label>
                 <textarea
                   className="min-h-24 w-full rounded-2xl border border-input bg-background/70 px-4 py-3 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/60"
-                  id={`request-changes-reason-${versionId}`}
+                  id={reasonFieldId}
                   minLength={1}
                   name="reason"
                   onChange={event => setReason(event.currentTarget.value)}
