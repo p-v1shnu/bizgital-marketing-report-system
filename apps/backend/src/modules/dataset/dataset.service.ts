@@ -772,9 +772,7 @@ export class DatasetService {
       const requiresRemark =
         entry.key === 'video_views_3s'
           ? requireVideoCommentary
-          : entry.key === 'viewers'
-            ? viewersInputReady
-            : true;
+          : true;
       return {
         ...entry,
         remark: requiresRemark ? entry.remark : null,
@@ -785,9 +783,9 @@ export class DatasetService {
               ? 'Required because this month 3-second Video Views total is greater than 0.'
               : 'Optional because this month 3-second Video Views total is 0.'
             : entry.key === 'viewers'
-              ? requiresRemark
+              ? viewersInputReady
                 ? 'Required'
-                : 'Waiting for Viewers input from Import.'
+                : 'Required. Enter Viewers in Import first.'
               : 'Required',
         currentValue,
         previousValue,

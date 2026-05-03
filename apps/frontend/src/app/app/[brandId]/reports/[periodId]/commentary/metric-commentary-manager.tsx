@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { useDebouncedRefresh } from '@/hooks/use-debounced-refresh';
 
 type MetricCommentaryItem = {
   key: 'views' | 'viewers' | 'engagement' | 'video_views_3s';
@@ -67,7 +68,11 @@ function toPayload(values: MetricFormValues) {
   };
 }
 
-function validate(values: MetricFormValues, items: MetricCommentaryItem[]) {
+function validate(
+  values: MetricFormValues,
+  items: MetricCommentaryItem[],
+  viewersInputReady: boolean
+) {
   const errors: Partial<Record<MetricKey, string | null>> = {};
   const itemByKey = new Map(items.map((item) => [item.key, item]));
 
@@ -75,6 +80,11 @@ function validate(values: MetricFormValues, items: MetricCommentaryItem[]) {
     const item = itemByKey.get(key);
     if (!item) {
       errors[key] = null;
+      continue;
+    }
+
+    if (key === 'viewers' && !viewersInputReady) {
+      errors[key] = 'Please enter Viewers in Import first.';
       continue;
     }
 
@@ -183,6 +193,7 @@ export function MetricCommentaryManager({
   viewersInputReady,
   initialItems
 }: Props) {
+  const scheduleRefresh = useDebouncedRefresh(600);
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? '/api';
   const [values, setValues] = useState(() => toFormValues(initialItems, isFirstReportingMonth));
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
@@ -201,7 +212,10 @@ export function MetricCommentaryManager({
     requestSequenceRef.current += 1;
   }, [initialItems, isFirstReportingMonth]);
 
-  const errors = useMemo(() => validate(values, initialItems), [values, initialItems]);
+  const errors = useMemo(
+    () => validate(values, initialItems, viewersInputReady),
+    [values, initialItems, viewersInputReady]
+  );
   const hasValidationError = metricKeyOrder.some((key) => !!errors[key]);
   const requiredCount = initialItems.filter((item) => item.requiresRemark).length;
   const completedCount = initialItems.filter(
@@ -209,7 +223,7 @@ export function MetricCommentaryManager({
   ).length;
   const missingCount = Math.max(0, requiredCount - completedCount);
 
-  async function persist(nextValues: MetricFormValues, mode: 'auto' | 'manual') {
+  async function persist(nextValues: MetricFormValues) {
     if (isReadOnly || hasValidationError) {
       return;
     }
@@ -256,9 +270,7 @@ export function MetricCommentaryManager({
       );
       setSaveError(null);
       lastPersistedValuesRef.current = nextValues;
-      if (mode === 'manual') {
-        window.location.reload();
-      }
+      scheduleRefresh();
     } catch (error) {
       if (requestSequence !== requestSequenceRef.current) {
         return;
@@ -278,7 +290,7 @@ export function MetricCommentaryManager({
     }
 
     const timeout = window.setTimeout(() => {
-      void persist(values, 'auto');
+      void persist(values);
     }, 700);
 
     return () => window.clearTimeout(timeout);
@@ -338,7 +350,7 @@ export function MetricCommentaryManager({
           {!isReadOnly ? (
             <Button
               disabled={hasValidationError || saveStatus === 'saving'}
-              onClick={() => void persist(values, 'manual')}
+              onClick={() => void persist(values)}
               size="sm"
               type="button"
               variant="outline"
@@ -399,9 +411,11 @@ export function MetricCommentaryManager({
                   disabled={isRemarkBlocked || !item.requiresRemark}
                   onChange={(event) => updateRemark(item.key, event.currentTarget.value)}
                   placeholder={
-                    !item.requiresRemark
-                      ? 'Remark is optional for this month.'
-                      : 'Write reason for this month movement.'
+                    item.key === 'viewers' && !viewersInputReady
+                      ? 'Enter Viewers in Import first to enable this remark.'
+                      : !item.requiresRemark
+                        ? 'Remark is optional for this month.'
+                        : 'Write reason for this month movement.'
                   }
                   value={values[item.key].remark}
                 />

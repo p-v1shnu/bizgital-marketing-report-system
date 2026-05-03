@@ -385,6 +385,7 @@ export function ImageUploadField({
   const [deleting, setDeleting] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isFocusActive, setIsFocusActive] = useState(false);
 
   const currentValue = value ?? internalValue;
   const shouldShowControls = !(disabled && hideControlsWhenDisabled);
@@ -633,10 +634,13 @@ export function ImageUploadField({
 
       <div
         className={cn(
-          'rounded-[12px] border border-border/60 bg-background/70 p-3',
+          'rounded-[12px] border border-border/60 bg-background/70 p-3 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-primary/60 focus:ring-offset-2 focus:ring-offset-background',
+          isFocusActive ? 'border-primary/70 bg-primary/5' : undefined,
           variant === 'logo' ? 'w-fit' : undefined
         )}
         onClick={() => pasteTargetRef.current?.focus()}
+        onFocus={() => setIsFocusActive(true)}
+        onBlur={() => setIsFocusActive(false)}
         onPaste={event => {
           void handlePaste(event);
         }}
@@ -667,7 +671,8 @@ export function ImageUploadField({
         ) : (
           <div
             className={cn(
-              'flex flex-col items-center justify-center border border-dashed border-border/60 bg-background/70 text-sm text-muted-foreground',
+              'flex flex-col items-center justify-center border border-dashed border-border/60 bg-background/70 text-sm text-muted-foreground transition-colors duration-150',
+              isFocusActive ? 'border-primary/70 bg-primary/10 text-foreground' : undefined,
               previewFrameClassName
             )}
           >
