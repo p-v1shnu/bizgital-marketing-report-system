@@ -100,6 +100,8 @@ docker compose run --rm backend npm --workspace @bizgital-marketing-report/backe
 docker compose run --rm backend npm --workspace @bizgital-marketing-report/backend run db:seed
 ```
 
+Backend watch in Docker uses `scripts/dev-docker-watch.sh` (polls via `find -newer`, rebuilds via `tsc`, restarts `node dist/main.js`).
+
 Notes:
 - `db:seed` is for local demo data only.
 - `db:seed` will fail intentionally when `NODE_ENV=production`.
@@ -154,6 +156,8 @@ Mapping notes:
 - CSV uploads now profile header columns automatically for the mapping step
 - the mapping screen saves source-column to target-field choices for the active draft
 - XLS and XLSX files are accepted for upload, but automatic profiling for them is still pending
+- users can rename any Meta CSV source column to a company-preferred display name (for example `Reach -> Viewers (Post)`)
+- do NOT confuse `Viewers (Post)` (CSV-derived) with `Viewers` (manual team input); they are different metrics
 
 Media upload notes (S3-compatible):
 

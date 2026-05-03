@@ -126,6 +126,14 @@ Responsibilities:
 - manage editable dataset values
 - expose dataset grid APIs
 
+### `ManualMetricsModule`
+
+Responsibilities:
+
+- commentary storage: dynamically creates a table per brand (`metric_commentary_{brandId}`) via DDL in `ensureCommentaryStorage()`, called once in `onModuleInit()` and NOT per request
+- commentary is a workflow step between metrics and review
+- `firstMonthDefaultRemark` logic lives here
+
 ### `CalculationModule`
 
 Responsibilities:

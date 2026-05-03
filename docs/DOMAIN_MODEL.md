@@ -471,3 +471,19 @@ Using this vocabulary consistently across API, UI, schema, and documentation wil
 - Should top content ranking groups be globally fixed, or configurable per brand?
 - Should quarterly and yearly reports reuse the same approval roles as monthly reports, or allow separate approvers later?
 - Which historical platform renames are approved to map to the same canonical metric definition, such as `Impressions -> Views` and `Reach -> Viewers`?
+
+## 13. Critical Label Distinctions
+
+### Viewers vs Viewers (Post)
+
+- `Viewers` = manual metric entered directly by the content team (not from Meta CSV)
+- `Viewers (Post)` = Meta CSV column `Reach`, renamed by the user via the mapping system
+- These are DIFFERENT metrics; do NOT alias or merge them
+- The column mapping system lets users rename any Meta CSV column to a company-preferred name; `Reach -> Viewers (Post)` is the standard rename for this project
+- This distinction affects top-content slot labels, manual-metrics fallback arrays, and `top-content.constants.ts` `metricLabelOverride` fields
+
+### Manual metrics vs CSV-derived metrics
+
+- Some metrics (for example `Viewers`) are entered manually by team members in the dataset grid
+- CSV-derived metrics come from Meta CSV uploads through the mapping and rename pipeline
+- The system reads manual values via `globalUiSetting -> manualSourceRowsSetting`
