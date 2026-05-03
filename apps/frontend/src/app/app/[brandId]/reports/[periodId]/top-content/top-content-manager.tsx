@@ -74,6 +74,7 @@ export function TopContentManager({
   isReadOnly
 }: Props) {
   const scheduleRefresh = useDebouncedRefresh(1200);
+  const [isAutoShareByDatasetRow, setIsAutoShareByDatasetRow] = useState(true);
   const [rows, setRows] = useState<CardRow[]>(
     initialOverview.cards.map(card => ({
       ...card,
@@ -144,14 +145,45 @@ export function TopContentManager({
           ? `Saved at ${new Date(latestSavedAt).toLocaleTimeString()}`
           : 'No changes yet';
 
+  function resolveLinkedCardIds(cardId: string) {
+    const sourceRow = rowsRef.current.find((row) => row.id === cardId) ?? null;
+    if (!sourceRow) {
+      return [] as string[];
+    }
+
+    if (!isAutoShareByDatasetRow) {
+      return [cardId];
+    }
+
+    return rowsRef.current
+      .filter((row) => row.datasetRow.id === sourceRow.datasetRow.id)
+      .map((row) => row.id);
+  }
+
   function updateScreenshot(cardId: string, value: string) {
     if (isReadOnly) {
       return;
     }
 
+    const linkedCardIds = resolveLinkedCardIds(cardId);
+    if (linkedCardIds.length === 0) {
+      return;
+    }
+
+    const linkedCardIdSet = new Set(linkedCardIds);
+    const previousRows = rowsRef.current;
+    const cardsToPersist = linkedCardIds.filter((id) => {
+      const row = previousRows.find((item) => item.id === id);
+      return row ? row.draftScreenshotUrl !== value : false;
+    });
+
+    if (cardsToPersist.length === 0) {
+      return;
+    }
+
     setRows(current =>
       current.map(row => {
-        if (row.id !== cardId) {
+        if (!linkedCardIdSet.has(row.id)) {
           return row;
         }
 
@@ -169,9 +201,11 @@ export function TopContentManager({
       })
     );
 
-    void persist(cardId, 'auto', {
-      draftScreenshotUrlOverride: value
-    });
+    for (const linkedCardId of cardsToPersist) {
+      void persist(linkedCardId, 'auto', {
+        draftScreenshotUrlOverride: value
+      });
+    }
   }
 
   async function persist(
@@ -303,6 +337,21 @@ export function TopContentManager({
                 </span>
               </div>
             ) : null}
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="inline-flex items-center gap-2 text-sm text-foreground">
+                <input
+                  checked={isAutoShareByDatasetRow}
+                  className="size-4 accent-primary"
+                  disabled={isReadOnly}
+                  onChange={(event) => setIsAutoShareByDatasetRow(event.currentTarget.checked)}
+                  type="checkbox"
+                />
+                Auto share by dataset row
+              </label>
+              <span className="text-xs text-muted-foreground">
+                Posts with the same dataset row will use the same screenshot automatically.
+              </span>
+            </div>
           </div>
           <div className="inline-flex items-center gap-3 rounded-2xl border border-border/60 bg-background/90 px-3 py-2">
             <span className="text-xs text-muted-foreground">{globalSaveStatusText}</span>
