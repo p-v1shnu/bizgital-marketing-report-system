@@ -204,7 +204,7 @@ export function MetricCommentaryManager({
   const missingCount = Math.max(0, requiredCount - completedCount);
 
   async function persist(nextValues: MetricFormValues) {
-    if (isReadOnly || hasValidationError) {
+    if (isReadOnly) {
       return;
     }
 
@@ -261,7 +261,7 @@ export function MetricCommentaryManager({
   }
 
   useEffect(() => {
-    if (isReadOnly || hasValidationError) {
+    if (isReadOnly) {
       return;
     }
 
@@ -274,7 +274,7 @@ export function MetricCommentaryManager({
     }, 700);
 
     return () => window.clearTimeout(timeout);
-  }, [hasValidationError, isReadOnly, values]);
+  }, [isReadOnly, values]);
 
   function updateRemark(key: MetricKey, remark: string) {
     if (isReadOnly) {
@@ -294,7 +294,7 @@ export function MetricCommentaryManager({
       return 'No changes yet';
     }
     if (hasValidationError) {
-      return 'Complete required remarks before this step can pass.';
+      return 'Auto-save is on. Step will pass after all required remarks are complete.';
     }
     if (saveStatus === 'saving') {
       return 'Auto-save: saving...';
@@ -329,7 +329,7 @@ export function MetricCommentaryManager({
           </div>
           {!isReadOnly ? (
             <Button
-              disabled={hasValidationError || saveStatus === 'saving'}
+              disabled={saveStatus === 'saving'}
               onClick={() => void persist(values)}
               size="sm"
               type="button"
