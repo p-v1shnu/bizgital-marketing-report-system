@@ -53,6 +53,7 @@ type SaveMeta = {
 const AUTOSAVE_MS = 1000;
 const MAX_HIGHLIGHT_SHOTS = 10;
 const MIN_HIGHLIGHT_SHOTS = 1;
+const MAX_NOTE_LENGTH = 280;
 
 function ensureAtLeastOneScreenshotSlot(values: string[]) {
   return values.length >= MIN_HIGHLIGHT_SHOTS ? values : [''];
@@ -796,8 +797,9 @@ export function QuestionsManager({
             <Textarea
               className="min-h-36 w-full rounded-2xl border border-input bg-background/70 px-4 py-3 text-sm text-foreground shadow-sm outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/60"
               disabled={isReadOnly}
+              maxLength={MAX_NOTE_LENGTH}
               onChange={(event) => {
-                const value = event.currentTarget.value;
+                const value = event.currentTarget.value.slice(0, MAX_NOTE_LENGTH);
                 updateHighlights((current) => ({
                   ...current,
                   note: value
@@ -806,6 +808,9 @@ export function QuestionsManager({
               placeholder="Write bullet points, summary, translation, or leave blank."
               value={highlightDraft.note}
             />
+            <div className="text-xs text-muted-foreground">
+              {highlightDraft.note.length}/{MAX_NOTE_LENGTH}
+            </div>
           </div>
 
           <div className="space-y-3">

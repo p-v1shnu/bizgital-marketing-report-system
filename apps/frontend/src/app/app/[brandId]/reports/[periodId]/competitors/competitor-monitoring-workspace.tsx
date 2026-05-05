@@ -70,6 +70,7 @@ const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? '/api';
 const MAX_POSTS = 5;
 const MIN_POSTS = 1;
 const AUTOSAVE_MS = 1000;
+const MAX_NOTE_LENGTH = 280;
 
 function buildEmptyPost(id: string): DraftPost {
   return {
@@ -942,16 +943,20 @@ export function CompetitorMonitoringWorkspace({
                       <Textarea
                         disabled={isReadOnly || !active.assignment.isRequired}
                         className="min-h-28 w-full rounded-2xl border border-input bg-background/70 px-4 py-3 text-sm text-foreground shadow-sm outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/60"
+                        maxLength={MAX_NOTE_LENGTH}
                         placeholder="Write competitor highlight summary for this month (required)."
                         value={active.draft.highlightNote}
                         onChange={(event) => {
-                          const value = event.currentTarget.value;
+                          const value = event.currentTarget.value.slice(0, MAX_NOTE_LENGTH);
                           updateDraft(active.competitor.id, (draft) => ({
                             ...draft,
                             highlightNote: value
                           }));
                         }}
                       />
+                      <div className="text-xs text-muted-foreground">
+                        {active.draft.highlightNote.length}/{MAX_NOTE_LENGTH}
+                      </div>
                     </div>
                   </div>
                 ) : null}
@@ -966,16 +971,20 @@ export function CompetitorMonitoringWorkspace({
                         data-testid="no-activity-note-input"
                         disabled={isReadOnly || !active.assignment.isRequired}
                         className="min-h-24 w-full rounded-2xl border border-input bg-background/70 px-4 py-3 text-sm text-foreground shadow-sm outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/60"
+                        maxLength={MAX_NOTE_LENGTH}
                         placeholder="No posts note (required)"
                         value={active.draft.highlightNote}
                         onChange={(event) => {
-                          const value = event.currentTarget.value;
+                          const value = event.currentTarget.value.slice(0, MAX_NOTE_LENGTH);
                           updateDraft(active.competitor.id, (draft) => ({
                             ...draft,
                             highlightNote: value
                           }));
                         }}
                       />
+                      <div className="text-xs text-muted-foreground">
+                        {active.draft.highlightNote.length}/{MAX_NOTE_LENGTH}
+                      </div>
                     </div>
                     <div className="space-y-2">
                       <label className="text-xs font-medium text-muted-foreground">

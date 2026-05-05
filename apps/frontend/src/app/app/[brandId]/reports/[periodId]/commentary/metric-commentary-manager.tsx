@@ -41,6 +41,7 @@ type MetricKey = MetricCommentaryItem['key'];
 type MetricFormValues = Record<MetricKey, { remark: string }>;
 
 const metricKeyOrder: MetricKey[] = ['views', 'viewers', 'engagement', 'video_views_3s'];
+const MAX_REMARK_LENGTH = 280;
 
 function toFormValues(
   items: MetricCommentaryItem[],
@@ -385,7 +386,10 @@ export function MetricCommentaryManager({
                 <Textarea
                   className="min-h-24"
                   disabled={isRemarkBlocked || !item.requiresRemark}
-                  onChange={(event) => updateRemark(item.key, event.currentTarget.value)}
+                  maxLength={MAX_REMARK_LENGTH}
+                  onChange={(event) =>
+                    updateRemark(item.key, event.currentTarget.value.slice(0, MAX_REMARK_LENGTH))
+                  }
                   placeholder={
                     item.key === 'viewers' && !viewersInputReady
                       ? 'Enter Viewers in Import first to enable this remark.'
@@ -395,6 +399,9 @@ export function MetricCommentaryManager({
                   }
                   value={values[item.key].remark}
                 />
+                <div className="text-xs text-muted-foreground">
+                  {values[item.key].remark.length}/{MAX_REMARK_LENGTH}
+                </div>
                 {error ? <div className="text-xs text-rose-500">{error}</div> : null}
               </div>
             </div>

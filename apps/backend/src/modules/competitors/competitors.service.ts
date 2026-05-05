@@ -28,6 +28,7 @@ import type {
 } from './competitors.types';
 
 const MAX_MONITORED_POSTS = 5;
+const MAX_MONITORING_NOTE_LENGTH = 280;
 
 type AssignmentWithCompetitor = {
   id: string;
@@ -1620,7 +1621,11 @@ export class CompetitorsService {
       }
     }
 
-    const highlightNote = this.normalizeOptionalText(input.highlightNote);
+    const highlightNote = this.normalizeOptionalTextWithMaxLength(
+      input.highlightNote,
+      MAX_MONITORING_NOTE_LENGTH,
+      'Highlight note'
+    );
     const noActivityEvidenceImageUrl = this.normalizeOptionalText(
       input.noActivityEvidenceImageUrl
     );
@@ -1796,6 +1801,25 @@ export class CompetitorsService {
   private normalizeOptionalText(input: string | null | undefined) {
     const normalized = String(input ?? '').trim();
     return normalized.length > 0 ? normalized : null;
+  }
+
+  private normalizeOptionalTextWithMaxLength(
+    input: string | null | undefined,
+    maxLength: number,
+    fieldLabel: string
+  ) {
+    const normalized = this.normalizeOptionalText(input);
+    if (!normalized) {
+      return null;
+    }
+
+    if (normalized.length > maxLength) {
+      throw new BadRequestException(
+        `${fieldLabel} must be ${maxLength} characters or fewer.`
+      );
+    }
+
+    return normalized;
   }
 
   private collectMonitoringMediaUrls(input: {

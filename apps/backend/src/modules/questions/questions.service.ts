@@ -28,6 +28,7 @@ import type {
 
 const BRAND_ASSIGNMENT_ANCHOR_DATE = new Date('2000-01-01T00:00:00.000Z');
 const MAX_HIGHLIGHT_SCREENSHOTS = 10;
+const MAX_QUESTION_NOTE_LENGTH = 280;
 type QuestionMonthlyMode = 'has_questions' | 'no_questions';
 type ResolvedQuestionAssignment = {
   id: string;
@@ -1369,7 +1370,11 @@ export class QuestionsService {
   private normalizeEntryInput(input: SaveQuestionEntryInput) {
     const mode = this.resolveMode(input.mode ?? null);
     const rawCount = input.questionCount;
-    const note = this.normalizeOptionalText(input.note);
+    const note = this.normalizeOptionalTextWithMaxLength(
+      input.note,
+      MAX_QUESTION_NOTE_LENGTH,
+      'Question note'
+    );
     const hasScreenshotsInput = Array.isArray(input.screenshots);
     const screenshots = hasScreenshotsInput
       ? (input.screenshots ?? [])
@@ -1412,7 +1417,11 @@ export class QuestionsService {
   }
 
   private normalizeHighlightsInput(input: SaveQuestionHighlightsInput) {
-    const note = this.normalizeOptionalText(input.note);
+    const note = this.normalizeOptionalTextWithMaxLength(
+      input.note,
+      MAX_QUESTION_NOTE_LENGTH,
+      'Question highlight note'
+    );
     const screenshots = (input.screenshots ?? [])
       .map(item => item.trim())
       .filter(item => item.length > 0);
@@ -1445,6 +1454,25 @@ export class QuestionsService {
   private normalizeOptionalText(value: string | null | undefined) {
     const normalized = value?.trim() ?? '';
     return normalized.length > 0 ? normalized : null;
+  }
+
+  private normalizeOptionalTextWithMaxLength(
+    value: string | null | undefined,
+    maxLength: number,
+    fieldLabel: string
+  ) {
+    const normalized = this.normalizeOptionalText(value);
+    if (!normalized) {
+      return null;
+    }
+
+    if (normalized.length > maxLength) {
+      throw new BadRequestException(
+        `${fieldLabel} must be ${maxLength} characters or fewer.`
+      );
+    }
+
+    return normalized;
   }
 
   private normalizeMediaUrl(value: string | null | undefined) {

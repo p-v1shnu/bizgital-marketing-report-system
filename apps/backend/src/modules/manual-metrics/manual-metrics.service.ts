@@ -28,7 +28,7 @@ type RawMetricCommentaryRow = {
 };
 
 const MANUAL_HEADER_MAX_VALUE = 999_999_999_999_999;
-const MAX_METRIC_COMMENTARY_REMARK_LENGTH = 4_000;
+const MAX_METRIC_COMMENTARY_REMARK_LENGTH = 280;
 
 @Injectable()
 export class ManualMetricsService implements OnModuleInit {
@@ -311,7 +311,13 @@ export class ManualMetricsService implements OnModuleInit {
       return null;
     }
 
-    return normalized.slice(0, MAX_METRIC_COMMENTARY_REMARK_LENGTH);
+    if (normalized.length > MAX_METRIC_COMMENTARY_REMARK_LENGTH) {
+      throw new BadRequestException(
+        `Metric remark must be ${MAX_METRIC_COMMENTARY_REMARK_LENGTH} characters or fewer.`
+      );
+    }
+
+    return normalized;
   }
 
   private isMetricCommentaryKey(value: string): value is ReportMetricCommentaryKey {
