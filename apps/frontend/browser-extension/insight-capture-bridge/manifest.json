@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "BIZGITAL Insight Capture Bridge",
+  "version": "0.1.0",
+  "description": "Bridge between BIZGITAL UI and browser-native Facebook insight capture.",
+  "permissions": [
+    "tabs",
+    "scripting",
+    "downloads",
+    "activeTab",
+    "debugger"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "BIZGITAL Insight Capture",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://localhost/*",
+        "http://localhost:*/*",
+        "http://127.0.0.1/*",
+        "http://127.0.0.1:*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "content-bridge.js"
+      ],
+      "run_at": "document_start"
+    }
+  ]
+}

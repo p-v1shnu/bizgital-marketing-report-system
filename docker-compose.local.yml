@@ -85,6 +85,7 @@ services:
     restart: unless-stopped
     depends_on:
       - backend
+      - automation-browser
     environment:
       NODE_ENV: development
       PORT: 3000
@@ -100,6 +101,8 @@ services:
       MICROSOFT_CLIENT_SECRET: ${MICROSOFT_CLIENT_SECRET}
       MICROSOFT_TENANT_ID: ${MICROSOFT_TENANT_ID}
       MICROSOFT_REDIRECT_URI: ${MICROSOFT_REDIRECT_URI}
+      INSIGHT_CAPTURE_CDP_URL: ${INSIGHT_CAPTURE_CDP_URL:-http://automation-browser:9222}
+      INSIGHT_CAPTURE_LOGIN_URL: ${INSIGHT_CAPTURE_LOGIN_URL:-http://localhost:6081/vnc.html?autoconnect=true&resize=remote}
     command: npm run dev:docker --workspace @bizgital-marketing-report/frontend
     ports:
       - "127.0.0.1:${FRONTEND_PORT:-3200}:3000"
@@ -108,7 +111,19 @@ services:
       - ./tsconfig.base.json:/workspace/tsconfig.base.json
       - frontend-next-data:/workspace/apps/frontend/.next
 
+  automation-browser:
+    image: psycharch/chrome-novnc-cdp:latest
+    container_name: ${PROJECT_NAME:-bizgital-marketing-report}-automation-browser
+    restart: unless-stopped
+    shm_size: 1gb
+    ports:
+      - "127.0.0.1:${AUTOMATION_NOVNC_PORT:-6081}:6080"
+      - "127.0.0.1:${AUTOMATION_CDP_PORT:-9223}:9222"
+    volumes:
+      - automation-browser-data:/data
+
 volumes:
   mysql-data:
   minio-data:
   frontend-next-data:
+  automation-browser-data:

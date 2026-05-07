@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BIZGITAL Insight Capture</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 14px;
+        font-family: Arial, sans-serif;
+        background: #091326;
+        color: #f8fafc;
+        min-width: 360px;
+      }
+      .row {
+        display: grid;
+        gap: 6px;
+        margin-bottom: 12px;
+      }
+      input, button {
+        font: inherit;
+        border-radius: 8px;
+        border: 1px solid #355172;
+      }
+      input {
+        padding: 8px 10px;
+        background: #0f1d34;
+        color: #f8fafc;
+      }
+      button {
+        padding: 8px 12px;
+        background: #1d9bf0;
+        color: white;
+        cursor: pointer;
+      }
+      pre {
+        white-space: pre-wrap;
+        background: #0a162b;
+        border: 1px solid #2b415f;
+        border-radius: 8px;
+        padding: 10px;
+        margin-top: 0;
+        max-height: 220px;
+        overflow: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <h3 style="margin: 0 0 12px">Insight Capture (MVP)</h3>
+    <div class="row">
+      <label for="postUrl">Facebook post URL</label>
+      <input id="postUrl" placeholder="https://www.facebook.com/.../posts/..." />
+    </div>
+    <div class="row">
+      <label for="pageId">Page ID (optional)</label>
+      <input id="pageId" placeholder="100079799236020" />
+    </div>
+    <div class="row">
+      <label for="pageName">Page name (optional)</label>
+      <input id="pageName" placeholder="Coca-Cola (LA)" />
+    </div>
+    <button id="captureBtn" type="button">Capture</button>
+    <h4 style="margin: 14px 0 8px">Result</h4>
+    <pre id="resultBox">Ready</pre>
+    <script src="popup.js"></script>
+  </body>
+</html>
