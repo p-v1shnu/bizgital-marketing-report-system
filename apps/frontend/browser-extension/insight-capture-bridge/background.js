@@ -10,6 +10,90 @@ const automationSessionByWorker = new Map();
 const activeWorkerLocks = new Set();
 const windowGroupWindowIdByKey = new Map();
 const windowGroupCreatePromiseByKey = new Map();
+const MAX_RUNTIME_LOG_ITEMS = 40;
+const runtimeCaptureState = {
+  completedCount: 0,
+  successCount: 0,
+  failureCount: 0,
+  lastEvent: 'Idle',
+  lastProgress: null,
+  recentRuns: [],
+  lastUpdatedAt: new Date().toISOString()
+};
+
+function buildRuntimeStatusSnapshot() {
+  return {
+    ready: true,
+    version: chrome.runtime.getManifest().version,
+    activeCount: activeWorkerLocks.size,
+    activeWorkers: Array.from(activeWorkerLocks).sort(),
+    completedCount: runtimeCaptureState.completedCount,
+    successCount: runtimeCaptureState.successCount,
+    failureCount: runtimeCaptureState.failureCount,
+    lastEvent: runtimeCaptureState.lastEvent,
+    lastProgress: runtimeCaptureState.lastProgress,
+    recentRuns: [...runtimeCaptureState.recentRuns],
+    lastUpdatedAt: runtimeCaptureState.lastUpdatedAt
+  };
+}
+
+function updateRuntimeState(patch = {}) {
+  Object.assign(runtimeCaptureState, patch);
+  runtimeCaptureState.lastUpdatedAt = new Date().toISOString();
+}
+
+function clearRuntimeLogs() {
+  runtimeCaptureState.completedCount = 0;
+  runtimeCaptureState.successCount = 0;
+  runtimeCaptureState.failureCount = 0;
+  runtimeCaptureState.recentRuns = [];
+  runtimeCaptureState.lastProgress = null;
+  runtimeCaptureState.lastEvent =
+    activeWorkerLocks.size > 0 ? 'Capture is still running.' : 'Logs cleared.';
+  runtimeCaptureState.lastUpdatedAt = new Date().toISOString();
+}
+
+function recordRuntimeOutcome({ workerKey, requestId, result, startedAt }) {
+  const durationMs = Math.max(0, Date.now() - startedAt);
+  const success = Boolean(result?.success);
+  const message = success
+    ? result?.screenshotFile || 'Capture completed.'
+    : result?.error || result?.message || 'Capture failed.';
+
+  runtimeCaptureState.completedCount += 1;
+  if (success) {
+    runtimeCaptureState.successCount += 1;
+  } else {
+    runtimeCaptureState.failureCount += 1;
+  }
+
+  runtimeCaptureState.recentRuns.unshift({
+    workerKey,
+    requestId: requestId || null,
+    success,
+    message,
+    errorCode: result?.errorCode || null,
+    durationMs,
+    finishedAt: new Date().toISOString()
+  });
+
+  if (runtimeCaptureState.recentRuns.length > MAX_RUNTIME_LOG_ITEMS) {
+    runtimeCaptureState.recentRuns = runtimeCaptureState.recentRuns.slice(0, MAX_RUNTIME_LOG_ITEMS);
+  }
+
+  updateRuntimeState({
+    lastEvent: success
+      ? `Capture completed (${workerKey}).`
+      : `Capture failed (${workerKey}).`,
+    lastProgress: success
+      ? {
+          status: 'completed',
+          message: 'Capture completed.',
+          percent: 100
+        }
+      : runtimeCaptureState.lastProgress
+  });
+}
 
 function normalizeWorkerKey(value) {
   const raw = String(value || '')
@@ -259,11 +343,60 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         return;
       }
 
+      if (message.type === 'BIZGITAL_INSIGHT_RUNTIME_STATUS') {
+        sendResponse({
+          ok: true,
+          data: buildRuntimeStatusSnapshot()
+        });
+        return;
+      }
+
+      if (message.type === 'BIZGITAL_INSIGHT_CLEAR_RUNTIME_LOG') {
+        clearRuntimeLogs();
+        sendResponse({
+          ok: true,
+          data: buildRuntimeStatusSnapshot()
+        });
+        return;
+      }
+
       if (message.type === 'BIZGITAL_INSIGHT_CAPTURE_REQUEST') {
-        const result = await runCapture(message.payload ?? {}, {
-          uiTabId: _sender?.tab?.id,
-          uiWindowId: _sender?.tab?.windowId,
-          requestId: message.requestId
+        const capturePayload = message.payload ?? {};
+        const workerKey = normalizeWorkerKey(capturePayload.workerKey);
+        const startedAt = Date.now();
+        updateRuntimeState({
+          lastEvent: `Capture requested (${workerKey}).`
+        });
+
+        let result;
+        try {
+          result = await runCapture(capturePayload, {
+            uiTabId: _sender?.tab?.id,
+            uiWindowId: _sender?.tab?.windowId,
+            requestId: message.requestId
+          });
+        } catch (error) {
+          const messageText =
+            error instanceof Error && error.message ? error.message : 'Unexpected extension error.';
+          const failedResult = {
+            success: false,
+            errorCode: 'CAPTURE_FAILED',
+            error: messageText
+          };
+          recordRuntimeOutcome({
+            workerKey,
+            requestId: message.requestId,
+            result: failedResult,
+            startedAt
+          });
+          throw error;
+        }
+
+        recordRuntimeOutcome({
+          workerKey,
+          requestId: message.requestId,
+          result,
+          startedAt
         });
         sendResponse({ ok: true, data: result });
         return;
@@ -282,6 +415,17 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
 function createProgressEmitter(uiTabId, requestId, totalPosts, currentPost) {
   return (status, message, percent) => {
+    updateRuntimeState({
+      lastEvent: message || runtimeCaptureState.lastEvent,
+      lastProgress: {
+        status,
+        message,
+        percent,
+        totalPosts,
+        currentPost,
+        requestId: requestId || null
+      }
+    });
     if (!uiTabId) {
       return;
     }
@@ -314,6 +458,14 @@ async function runCapture(payload, runtimeContext = {}) {
     };
   }
   activeWorkerLocks.add(workerKey);
+  updateRuntimeState({
+    lastEvent: `Worker ${workerKey} started.`,
+    lastProgress: {
+      status: 'running',
+      message: `Worker ${workerKey} started.`,
+      percent: 0
+    }
+  });
 
   try {
     const steps = [];
@@ -525,6 +677,7 @@ async function runCapture(payload, runtimeContext = {}) {
     };
   } finally {
     activeWorkerLocks.delete(workerKey);
+    updateRuntimeState();
   }
 }
 
