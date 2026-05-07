@@ -29,6 +29,7 @@ import { ReportSectionHeader } from '../report-section-header';
 import { ReportWorkspaceShell } from '../workspace-shell';
 import { WorkspaceUnavailableCard } from '../workspace-unavailable-card';
 import { uploadImportJobAction } from './actions';
+import { ImportMappingFallbackBanner } from './import-mapping-fallback-banner';
 import { ImportWorkingTable } from './import-working-table';
 
 type ImportPageProps = {
@@ -40,6 +41,7 @@ type ImportPageProps = {
     message?: string;
     error?: string;
     mappingFallback?: string;
+    mappingResolved?: string;
   }>;
 };
 
@@ -290,9 +292,13 @@ export default async function ImportPage({ params, searchParams }: ImportPagePro
       section.slug !== 'history'
   );
   const progress = workflowProgress(detail);
+  const isMappingFallbackRequested = resolvedSearchParams.mappingFallback === 'true';
+  const isMappingResolvedRequested = resolvedSearchParams.mappingResolved === 'true';
   const shouldShowMappingFallback =
-    resolvedSearchParams.mappingFallback === 'true' ||
+    isMappingFallbackRequested ||
     (!!latestJob && latestJob.status === 'ready_for_mapping' && !datasetPreview);
+  const canAutoClearMappingFallback =
+    (datasetResult?.mappingSummary.unmappedColumnCount ?? 0) === 0;
   const latestImportBadgeLabel = latestJob
     ? `Latest import: ${latestJob.status.replaceAll('_', ' ')}`
     : 'No import file yet';
@@ -444,39 +450,18 @@ export default async function ImportPage({ params, searchParams }: ImportPagePro
           </CardContent>
         </Card>
 
-        {shouldShowMappingFallback ? (
-          <Card className="border-amber-500/25 bg-amber-500/8">
-            <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6">
-              <div className="space-y-1">
-                <div className="text-sm font-medium text-foreground">
-                  Mapping fallback is available for this upload
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Auto-map could not complete every required field. Open month mapping to finalize this file,
-                  then return to Import.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {canAccessPeriodMapping ? (
-                  <Button asChild size="sm" variant="secondary">
-                    <Link href={periodMappingHref}>
-                      Open month mapping
-                      <ArrowRight />
-                    </Link>
-                  </Button>
-                ) : null}
-                {canAccessImportMappingAdmin ? (
-                  <Button asChild size="sm" variant="outline">
-                    <Link href={mappingHref}>
-                      Open mapping settings
-                      <ArrowRight />
-                    </Link>
-                  </Button>
-                ) : null}
-              </div>
-            </CardContent>
-          </Card>
-        ) : null}
+        <ImportMappingFallbackBanner
+          brandId={brandId}
+          canAccessImportMappingAdmin={canAccessImportMappingAdmin}
+          canAccessPeriodMapping={canAccessPeriodMapping}
+          canAutoClearMappingFallback={canAutoClearMappingFallback}
+          isMappingFallbackRequested={isMappingFallbackRequested}
+          isMappingResolvedRequested={isMappingResolvedRequested}
+          mappingHref={mappingHref}
+          periodId={periodId}
+          periodMappingHref={periodMappingHref}
+          shouldShowInitially={shouldShowMappingFallback}
+        />
 
         <Card id="report-canvas">
           <CardContent className="space-y-4 pt-6">
@@ -485,6 +470,7 @@ export default async function ImportPage({ params, searchParams }: ImportPagePro
                 <ImportWorkingTable
                   activeFormulas={computedFormulasResult.items}
                   brandId={brandId}
+                  brandLabel={detail.brand.name}
                   campaignOptions={campaignOptions}
                   companyFormatFields={companyFormatFields}
                   contentCount={datasetResult?.contentCount ?? null}
@@ -494,6 +480,7 @@ export default async function ImportPage({ params, searchParams }: ImportPagePro
                   isWorkingTableEditable={isWorkingTableEditable}
                   manualHeader={datasetResult?.manualHeader ?? null}
                   periodId={periodId}
+                  reportMonthKey={`${detail.period.year}-${String(detail.period.month).padStart(2, '0')}`}
                   sourcePreview={sourcePreview}
                   topContentManualRowsExcluded={topContentPolicyResult.excludeManualRows}
                   uploadedFilename={latestJob?.originalFilename ?? null}

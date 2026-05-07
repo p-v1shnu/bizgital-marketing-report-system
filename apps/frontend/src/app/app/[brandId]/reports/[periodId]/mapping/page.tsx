@@ -31,6 +31,7 @@ type MappingPageProps = {
   searchParams?: Promise<{
     message?: string;
     error?: string;
+    mappingResolved?: string;
   }>;
 };
 
@@ -94,6 +95,10 @@ export default async function MappingPage({
     overview.latestImportJob?.columnProfiles.filter(
       (profile) => profile.mappedTargetField !== null
     ).length ?? 0;
+  const backToImportHref =
+    resolvedSearchParams.mappingResolved === 'true'
+      ? `/app/${brandId}/reports/${periodId}/import?mappingResolved=true`
+      : `/app/${brandId}/reports/${periodId}/import`;
 
   return (
     <ReportWorkspaceShell
@@ -146,7 +151,7 @@ export default async function MappingPage({
                     </p>
                   </div>
                   <Button asChild variant="outline">
-                    <Link href={`/app/${brandId}/reports/${periodId}/import`}>
+                    <Link href={backToImportHref}>
                       Back to Import
                       <ArrowRight />
                     </Link>
@@ -174,7 +179,7 @@ export default async function MappingPage({
                       come back here to map the source columns.
                     </p>
                     <Button asChild variant="secondary">
-                      <Link href={`/app/${brandId}/reports/${periodId}/import`}>
+                      <Link href={backToImportHref}>
                         Go to import
                         <ArrowRight />
                       </Link>
@@ -234,7 +239,7 @@ export default async function MappingPage({
                     <div className="flex flex-wrap gap-3">
                       <Button type="submit">Save mappings</Button>
                       <Button asChild type="button" variant="outline">
-                        <Link href={`/app/${brandId}/reports/${periodId}/import`}>
+                        <Link href={backToImportHref}>
                           Back to Import
                         </Link>
                       </Button>
