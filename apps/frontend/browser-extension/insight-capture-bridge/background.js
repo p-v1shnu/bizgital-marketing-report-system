@@ -11,22 +11,124 @@ const activeWorkerLocks = new Set();
 const windowGroupWindowIdByKey = new Map();
 const windowGroupCreatePromiseByKey = new Map();
 const MAX_RUNTIME_LOG_ITEMS = 40;
-const runtimeCaptureState = {
+const DEFAULT_RUNTIME_CAPTURE_STATE = {
   completedCount: 0,
   successCount: 0,
   failureCount: 0,
   lastEvent: 'Idle',
+  lastProgressByWorker: {},
   lastProgress: null,
   recentRuns: [],
   lastUpdatedAt: new Date().toISOString()
 };
+const runtimeCaptureState = {
+  ...DEFAULT_RUNTIME_CAPTURE_STATE
+};
+const runtimeProgressByWorker = new Map();
+
+function sanitizeRuntimeCaptureState(candidate) {
+  const source = candidate && typeof candidate === 'object' ? candidate : {};
+  const sanitizedProgressByWorker =
+    source.lastProgressByWorker && typeof source.lastProgressByWorker === 'object'
+      ? source.lastProgressByWorker
+      : {};
+  const sanitizedRecentRuns = Array.isArray(source.recentRuns) ? source.recentRuns : [];
+  return {
+    completedCount: Number.isFinite(source.completedCount)
+      ? Math.max(0, Number(source.completedCount))
+      : 0,
+    successCount: Number.isFinite(source.successCount)
+      ? Math.max(0, Number(source.successCount))
+      : 0,
+    failureCount: Number.isFinite(source.failureCount)
+      ? Math.max(0, Number(source.failureCount))
+      : 0,
+    lastEvent:
+      typeof source.lastEvent === 'string' && source.lastEvent.trim().length > 0
+        ? source.lastEvent
+        : 'Idle',
+    lastProgressByWorker: sanitizedProgressByWorker,
+    lastProgress: null,
+    recentRuns: sanitizedRecentRuns.slice(0, MAX_RUNTIME_LOG_ITEMS),
+    lastUpdatedAt:
+      typeof source.lastUpdatedAt === 'string' && source.lastUpdatedAt
+        ? source.lastUpdatedAt
+        : new Date().toISOString()
+  };
+}
+
+function hydrateRuntimeProgressMap(lastProgressByWorker) {
+  runtimeProgressByWorker.clear();
+  for (const [workerKey, progress] of Object.entries(lastProgressByWorker || {})) {
+    if (!workerKey) {
+      continue;
+    }
+    if (!progress || typeof progress !== 'object') {
+      continue;
+    }
+    runtimeProgressByWorker.set(workerKey, {
+      ...progress,
+      workerKey
+    });
+  }
+}
+
+function snapshotRuntimeProgressMap() {
+  return Object.fromEntries(runtimeProgressByWorker.entries());
+}
+
+function selectTopProgress(progressByWorkerMap) {
+  const entries = Array.from((progressByWorkerMap || new Map()).entries()).map(
+    ([workerKey, progress]) => {
+    const percent = Number.isFinite(progress?.percent) ? Number(progress.percent) : 0;
+    const updatedAt =
+      typeof progress?.updatedAt === 'string' ? progress.updatedAt : new Date(0).toISOString();
+    return {
+      workerKey,
+      ...progress,
+      percent,
+      updatedAt
+      };
+    }
+  );
+
+  if (entries.length === 0) {
+    return null;
+  }
+
+  entries.sort((left, right) => {
+    if (right.percent !== left.percent) {
+      return right.percent - left.percent;
+    }
+    const leftTime = Date.parse(left.updatedAt || '');
+    const rightTime = Date.parse(right.updatedAt || '');
+    return rightTime - leftTime;
+  });
+
+  return entries[0];
+}
+
+function persistRuntimeState() {
+  void chrome.storage.session
+    .set({ runtimeCaptureState })
+    .catch(() => undefined);
+}
+
+function applyRuntimeStatePatch(patch = {}) {
+  Object.assign(runtimeCaptureState, patch);
+  if (Object.prototype.hasOwnProperty.call(patch, 'lastProgressByWorker')) {
+    hydrateRuntimeProgressMap(patch.lastProgressByWorker);
+  }
+  runtimeCaptureState.lastProgressByWorker = snapshotRuntimeProgressMap();
+  runtimeCaptureState.lastProgress = selectTopProgress(runtimeProgressByWorker);
+  runtimeCaptureState.lastUpdatedAt = new Date().toISOString();
+}
 
 function buildRuntimeStatusSnapshot() {
   return {
     ready: true,
     version: chrome.runtime.getManifest().version,
     activeCount: activeWorkerLocks.size,
-    activeWorkers: Array.from(activeWorkerLocks).sort(),
     completedCount: runtimeCaptureState.completedCount,
     successCount: runtimeCaptureState.successCount,
     failureCount: runtimeCaptureState.failureCount,
@@ -38,19 +140,19 @@ function buildRuntimeStatusSnapshot() {
 }
 
 function updateRuntimeState(patch = {}) {
-  Object.assign(runtimeCaptureState, patch);
-  runtimeCaptureState.lastUpdatedAt = new Date().toISOString();
+  applyRuntimeStatePatch(patch);
+  persistRuntimeState();
 }
 
 function clearRuntimeLogs() {
-  runtimeCaptureState.completedCount = 0;
-  runtimeCaptureState.successCount = 0;
-  runtimeCaptureState.failureCount = 0;
-  runtimeCaptureState.recentRuns = [];
-  runtimeCaptureState.lastProgress = null;
-  runtimeCaptureState.lastEvent =
-    activeWorkerLocks.size > 0 ? 'Capture is still running.' : 'Logs cleared.';
-  runtimeCaptureState.lastUpdatedAt = new Date().toISOString();
+  runtimeProgressByWorker.clear();
+  updateRuntimeState({
+    completedCount: 0,
+    successCount: 0,
+    failureCount: 0,
+    recentRuns: [],
+    lastEvent: activeWorkerLocks.size > 0 ? 'Capture is still running.' : 'Logs cleared.'
+  });
 }
 
 function recordRuntimeOutcome({ workerKey, requestId, result, startedAt }) {
@@ -60,14 +162,26 @@ function recordRuntimeOutcome({ workerKey, requestId, result, startedAt }) {
     ? result?.screenshotFile || 'Capture completed.'
     : result?.error || result?.message || 'Capture failed.';
 
-  runtimeCaptureState.completedCount += 1;
+  const previousProgress = runtimeProgressByWorker.get(workerKey);
+  runtimeProgressByWorker.set(workerKey, {
+    workerKey,
+    status: success ? 'completed' : 'failed',
+    message,
+    percent: success ? 100 : Number(previousProgress?.percent || 0),
+    requestId: requestId || null,
+    updatedAt: new Date().toISOString()
+  });
+
+  let nextSuccessCount = runtimeCaptureState.successCount;
+  let nextFailureCount = runtimeCaptureState.failureCount;
   if (success) {
-    runtimeCaptureState.successCount += 1;
+    nextSuccessCount += 1;
   } else {
-    runtimeCaptureState.failureCount += 1;
+    nextFailureCount += 1;
   }
 
-  runtimeCaptureState.recentRuns.unshift({
+  const nextRecentRuns = [...runtimeCaptureState.recentRuns];
+  nextRecentRuns.unshift({
     workerKey,
     requestId: requestId || null,
     success,
@@ -77,23 +191,41 @@ function recordRuntimeOutcome({ workerKey, requestId, result, startedAt }) {
     finishedAt: new Date().toISOString()
   });
 
-  if (runtimeCaptureState.recentRuns.length > MAX_RUNTIME_LOG_ITEMS) {
-    runtimeCaptureState.recentRuns = runtimeCaptureState.recentRuns.slice(0, MAX_RUNTIME_LOG_ITEMS);
+  if (nextRecentRuns.length > MAX_RUNTIME_LOG_ITEMS) {
+    nextRecentRuns.length = MAX_RUNTIME_LOG_ITEMS;
   }
 
   updateRuntimeState({
+    completedCount: runtimeCaptureState.completedCount + 1,
+    successCount: nextSuccessCount,
+    failureCount: nextFailureCount,
+    lastProgressByWorker: snapshotRuntimeProgressMap(),
+    recentRuns: nextRecentRuns,
     lastEvent: success
       ? `Capture completed (${workerKey}).`
-      : `Capture failed (${workerKey}).`,
-    lastProgress: success
-      ? {
-          status: 'completed',
-          message: 'Capture completed.',
-          percent: 100
-        }
-      : runtimeCaptureState.lastProgress
+      : `Capture failed (${workerKey}).`
   });
 }
+
+let runtimeStateHydrationPromise = null;
+
+function ensureRuntimeStateHydrated() {
+  if (!runtimeStateHydrationPromise) {
+    runtimeStateHydrationPromise = chrome.storage.session
+      .get('runtimeCaptureState')
+      .then((storedRuntimeCaptureState) => {
+        if (storedRuntimeCaptureState?.runtimeCaptureState) {
+          applyRuntimeStatePatch(
+            sanitizeRuntimeCaptureState(storedRuntimeCaptureState.runtimeCaptureState)
+          );
+        }
+      })
+      .catch(() => undefined);
+  }
+  return runtimeStateHydrationPromise;
+}
+
+void ensureRuntimeStateHydrated();
 
 function normalizeWorkerKey(value) {
   const raw = String(value || '')
@@ -327,6 +459,8 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   void (async () => {
     try {
+      await ensureRuntimeStateHydrated();
+
       if (!message || message.source !== UI_SOURCE) {
         sendResponse({ ok: false, error: 'Unsupported message.' });
         return;
@@ -413,18 +547,22 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   return true;
 });
 
-function createProgressEmitter(uiTabId, requestId, totalPosts, currentPost) {
+function createProgressEmitter(uiTabId, requestId, totalPosts, currentPost, workerKey) {
   return (status, message, percent) => {
+    runtimeProgressByWorker.set(workerKey, {
+      workerKey,
+      status,
+      message,
+      percent: Number.isFinite(percent) ? Number(percent) : 0,
+      totalPosts,
+      currentPost,
+      requestId: requestId || null,
+      updatedAt: new Date().toISOString()
+    });
+
     updateRuntimeState({
       lastEvent: message || runtimeCaptureState.lastEvent,
-      lastProgress: {
-        status,
-        message,
-        percent,
-        totalPosts,
-        currentPost,
-        requestId: requestId || null
-      }
+      lastProgressByWorker: snapshotRuntimeProgressMap()
     });
     if (!uiTabId) {
       return;
@@ -458,13 +596,17 @@ async function runCapture(payload, runtimeContext = {}) {
     };
   }
   activeWorkerLocks.add(workerKey);
+  runtimeProgressByWorker.set(workerKey, {
+    workerKey,
+    status: 'starting',
+    message: `Worker ${workerKey} started.`,
+    percent: 0,
+    requestId: runtimeContext.requestId || null,
+    updatedAt: new Date().toISOString()
+  });
   updateRuntimeState({
     lastEvent: `Worker ${workerKey} started.`,
-    lastProgress: {
-      status: 'running',
-      message: `Worker ${workerKey} started.`,
-      percent: 0
-    }
+    lastProgressByWorker: snapshotRuntimeProgressMap()
   });
 
   try {
@@ -481,7 +623,8 @@ async function runCapture(payload, runtimeContext = {}) {
       runtimeContext.uiTabId,
       runtimeContext.requestId,
       totalPosts,
-      currentPost
+      currentPost,
+      workerKey
     );
     await emitProgress('running', `Preparing automation window (${workerKey})...`, 5);
     const automationTarget = await resolveAutomationWindowTarget(

@@ -8,7 +8,7 @@
       body {
         margin: 0;
         padding: 14px;
-        font-family: "Segoe UI", Tahoma, sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Tahoma, sans-serif;
         background: #091326;
         color: #f8fafc;
         min-width: 380px;
@@ -147,7 +147,7 @@
       </div>
       <div class="row">
         <span class="label">Last event</span>
-        <span id="lastEvent" class="value">-</span>
+        <span id="lastEvent" class="value" aria-live="polite">-</span>
       </div>
     </div>
 
@@ -166,7 +166,7 @@
       </div>
       <div class="row">
         <span class="label">Progress</span>
-        <span id="progressText" class="value muted">Idle</span>
+        <span id="progressText" class="value muted" aria-live="polite">Idle</span>
       </div>
     </div>
 
@@ -175,6 +175,7 @@
       <button id="clearBtn" type="button">Clear logs</button>
       <button id="openWorkspaceBtn" class="primary" type="button">Open capture workspace</button>
       <button id="openImportBtn" type="button">Open import page</button>
+      <button id="settingsBtn" type="button">Settings</button>
     </div>
 
     <div class="card">

@@ -3,12 +3,14 @@
   "name": "BIZGITAL Insight Capture Bridge",
   "version": "0.1.0",
   "description": "Bridge between BIZGITAL UI and browser-native Facebook insight capture.",
+  "homepage_url": "https://report.bizgital.com/",
   "permissions": [
     "tabs",
     "scripting",
     "downloads",
     "activeTab",
-    "debugger"
+    "debugger",
+    "storage"
   ],
   "host_permissions": [
     "<all_urls>"
