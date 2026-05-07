@@ -336,7 +336,7 @@ export function TopContentManager({
         }
         description={
           <>
-            System ranks the top 3 posts by Views, Engagement, and Viewers from the imported CSV
+            System ranks the top 3 posts by Views, Engagement, and Viewers (Post) from the imported CSV
             columns. Add screenshot evidence for every slot before submit.{` `}
             {initialOverview.dataSourcePolicy.excludeManualRows
               ? 'Manual rows are currently excluded by policy.'

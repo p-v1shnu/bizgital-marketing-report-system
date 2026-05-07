@@ -12,13 +12,17 @@ import {
   getComputedFormulas,
   getDatasetOverview,
   getGlobalCompanyFormatOptions,
+  getImportColumnMappingConfig,
   getImportTableLayout,
   getImportJobs,
   getLatestImportPreview,
+  getMappingOverview,
   getReportingPeriodDetail,
   getTopContentDataSourcePolicy,
   type GlobalCompanyFormatOptionsResponse,
+  type ImportColumnMappingConfigResponse,
   type ImportJobListResponse,
+  type MappingOverviewResponse,
   type ReportingDetailResponse
 } from '@/lib/reporting-api';
 import { sectionStatusLabel, sectionTone, workflowProgress, workflowStepNumber } from '@/lib/reporting-ui';
@@ -239,6 +243,10 @@ export default async function ImportPage({ params, searchParams }: ImportPagePro
       note: null
     }))
   ]);
+  const [mappingOverviewResult, mappingConfigResult] = await Promise.all([
+    getMappingOverview(brandId, periodId).catch(() => null as MappingOverviewResponse | null),
+    getImportColumnMappingConfig().catch(() => null as ImportColumnMappingConfigResponse | null)
+  ]);
   const datasetResult = sourcePreviewResult?.importJob
     ? await getDatasetOverview(brandId, periodId).catch(() => null)
     : null;
@@ -292,13 +300,31 @@ export default async function ImportPage({ params, searchParams }: ImportPagePro
       section.slug !== 'history'
   );
   const progress = workflowProgress(detail);
+  const mappedTargetFieldSet = new Set(
+    (mappingOverviewResult?.latestImportJob?.columnProfiles ?? [])
+      .map((profile) => profile.mappedTargetField)
+      .filter((value): value is NonNullable<typeof value> => value !== null)
+  );
+  const requiredMappingRules =
+    (mappingConfigResult?.draft?.rules ?? mappingConfigResult?.published?.rules ?? []).filter(
+      (rule) => rule.required
+    );
+  const availableTargetFieldSet = new Set(
+    (mappingOverviewResult?.availableTargets ?? []).map((target) => target.key)
+  );
+  const missingRequiredMappingCount = requiredMappingRules.filter(
+    (rule) =>
+      availableTargetFieldSet.has(
+        rule.targetField as MappingOverviewResponse['availableTargets'][number]['key']
+      ) && !mappedTargetFieldSet.has(rule.targetField as MappingOverviewResponse['availableTargets'][number]['key'])
+  ).length;
+  const hasMissingRequiredMappings = missingRequiredMappingCount > 0;
   const isMappingFallbackRequested = resolvedSearchParams.mappingFallback === 'true';
   const isMappingResolvedRequested = resolvedSearchParams.mappingResolved === 'true';
   const shouldShowMappingFallback =
     isMappingFallbackRequested ||
-    (!!latestJob && latestJob.status === 'ready_for_mapping' && !datasetPreview);
-  const canAutoClearMappingFallback =
-    (datasetResult?.mappingSummary.unmappedColumnCount ?? 0) === 0;
+    hasMissingRequiredMappings;
+  const canAutoClearMappingFallback = !hasMissingRequiredMappings;
   const latestImportBadgeLabel = latestJob
     ? `Latest import: ${latestJob.status.replaceAll('_', ' ')}`
     : 'No import file yet';

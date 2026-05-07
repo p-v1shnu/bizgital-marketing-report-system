@@ -40,7 +40,7 @@ type KpiCheckCard = {
 
 const fallbackHeaderCandidatesByTarget: Record<CanonicalTargetField, string[]> = {
   views: ['Views', 'View count', 'Total views', 'Video views'],
-  viewers: ['Viewers'],
+  viewers: ['Viewers (Post)', 'Viewers', 'Reach'],
   page_followers: ['Page Followers'],
   engagement: ['Engagement', 'Reactions, Comments and Shares', 'Total clicks'],
   video_views_3s: ['3-second video views', '3 second video views', '3s video views']
