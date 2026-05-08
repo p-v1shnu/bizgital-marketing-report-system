@@ -16,6 +16,48 @@ This extension lets the **Insight Capture Workspace page in our system UI** trig
 4. Select this folder:
    `apps/frontend/browser-extension/insight-capture-bridge`
 
+## Install (Developer Mode Toolkit - Recommended for current internal rollout)
+
+Use helper scripts in:
+`deployment/dev-mode`
+
+1. Build distributable zip (for employees):
+```powershell
+.\build-devmode-zip.ps1
+```
+2. Employee install flow (no PowerShell required):
+   - Extract zip to a stable folder
+   - Open `chrome://extensions` or `edge://extensions`
+   - Enable `Developer mode`
+   - Click `Load unpacked`
+   - Select extracted folder
+3. IT/technical install flow (optional helper script):
+```powershell
+.\install-dev-mode.ps1 -Browser Both
+```
+4. If using helper script, in browser do once:
+   - Enable `Developer mode`
+   - Click `Load unpacked`
+   - Select `%LOCALAPPDATA%\BIZGITAL\InsightCaptureBridge`
+
+Thai guide:
+`deployment/dev-mode/INSTALL_TH.md`
+
+## Install (Managed Policy, Internal)
+
+For internal production rollout without Dev Mode:
+
+1. Use deployment kit:
+`apps/frontend/browser-extension/insight-capture-bridge/deployment`
+2. Host extension CRX + `update.xml` on an internal HTTPS endpoint.
+3. Apply enterprise policy (`ExtensionInstallForcelist`) with admin tooling (GPO/Intune/MDM or local admin script).
+4. Restart browser and verify in:
+   - `chrome://policy`
+   - `edge://policy`
+
+See:
+`deployment/README.md`
+
 ## Use from system UI
 
 1. Open:
@@ -35,3 +77,4 @@ PNG files are saved from system UI to a selected local folder:
 
 - This MVP captures the visible browser viewport after Insights opens.
 - It keeps the Facebook tab open for login/checkpoint remediation when needed.
+- Settings page is available via the extension popup `Settings` button (options page).
