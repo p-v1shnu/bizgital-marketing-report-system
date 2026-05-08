@@ -12,13 +12,17 @@ import {
   getComputedFormulas,
   getDatasetOverview,
   getGlobalCompanyFormatOptions,
+  getImportColumnMappingConfig,
   getImportTableLayout,
   getImportJobs,
   getLatestImportPreview,
+  getMappingOverview,
   getReportingPeriodDetail,
   getTopContentDataSourcePolicy,
   type GlobalCompanyFormatOptionsResponse,
+  type ImportColumnMappingConfigResponse,
   type ImportJobListResponse,
+  type MappingOverviewResponse,
   type ReportingDetailResponse
 } from '@/lib/reporting-api';
 import { sectionStatusLabel, sectionTone, workflowProgress, workflowStepNumber } from '@/lib/reporting-ui';
@@ -29,6 +33,7 @@ import { ReportSectionHeader } from '../report-section-header';
 import { ReportWorkspaceShell } from '../workspace-shell';
 import { WorkspaceUnavailableCard } from '../workspace-unavailable-card';
 import { uploadImportJobAction } from './actions';
+import { ImportMappingFallbackBanner } from './import-mapping-fallback-banner';
 import { ImportWorkingTable } from './import-working-table';
 
 type ImportPageProps = {
@@ -40,6 +45,7 @@ type ImportPageProps = {
     message?: string;
     error?: string;
     mappingFallback?: string;
+    mappingResolved?: string;
   }>;
 };
 
@@ -237,6 +243,10 @@ export default async function ImportPage({ params, searchParams }: ImportPagePro
       note: null
     }))
   ]);
+  const [mappingOverviewResult, mappingConfigResult] = await Promise.all([
+    getMappingOverview(brandId, periodId).catch(() => null as MappingOverviewResponse | null),
+    getImportColumnMappingConfig().catch(() => null as ImportColumnMappingConfigResponse | null)
+  ]);
   const datasetResult = sourcePreviewResult?.importJob
     ? await getDatasetOverview(brandId, periodId).catch(() => null)
     : null;
@@ -290,9 +300,31 @@ export default async function ImportPage({ params, searchParams }: ImportPagePro
       section.slug !== 'history'
   );
   const progress = workflowProgress(detail);
+  const mappedTargetFieldSet = new Set(
+    (mappingOverviewResult?.latestImportJob?.columnProfiles ?? [])
+      .map((profile) => profile.mappedTargetField)
+      .filter((value): value is NonNullable<typeof value> => value !== null)
+  );
+  const requiredMappingRules =
+    (mappingConfigResult?.draft?.rules ?? mappingConfigResult?.published?.rules ?? []).filter(
+      (rule) => rule.required
+    );
+  const availableTargetFieldSet = new Set(
+    (mappingOverviewResult?.availableTargets ?? []).map((target) => target.key)
+  );
+  const missingRequiredMappingCount = requiredMappingRules.filter(
+    (rule) =>
+      availableTargetFieldSet.has(
+        rule.targetField as MappingOverviewResponse['availableTargets'][number]['key']
+      ) && !mappedTargetFieldSet.has(rule.targetField as MappingOverviewResponse['availableTargets'][number]['key'])
+  ).length;
+  const hasMissingRequiredMappings = missingRequiredMappingCount > 0;
+  const isMappingFallbackRequested = resolvedSearchParams.mappingFallback === 'true';
+  const isMappingResolvedRequested = resolvedSearchParams.mappingResolved === 'true';
   const shouldShowMappingFallback =
-    resolvedSearchParams.mappingFallback === 'true' ||
-    (!!latestJob && latestJob.status === 'ready_for_mapping' && !datasetPreview);
+    isMappingFallbackRequested ||
+    hasMissingRequiredMappings;
+  const canAutoClearMappingFallback = !hasMissingRequiredMappings;
   const latestImportBadgeLabel = latestJob
     ? `Latest import: ${latestJob.status.replaceAll('_', ' ')}`
     : 'No import file yet';
@@ -444,39 +476,18 @@ export default async function ImportPage({ params, searchParams }: ImportPagePro
           </CardContent>
         </Card>
 
-        {shouldShowMappingFallback ? (
-          <Card className="border-amber-500/25 bg-amber-500/8">
-            <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6">
-              <div className="space-y-1">
-                <div className="text-sm font-medium text-foreground">
-                  Mapping fallback is available for this upload
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Auto-map could not complete every required field. Open month mapping to finalize this file,
-                  then return to Import.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {canAccessPeriodMapping ? (
-                  <Button asChild size="sm" variant="secondary">
-                    <Link href={periodMappingHref}>
-                      Open month mapping
-                      <ArrowRight />
-                    </Link>
-                  </Button>
-                ) : null}
-                {canAccessImportMappingAdmin ? (
-                  <Button asChild size="sm" variant="outline">
-                    <Link href={mappingHref}>
-                      Open mapping settings
-                      <ArrowRight />
-                    </Link>
-                  </Button>
-                ) : null}
-              </div>
-            </CardContent>
-          </Card>
-        ) : null}
+        <ImportMappingFallbackBanner
+          brandId={brandId}
+          canAccessImportMappingAdmin={canAccessImportMappingAdmin}
+          canAccessPeriodMapping={canAccessPeriodMapping}
+          canAutoClearMappingFallback={canAutoClearMappingFallback}
+          isMappingFallbackRequested={isMappingFallbackRequested}
+          isMappingResolvedRequested={isMappingResolvedRequested}
+          mappingHref={mappingHref}
+          periodId={periodId}
+          periodMappingHref={periodMappingHref}
+          shouldShowInitially={shouldShowMappingFallback}
+        />
 
         <Card id="report-canvas">
           <CardContent className="space-y-4 pt-6">
@@ -485,6 +496,7 @@ export default async function ImportPage({ params, searchParams }: ImportPagePro
                 <ImportWorkingTable
                   activeFormulas={computedFormulasResult.items}
                   brandId={brandId}
+                  brandLabel={detail.brand.name}
                   campaignOptions={campaignOptions}
                   companyFormatFields={companyFormatFields}
                   contentCount={datasetResult?.contentCount ?? null}
@@ -494,6 +506,7 @@ export default async function ImportPage({ params, searchParams }: ImportPagePro
                   isWorkingTableEditable={isWorkingTableEditable}
                   manualHeader={datasetResult?.manualHeader ?? null}
                   periodId={periodId}
+                  reportMonthKey={`${detail.period.year}-${String(detail.period.month).padStart(2, '0')}`}
                   sourcePreview={sourcePreview}
                   topContentManualRowsExcluded={topContentPolicyResult.excludeManualRows}
                   uploadedFilename={latestJob?.originalFilename ?? null}

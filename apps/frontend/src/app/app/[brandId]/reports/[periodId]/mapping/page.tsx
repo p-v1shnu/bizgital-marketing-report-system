@@ -13,8 +13,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select } from '@/components/ui/select';
 import { requireAnyAdmin } from '@/lib/auth';
 import {
+  getImportColumnMappingConfig,
   getMappingOverview,
   getReportingPeriodDetail,
+  type ImportColumnMappingConfigResponse,
   type MappingOverviewResponse,
   type ReportingDetailResponse
 } from '@/lib/reporting-api';
@@ -31,6 +33,7 @@ type MappingPageProps = {
   searchParams?: Promise<{
     message?: string;
     error?: string;
+    mappingResolved?: string;
   }>;
 };
 
@@ -43,6 +46,7 @@ export default async function MappingPage({
   const resolvedSearchParams = searchParams ? await searchParams : {};
   let detail: ReportingDetailResponse | null = null;
   let overview: MappingOverviewResponse | null = null;
+  let mappingConfig: ImportColumnMappingConfigResponse | null = null;
   let loadError: string | null = null;
 
   try {
@@ -72,6 +76,12 @@ export default async function MappingPage({
         : `Failed to load mapping overview for period ${periodId}.`;
   }
 
+  try {
+    mappingConfig = await getImportColumnMappingConfig();
+  } catch {
+    mappingConfig = null;
+  }
+
   if (!overview) {
     return (
       <ReportWorkspaceShell
@@ -94,6 +104,51 @@ export default async function MappingPage({
     overview.latestImportJob?.columnProfiles.filter(
       (profile) => profile.mappedTargetField !== null
     ).length ?? 0;
+  const mappedTargetFieldSet = new Set(
+    (overview.latestImportJob?.columnProfiles ?? []).flatMap((profile) =>
+      profile.mappedTargetField ? [profile.mappedTargetField] : []
+    )
+  );
+  const activeMappingRules =
+    mappingConfig?.draft?.rules ?? mappingConfig?.published?.rules ?? [];
+  const targetLabelByKey = new Map(
+    overview.availableTargets.map((target) => [target.key, target.label] as const)
+  );
+  const availableTargetKeys = new Set(
+    overview.availableTargets.map((target) => target.key)
+  );
+  const isAvailableTargetField = (
+    value: string
+  ): value is MappingOverviewResponse['availableTargets'][number]['key'] =>
+    availableTargetKeys.has(value as MappingOverviewResponse['availableTargets'][number]['key']);
+  const missingRequiredFieldLabels = activeMappingRules.flatMap((rule) => {
+    if (!rule.required) {
+      return [];
+    }
+
+    if (!isAvailableTargetField(rule.targetField)) {
+      return [];
+    }
+
+    if (mappedTargetFieldSet.has(rule.targetField)) {
+      return [];
+    }
+
+    return [targetLabelByKey.get(rule.targetField) ?? rule.displayLabel];
+  });
+  const unmappedProfiles =
+    overview.latestImportJob?.columnProfiles.filter(
+      (profile) => profile.mappedTargetField === null
+    ) ?? [];
+  const hasMappingAttentionItems = missingRequiredFieldLabels.length > 0;
+  const hasOptionalUnmappedColumns =
+    missingRequiredFieldLabels.length === 0 && unmappedProfiles.length > 0;
+  const visibleUnmappedProfiles = unmappedProfiles.slice(0, 8);
+  const remainingUnmappedCount = Math.max(0, unmappedProfiles.length - visibleUnmappedProfiles.length);
+  const backToImportHref =
+    resolvedSearchParams.mappingResolved === 'true'
+      ? `/app/${brandId}/reports/${periodId}/import?mappingResolved=true`
+      : `/app/${brandId}/reports/${periodId}/import`;
 
   return (
     <ReportWorkspaceShell
@@ -146,11 +201,66 @@ export default async function MappingPage({
                     </p>
                   </div>
                   <Button asChild variant="outline">
-                    <Link href={`/app/${brandId}/reports/${periodId}/import`}>
+                    <Link href={backToImportHref}>
                       Back to Import
                       <ArrowRight />
                     </Link>
                   </Button>
+                </CardContent>
+              </Card>
+            ) : null}
+
+            {hasProfiles && hasMappingAttentionItems ? (
+              <Card className="border-amber-500/25 bg-amber-500/8">
+                <CardContent className="space-y-3 pt-6">
+                  <div className="flex items-start gap-2 text-sm font-medium text-amber-700 dark:text-amber-300">
+                    <AlertCircle className="mt-0.5 size-4" />
+                    Mapping still needs attention
+                  </div>
+                  {missingRequiredFieldLabels.length > 0 ? (
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium uppercase tracking-[0.08em] text-amber-800/90 dark:text-amber-200/90">
+                        Missing required fields
+                      </p>
+                      <p className="text-sm text-foreground">
+                        {missingRequiredFieldLabels.join(', ')}
+                      </p>
+                    </div>
+                  ) : null}
+                  {unmappedProfiles.length > 0 ? (
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium uppercase tracking-[0.08em] text-amber-800/90 dark:text-amber-200/90">
+                        CSV columns still unmapped
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {visibleUnmappedProfiles
+                          .map((profile) => `${profile.sourcePosition}. ${profile.sourceColumnName}`)
+                          .join(' | ')}
+                        {remainingUnmappedCount > 0
+                          ? ` | +${remainingUnmappedCount} more`
+                          : ''}
+                      </p>
+                    </div>
+                  ) : null}
+                </CardContent>
+              </Card>
+            ) : null}
+
+            {hasProfiles && hasOptionalUnmappedColumns ? (
+              <Card className="border-sky-500/25 bg-sky-500/8">
+                <CardContent className="space-y-2 pt-6">
+                  <div className="text-sm font-medium text-sky-200">
+                    Required mapping is complete
+                  </div>
+                  <p className="text-sm text-sky-100/90">
+                    Optional CSV columns still unmapped:{' '}
+                    {visibleUnmappedProfiles
+                      .map((profile) => `${profile.sourcePosition}. ${profile.sourceColumnName}`)
+                      .join(' | ')}
+                    {remainingUnmappedCount > 0
+                      ? ` | +${remainingUnmappedCount} more`
+                      : ''}
+                  </p>
                 </CardContent>
               </Card>
             ) : null}
@@ -174,7 +284,7 @@ export default async function MappingPage({
                       come back here to map the source columns.
                     </p>
                     <Button asChild variant="secondary">
-                      <Link href={`/app/${brandId}/reports/${periodId}/import`}>
+                      <Link href={backToImportHref}>
                         Go to import
                         <ArrowRight />
                       </Link>
@@ -234,7 +344,7 @@ export default async function MappingPage({
                     <div className="flex flex-wrap gap-3">
                       <Button type="submit">Save mappings</Button>
                       <Button asChild type="button" variant="outline">
-                        <Link href={`/app/${brandId}/reports/${periodId}/import`}>
+                        <Link href={backToImportHref}>
                           Back to Import
                         </Link>
                       </Button>

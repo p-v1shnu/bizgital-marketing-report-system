@@ -95,8 +95,10 @@ declare global {
 type Props = {
   activeFormulas: ComputedFormulaResponse[];
   brandId: string;
+  brandLabel: string;
   campaignOptions: string[];
   periodId: string;
+  reportMonthKey: string;
   uploadedFilename: string | null;
   sourcePreview: NonNullable<ImportPreviewResponse['preview']>;
   datasetPreview: DatasetPreview;
@@ -111,6 +113,22 @@ type Props = {
   isWorkingTableEditable: boolean;
   isReadOnly: boolean;
   topContentManualRowsExcluded: boolean;
+};
+
+type CaptureQueueItem = {
+  postUrl: string;
+  pageId: string;
+  pageName: string;
+  rowNumber: number;
+};
+
+type CaptureQueuePayload = {
+  brandLabel: string;
+  reportMonthKey: string;
+  createdAt: string;
+  totalSourceRows: number;
+  totalEligibleRows: number;
+  items: CaptureQueueItem[];
 };
 
 const manualStoragePrefix = 'bizgital-marketing-report.import.manual-values';
@@ -591,6 +609,28 @@ function normalizeInputValue(value: string | null | undefined) {
   return normalized.length > 0 ? normalized : null;
 }
 
+function normalizePageIdFromText(value: string | null | undefined) {
+  const digits = String(value ?? '').replace(/[^0-9]/g, '');
+  return digits.length >= 5 ? digits : '';
+}
+
+function normalizeFacebookPostUrl(value: string | null | undefined) {
+  const raw = String(value ?? '').trim();
+  if (!raw) {
+    return '';
+  }
+
+  try {
+    const parsed = new URL(raw);
+    if (!/facebook\.com$/i.test(parsed.hostname) && !/\.facebook\.com$/i.test(parsed.hostname)) {
+      return '';
+    }
+    return parsed.toString();
+  } catch {
+    return '';
+  }
+}
+
 function inferMetricTargetFieldFromLabel(label: string) {
   const normalized = normalizeLabel(label);
 
@@ -682,8 +722,10 @@ function buildManualRowNumbersMap(
 export function ImportWorkingTable({
   activeFormulas,
   brandId,
+  brandLabel,
   campaignOptions,
   periodId,
+  reportMonthKey,
   uploadedFilename,
   sourcePreview,
   datasetPreview,
@@ -724,6 +766,7 @@ export function ImportWorkingTable({
   const [manualHeaderSaveMode, setManualHeaderSaveMode] = useState<'auto' | 'manual'>('auto');
   const [manualHeaderSavedAt, setManualHeaderSavedAt] = useState<string | null>(null);
   const [manualHeaderSaveError, setManualHeaderSaveError] = useState<string | null>(null);
+  const [captureLaunchError, setCaptureLaunchError] = useState<string | null>(null);
   const autosaveRequestSequence = useRef(0);
   const manualRowsAutosaveRequestSequence = useRef(0);
   const lastPersistedManualHeaderValuesRef = useRef(
@@ -1170,6 +1213,87 @@ export function ImportWorkingTable({
 
     return map;
   }, [sourcePreview.columns]);
+  const captureQueuePayload = useMemo<CaptureQueuePayload>(() => {
+    const permalinkColumn =
+      sourcePreview.columns.find((column) => {
+        const normalizedRaw = normalizeLabel(column.rawLabel);
+        return (
+          normalizedRaw === normalizeLabel('Permalink') ||
+          normalizedRaw === normalizeLabel('Post URL')
+        );
+      }) ?? null;
+    const pageIdColumn =
+      sourcePreview.columns.find((column) => {
+        const normalizedRaw = normalizeLabel(column.rawLabel);
+        return (
+          normalizedRaw === normalizeLabel('Page ID') ||
+          normalizedRaw === normalizeLabel('Page Id') ||
+          normalizedRaw === normalizeLabel('PageID') ||
+          normalizedRaw === normalizeLabel('Facebook Page ID') ||
+          normalizedRaw === normalizeLabel('FB Page ID')
+        );
+      }) ?? null;
+    const pageNameColumn =
+      sourcePreview.columns.find((column) => {
+        const normalizedRaw = normalizeLabel(column.rawLabel);
+        return normalizedRaw === normalizeLabel('Page name') || normalizedRaw === normalizeLabel('Page Name');
+      }) ?? null;
+
+    const items: CaptureQueueItem[] = [];
+    for (const sourceRow of sourcePreview.rows) {
+      if (!permalinkColumn || !pageIdColumn) {
+        continue;
+      }
+      const postUrl = normalizeFacebookPostUrl(sourceRow.cells[permalinkColumn.key] ?? '');
+      const pageId = normalizePageIdFromText(sourceRow.cells[pageIdColumn.key] ?? '');
+      if (!postUrl || !pageId) {
+        continue;
+      }
+
+      const pageNameFromSource = String(
+        pageNameColumn ? sourceRow.cells[pageNameColumn.key] ?? '' : ''
+      ).trim();
+
+      items.push({
+        postUrl,
+        pageId,
+        pageName: pageNameFromSource || brandLabel,
+        rowNumber: sourceRow.rowNumber
+      });
+    }
+
+    return {
+      brandLabel,
+      reportMonthKey,
+      createdAt: new Date().toISOString(),
+      totalSourceRows: sourcePreview.totalRows,
+      totalEligibleRows: items.length,
+      items
+    };
+  }, [brandLabel, reportMonthKey, sourcePreview.columns, sourcePreview.rows, sourcePreview.totalRows]);
+
+  function openCaptureWorkspaceTab() {
+    setCaptureLaunchError(null);
+    if (captureQueuePayload.items.length === 0) {
+      setCaptureLaunchError(
+        'No eligible SOURCE rows found. Ensure Permalink and Page ID exist in the imported file.'
+      );
+      return;
+    }
+
+    const queueKey = `bizgital-insight-capture-queue:${brandId}:${periodId}:${Date.now()}`;
+    window.localStorage.setItem(queueKey, JSON.stringify(captureQueuePayload));
+    const url = `/app/internal/insight-capture-workspace?queueKey=${encodeURIComponent(queueKey)}`;
+    const popup = window.open(url, '_blank');
+    if (!popup) {
+      setCaptureLaunchError('Browser blocked the new tab. Please allow popups for this site.');
+      return;
+    }
+
+    // Keep security intent of noopener without relying on browser-specific return behavior.
+    popup.opener = null;
+  }
+
   const manualDatasetRowUpdates = useMemo<ManualDatasetRowUpdate[]>(() => {
     if (!isCompanyFormatEditable) {
       return [];
@@ -2072,6 +2196,14 @@ export function ImportWorkingTable({
             : 'Manual rows are fully user-entered, including Engagement. Manual rows can be included in Top Content by current policy.'}
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Button
+            onClick={openCaptureWorkspaceTab}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            Capture Insights ({captureQueuePayload.totalEligibleRows})
+          </Button>
           <Button onClick={() => void toggleTableFullscreen()} size="sm" type="button" variant="outline">
             {isTableFullscreen ? 'Exit full screen' : 'Full screen table'}
           </Button>
@@ -2088,6 +2220,11 @@ export function ImportWorkingTable({
           ) : null}
         </div>
       </div>
+      {captureLaunchError ? (
+        <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
+          {captureLaunchError}
+        </div>
+      ) : null}
 
       <div
         ref={tableFullscreenRootRef}

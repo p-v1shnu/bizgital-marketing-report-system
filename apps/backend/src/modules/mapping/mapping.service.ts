@@ -138,7 +138,15 @@ export class MappingService {
             }))
           }
         : null,
-      availableTargets: AVAILABLE_TARGETS,
+      availableTargets: AVAILABLE_TARGETS.map((target) =>
+        target.key === 'viewers'
+          ? {
+              ...target,
+              label: 'Viewers (Post)',
+              description: 'Post-level viewers metric from imported CSV.'
+            }
+          : target
+      ),
       validation: {
         targetFieldsMustBeUnique: true
       }
@@ -179,10 +187,15 @@ export class MappingService {
     const usedTargets = new Set<MappingTargetField>();
     const matchedTargets = new Set<MappingTargetField>();
     const mappings = latestImportJob.columnProfiles.map((profile) => {
+      const normalizedCandidates = [
+        this.normalizeHeaderKey(profile.sourceRawColumnName),
+        this.normalizeHeaderKey(profile.sourceColumnName)
+      ].filter((value) => !!value);
       const targetField =
-        targetByNormalizedHeader.get(
-          this.normalizeHeaderKey(profile.sourceColumnName)
-        ) ?? null;
+        normalizedCandidates
+          .map((candidate) => targetByNormalizedHeader.get(candidate) ?? null)
+          .find((candidate): candidate is MappingTargetField => candidate !== null) ??
+        null;
 
       if (!targetField || usedTargets.has(targetField)) {
         return {

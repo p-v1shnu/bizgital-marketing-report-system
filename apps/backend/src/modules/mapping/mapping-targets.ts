@@ -14,6 +14,14 @@ export const CANONICAL_TARGETS: Array<{
   isMetric: boolean;
 }> = [
   {
+    key: 'page_id',
+    label: 'Page ID',
+    description: 'Facebook Page ID used for profile switching during insight capture.',
+    dataType: 'string',
+    inputType: 'text',
+    isMetric: false
+  },
+  {
     key: 'views',
     label: 'Views',
     description: 'Canonical Views metric.',

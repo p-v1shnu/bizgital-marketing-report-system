@@ -75,6 +75,7 @@ export type TopContentOverviewResponse = {
     rankPosition: number;
     screenshotUrl: string | null;
     postUrl: string | null;
+    pageId: string | null;
     selectionBasis: string;
     datasetRow: {
       id: string;

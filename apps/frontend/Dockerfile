@@ -2,6 +2,8 @@ FROM node:22-alpine
 
 WORKDIR /workspace
 
+RUN apk add --no-cache chromium
+
 COPY package.json package-lock.json tsconfig.base.json ./
 COPY apps/frontend/package.json ./apps/frontend/package.json
 

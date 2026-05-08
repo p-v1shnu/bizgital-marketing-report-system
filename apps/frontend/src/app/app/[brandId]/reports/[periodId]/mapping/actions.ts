@@ -75,6 +75,7 @@ export async function saveMappingsAction(formData: FormData) {
   revalidatePath(`/app/${brandId}/reports/${periodId}/top-content`);
   revalidatePath(`/app/${brandId}/reports/${periodId}/review`);
   redirectToMapping(brandId, periodId, {
-    message: `Saved ${payload.savedCount} mappings and materialized ${payload.materializedRows} dataset rows for the current draft.`
+    message: `Saved ${payload.savedCount} mappings and materialized ${payload.materializedRows} dataset rows for the current draft.`,
+    mappingResolved: 'true'
   });
 }

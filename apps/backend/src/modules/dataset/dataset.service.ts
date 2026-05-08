@@ -47,6 +47,7 @@ import {
 
 const DATASET_PREVIEW_LIMIT = 5;
 const MANUAL_EXTENDED_TARGET_FIELDS: MappingTargetField[] = [
+  MappingTargetField.page_id,
   MappingTargetField.views,
   MappingTargetField.viewers,
   MappingTargetField.engagement,

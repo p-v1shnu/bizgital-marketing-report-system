@@ -40,6 +40,7 @@ enum MappingTargetField {
   published_at
   platform
   campaign_name
+  page_id
   views
   viewers
   page_followers

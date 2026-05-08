@@ -129,6 +129,12 @@ const IMPORT_MAPPING_TARGET_CATALOG: Array<{
   description: string;
 }> = [
   {
+    key: MappingTargetField.page_id,
+    label: 'Page ID',
+    description:
+      'Optional Facebook page identifier for automation flows that switch page context.'
+  },
+  {
     key: MappingTargetField.views,
     label: 'Views',
     description: 'System metric used in KPI, ranking, and report calculations.'
@@ -141,6 +147,13 @@ const IMPORT_MAPPING_TARGET_CATALOG: Array<{
 ];
 
 const DEFAULT_IMPORT_MAPPING_RULES: ImportColumnMappingRule[] = [
+  {
+    targetField: MappingTargetField.page_id,
+    baselineHeader: 'Page ID',
+    displayLabel: 'Page ID',
+    aliases: ['Page Id', 'PageID', 'Facebook Page ID', 'FB Page ID'],
+    required: false
+  },
   {
     targetField: MappingTargetField.views,
     baselineHeader: 'Views',

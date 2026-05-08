@@ -77,6 +77,7 @@ type SnapshotMetricsByRow = {
     }
   >;
   postUrlByRowNumber: Map<number, string | null>;
+  pageIdByRowNumber: Map<number, string | null>;
   publishedAtByRowNumber: Map<number, string | null>;
   contentStyleValueKeyByRowNumber: Map<number, string | null>;
   availableBySlot: Record<TopContentSlotKey, boolean>;
@@ -92,6 +93,7 @@ type DatasetMetricValuesByRow = {
     }
   >;
   postUrlByRowNumber: Map<number, string | null>;
+  pageIdByRowNumber: Map<number, string | null>;
   publishedAtByRowNumber: Map<number, string | null>;
   contentStyleValueKeyByRowNumber: Map<number, string | null>;
 };
@@ -539,6 +541,10 @@ export class TopContentService {
       snapshotMetricsByRow.postUrlByRowNumber,
       datasetMetricValuesByRow?.postUrlByRowNumber ?? null
     );
+    const pageIdByRowNumber = this.mergeMapWithFallback(
+      snapshotMetricsByRow.pageIdByRowNumber,
+      datasetMetricValuesByRow?.pageIdByRowNumber ?? null
+    );
 
     const [rows, existingCards] = await Promise.all([
       this.prisma.datasetRow.findMany({
@@ -591,7 +597,12 @@ export class TopContentService {
         currentSlotCount: 0,
         isCurrent: false,
         cards: existingCards.map((card) =>
-          this.toCardResponse(card, postUrlByRowNumber, requiredSourceLabelsBySlot)
+          this.toCardResponse(
+            card,
+            postUrlByRowNumber,
+            pageIdByRowNumber,
+            requiredSourceLabelsBySlot
+          )
         )
       };
     }
@@ -669,7 +680,12 @@ export class TopContentService {
       currentSlotCount,
       isCurrent,
       cards: existingCards.map((card) =>
-        this.toCardResponse(card, postUrlByRowNumber, requiredSourceLabelsBySlot)
+        this.toCardResponse(
+          card,
+          postUrlByRowNumber,
+          pageIdByRowNumber,
+          requiredSourceLabelsBySlot
+        )
       )
     };
   }
@@ -696,6 +712,10 @@ export class TopContentService {
     const postUrlByRowNumber = this.mergeMapWithFallback(
       snapshotMetricsByRow.postUrlByRowNumber,
       datasetMetricValuesByRow.postUrlByRowNumber
+    );
+    const pageIdByRowNumber = this.mergeMapWithFallback(
+      snapshotMetricsByRow.pageIdByRowNumber,
+      datasetMetricValuesByRow.pageIdByRowNumber
     );
     const requiredSlotCount = TOP_CONTENT_SLOTS.length;
     const requiredCards = TOP_CONTENT_SLOTS.map(slot =>
@@ -724,7 +744,12 @@ export class TopContentService {
       currentSlotCount,
       isCurrent,
       cards: existingCards.map(card =>
-        this.toCardResponse(card, postUrlByRowNumber, requiredSourceLabelsBySlot)
+        this.toCardResponse(
+          card,
+          postUrlByRowNumber,
+          pageIdByRowNumber,
+          requiredSourceLabelsBySlot
+        )
       )
     };
   }
@@ -1081,6 +1106,7 @@ export class TopContentService {
     };
   },
   postUrlByRowNumber: Map<number, string | null>,
+  pageIdByRowNumber: Map<number, string | null>,
   requiredSourceLabelsBySlot: Record<TopContentSlotKey, string>
   ): TopContentOverviewResponse['cards'][number] {
     const slotKey = card.slotKey as TopContentSlotKey;
@@ -1097,6 +1123,7 @@ export class TopContentService {
       rankPosition: card.rankPosition,
       screenshotUrl: card.screenshotUrl,
       postUrl: postUrlByRowNumber.get(card.datasetRow.sourceRowNumber) ?? null,
+      pageId: pageIdByRowNumber.get(card.datasetRow.sourceRowNumber) ?? null,
       selectionBasis: card.selectionBasis,
       datasetRow: {
         id: card.datasetRow.id,
@@ -1301,6 +1328,7 @@ export class TopContentService {
       sourceRowCount: 0,
       valuesByRowNumber: new Map(),
       postUrlByRowNumber: new Map(),
+      pageIdByRowNumber: new Map(),
       publishedAtByRowNumber: new Map(),
       contentStyleValueKeyByRowNumber: new Map(),
       availableBySlot: {
@@ -1354,6 +1382,13 @@ export class TopContentService {
     ]);
     const engagementIndex = findColumnIndex(requiredSourceLabelsBySlot.top_engagement);
     const permalinkIndex = findColumnIndexAny([DEFAULT_PERMALINK_LABEL, 'Post URL']);
+    const pageIdIndex = findColumnIndexAny([
+      'Page ID',
+      'Page Id',
+      'PageID',
+      'Facebook Page ID',
+      'FB Page ID'
+    ]);
     const publishedAtIndex = findColumnIndexAny([
       'Publish time',
       'Published at',
@@ -1395,6 +1430,7 @@ export class TopContentService {
       }
     >();
     const postUrlByRowNumber = new Map<number, string | null>();
+    const pageIdByRowNumber = new Map<number, string | null>();
     const publishedAtByRowNumber = new Map<number, string | null>();
     const contentStyleValueKeyByRowNumber = new Map<number, string | null>();
 
@@ -1427,6 +1463,10 @@ export class TopContentService {
         rowNumber,
         permalinkIndex >= 0 ? (row[permalinkIndex] || '').trim() || null : null
       );
+      pageIdByRowNumber.set(
+        rowNumber,
+        pageIdIndex >= 0 ? (row[pageIdIndex] || '').trim() || null : null
+      );
       publishedAtByRowNumber.set(
         rowNumber,
         publishedAtIndex >= 0 ? (row[publishedAtIndex] || '').trim() || null : null
@@ -1447,6 +1487,7 @@ export class TopContentService {
       sourceRowCount: snapshot.dataRows.length,
       valuesByRowNumber,
       postUrlByRowNumber,
+      pageIdByRowNumber,
       publishedAtByRowNumber,
       contentStyleValueKeyByRowNumber,
       availableBySlot
@@ -1472,6 +1513,7 @@ export class TopContentService {
                 MappingTargetField.viewers,
                 MappingTargetField.engagement,
                 MappingTargetField.content_url,
+                MappingTargetField.page_id,
                 MappingTargetField.published_at
               ]
             }
@@ -1498,6 +1540,7 @@ export class TopContentService {
       }
     >();
     const postUrlByRowNumber = new Map<number, string | null>();
+    const pageIdByRowNumber = new Map<number, string | null>();
     const publishedAtByRowNumber = new Map<number, string | null>();
     const contentStyleValueKeyByRowNumber = new Map<number, string | null>();
 
@@ -1520,6 +1563,10 @@ export class TopContentService {
         row.sourceRowNumber,
         this.normalizeTextOrNull(effectiveValuesByTarget.get(MappingTargetField.content_url) ?? null)
       );
+      pageIdByRowNumber.set(
+        row.sourceRowNumber,
+        this.normalizeTextOrNull(effectiveValuesByTarget.get(MappingTargetField.page_id) ?? null)
+      );
       publishedAtByRowNumber.set(
         row.sourceRowNumber,
         this.normalizeTextOrNull(effectiveValuesByTarget.get(MappingTargetField.published_at) ?? null)
@@ -1533,6 +1580,7 @@ export class TopContentService {
     return {
       valuesByRowNumber,
       postUrlByRowNumber,
+      pageIdByRowNumber,
       publishedAtByRowNumber,
       contentStyleValueKeyByRowNumber
     };

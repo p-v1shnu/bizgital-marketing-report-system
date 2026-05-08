@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BIZGITAL Insight Capture</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 14px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Tahoma, sans-serif;
+        background: #091326;
+        color: #f8fafc;
+        min-width: 380px;
+      }
+      .header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 12px;
+      }
+      .title {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 700;
+      }
+      .version {
+        font-size: 12px;
+        color: #93a7c2;
+      }
+      .card {
+        background: #0a162b;
+        border: 1px solid #2b415f;
+        border-radius: 10px;
+        padding: 10px;
+        margin-bottom: 10px;
+      }
+      .row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 6px;
+      }
+      .row:last-child {
+        margin-bottom: 0;
+      }
+      .label {
+        font-size: 12px;
+        color: #9eb3cf;
+      }
+      .value {
+        font-size: 13px;
+        font-weight: 600;
+        text-align: right;
+      }
+      .status-ok {
+        color: #52e3a4;
+      }
+      .status-warn {
+        color: #f7c364;
+      }
+      .toolbar {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+      button {
+        font: inherit;
+        border-radius: 8px;
+        border: 1px solid #355172;
+        padding: 8px 12px;
+        background: #123458;
+        color: white;
+        cursor: pointer;
+      }
+      button.primary {
+        background: #1d9bf0;
+        border-color: #1d9bf0;
+      }
+      button:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+      .logs {
+        display: grid;
+        gap: 6px;
+        max-height: 200px;
+        overflow: auto;
+      }
+      .log {
+        padding: 8px;
+        border: 1px solid #22344e;
+        border-radius: 8px;
+        background: #081325;
+      }
+      .log-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 4px;
+      }
+      .pill {
+        border-radius: 999px;
+        border: 1px solid #355172;
+        padding: 1px 7px;
+        font-size: 11px;
+      }
+      .pill.success {
+        color: #52e3a4;
+        border-color: #2b7c60;
+      }
+      .pill.failed {
+        color: #f79a9a;
+        border-color: #7a3131;
+      }
+      .muted {
+        color: #9eb3cf;
+        font-size: 12px;
+      }
+      .empty {
+        color: #9eb3cf;
+        font-size: 12px;
+        border: 1px dashed #2b415f;
+        border-radius: 8px;
+        padding: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <h3 class="title">Insight Capture Queue</h3>
+      <span id="version" class="version">v-</span>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <span class="label">Bridge status</span>
+        <span id="bridgeStatus" class="value status-warn">Checking...</span>
+      </div>
+      <div class="row">
+        <span class="label">Active workers</span>
+        <span id="activeWorkers" class="value">0</span>
+      </div>
+      <div class="row">
+        <span class="label">Last event</span>
+        <span id="lastEvent" class="value" aria-live="polite">-</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <span class="label">Completed</span>
+        <span id="completedCount" class="value">0</span>
+      </div>
+      <div class="row">
+        <span class="label">Success</span>
+        <span id="successCount" class="value status-ok">0</span>
+      </div>
+      <div class="row">
+        <span class="label">Failed</span>
+        <span id="failedCount" class="value status-warn">0</span>
+      </div>
+      <div class="row">
+        <span class="label">Progress</span>
+        <span id="progressText" class="value muted" aria-live="polite">Idle</span>
+      </div>
+      <div id="progressList" class="muted" style="margin-top:4px;display:grid;gap:2px;"></div>
+    </div>
+
+    <div class="toolbar">
+      <button id="refreshBtn" type="button">Refresh status</button>
+      <button id="clearBtn" type="button">Clear logs</button>
+      <button id="openWorkspaceBtn" class="primary" type="button">Open capture workspace</button>
+      <button id="openImportBtn" type="button">Open import page</button>
+      <button id="settingsBtn" type="button">Settings</button>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <span class="label">Recent runs</span>
+      </div>
+      <div id="logs" class="logs"></div>
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

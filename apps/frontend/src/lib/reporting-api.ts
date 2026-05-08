@@ -11,6 +11,7 @@ export type CanonicalTargetField =
   | 'page_followers'
   | 'engagement'
   | 'video_views_3s';
+export type ImportMappingTargetField = CanonicalTargetField | 'page_id';
 export type ReportMetricCommentaryKey =
   | 'views'
   | 'viewers'
@@ -702,11 +703,11 @@ export type MappingOverviewResponse = {
       sourceRawColumnName: string;
       sourcePosition: number;
       sampleValue: string | null;
-      mappedTargetField: CanonicalTargetField | null;
+      mappedTargetField: ImportMappingTargetField | null;
     }>;
   } | null;
   availableTargets: Array<{
-    key: CanonicalTargetField;
+    key: ImportMappingTargetField;
     label: string;
     description: string;
   }>;
@@ -811,7 +812,7 @@ export type DatasetOverviewResponse = {
     shownRows: number;
     truncated: boolean;
     columns: Array<{
-      targetField: CanonicalTargetField;
+      targetField: ImportMappingTargetField;
       label: string;
       sourceColumnName: string;
       sourcePosition: number;
@@ -982,6 +983,7 @@ export type TopContentOverviewResponse = {
     rankPosition: number;
     screenshotUrl: string | null;
     postUrl: string | null;
+    pageId: string | null;
     selectionBasis: string;
     datasetRow: {
       id: string;
