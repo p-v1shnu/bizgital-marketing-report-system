@@ -1,0 +1,13 @@
+{
+  "host_permissions": [
+    "http://localhost/*",
+    "http://127.0.0.1/*",
+    "https://report.bizgital.com/*",
+    "https://*.facebook.com/*"
+  ],
+  "content_script_matches": [
+    "http://localhost/*",
+    "http://127.0.0.1/*",
+    "https://report.bizgital.com/*"
+  ]
+}

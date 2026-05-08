@@ -56,6 +56,16 @@ cd "C:\Users\ppele\OneDrive - BIZGITAL Company Limited\Documents\Cowork\Technica
 ไฟล์ที่ได้จะอยู่ใน:
 `deployment/dev-mode/out/`
 
+## แยกแพ็กเกจ Dev/Prod
+
+- แพ็กเกจ Dev (รองรับ localhost): `deployment/dev-mode/build-devmode-zip.ps1`
+- แพ็กเกจ Prod สำหรับอัปโหลด Store:
+
+```powershell
+cd "C:\Users\ppele\OneDrive - BIZGITAL Company Limited\Documents\Cowork\Technical\Internal\Report System v2\apps\frontend\browser-extension\insight-capture-bridge\deployment"
+.\build-prod-zip.ps1
+```
+
 ## อัปเดตเวอร์ชัน
 
 1. รับไฟล์ zip เวอร์ชันใหม่ แล้วแตกทับโฟลเดอร์เดิม

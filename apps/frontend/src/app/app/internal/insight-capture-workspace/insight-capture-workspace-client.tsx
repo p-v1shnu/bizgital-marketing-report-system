@@ -31,7 +31,7 @@ type LiveProgress = {
   currentPost?: number;
 };
 
-type CaptureResolution = 'hires2_5x' | 'hires3x';
+type CaptureResolution = 'auto_hq' | 'hires2_5x' | 'hires3x';
 type ExecutionMode = 'sequential' | 'parallel5';
 type FileSystemPermissionMode = 'read' | 'readwrite';
 
@@ -176,8 +176,9 @@ export function InsightCaptureWorkspaceClient() {
   const searchParams = useSearchParams();
   const queueKey = searchParams.get('queueKey') ?? '';
 
-  const [captureResolution, setCaptureResolution] = useState<CaptureResolution>('hires2_5x');
+  const [captureResolution, setCaptureResolution] = useState<CaptureResolution>('auto_hq');
   const [executionMode, setExecutionMode] = useState<ExecutionMode>('parallel5');
+  const [deviceMemoryGb, setDeviceMemoryGb] = useState<number | null>(null);
   const [selectedFolderName, setSelectedFolderName] = useState('');
   const [folderPickerSupported, setFolderPickerSupported] = useState<boolean>(true);
   const [extensionReady, setExtensionReady] = useState<boolean | null>(null);
@@ -221,6 +222,18 @@ export function InsightCaptureWorkspaceClient() {
     const unique = Array.from(new Set(queuePayload.items.map((item) => item.pageId).filter(Boolean)));
     return unique[0] ?? '';
   }, [queuePayload]);
+  const shouldForceSequentialForQuality = useMemo(() => {
+    if (captureResolution !== 'auto_hq') {
+      return false;
+    }
+    if (deviceMemoryGb === null) {
+      return false;
+    }
+    return deviceMemoryGb <= 8;
+  }, [captureResolution, deviceMemoryGb]);
+  const effectiveExecutionMode: ExecutionMode = shouldForceSequentialForQuality
+    ? 'sequential'
+    : executionMode;
 
   function appendProgressLog(message: string) {
     const normalized = String(message || '').trim();
@@ -518,6 +531,7 @@ export function InsightCaptureWorkspaceClient() {
         workerKey,
         windowGroupKey,
         captureResolution,
+        clientDeviceMemoryGb: deviceMemoryGb,
         returnDataUrl: true,
         totalPosts: total,
         currentPost: index + 1
@@ -607,7 +621,7 @@ export function InsightCaptureWorkspaceClient() {
     const startLabel =
       mode === 'retry_failed'
         ? 'Retrying failed posts...'
-        : executionMode === 'parallel5'
+        : effectiveExecutionMode === 'parallel5'
           ? 'Starting capture run (turbo parallel x5)...'
           : 'Starting capture run...';
     setRunMessage(startLabel);
@@ -638,21 +652,23 @@ export function InsightCaptureWorkspaceClient() {
     const sequenceByRunIndex = new Map(
       normalizedIndexes.map((runIndex, sequence) => [runIndex, sequence + 1] as const)
     );
-    const parallelLimit = executionMode === 'parallel5' ? 5 : 1;
+    const parallelLimit = effectiveExecutionMode === 'parallel5' ? 5 : 1;
     const workerCount = Math.max(1, Math.min(parallelLimit, total));
     const pendingIndexes = [...normalizedIndexes];
     const turboWindowGroupKey =
-      executionMode === 'parallel5'
+      effectiveExecutionMode === 'parallel5'
         ? `turbo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
         : undefined;
-    const turboPreflightEnabled = executionMode === 'parallel5' && pendingIndexes.length > 0;
+    const turboPreflightEnabled = effectiveExecutionMode === 'parallel5' && pendingIndexes.length > 0;
     let completed = 0;
 
-    if (executionMode === 'parallel5') {
+    if (effectiveExecutionMode === 'parallel5') {
       appendProgressLog(`Turbo mode enabled: ${workerCount} posts run in parallel (single window, multi-tab).`);
       appendProgressLog(
         'Turbo preflight enabled: first post will auto-check/switch page context before parallel tabs start.'
       );
+    } else if (shouldForceSequentialForQuality) {
+      appendProgressLog('Auto quality mode detected lower-memory device. Running in Stable x1 for image consistency.');
     }
 
     if (turboPreflightEnabled) {
@@ -850,12 +866,19 @@ export function InsightCaptureWorkspaceClient() {
 
   useEffect(() => {
     const savedResolution = window.localStorage.getItem(RESOLUTION_STORAGE_KEY);
-    if (savedResolution === 'hires2_5x' || savedResolution === 'hires3x') {
+    if (savedResolution === 'auto_hq' || savedResolution === 'hires2_5x' || savedResolution === 'hires3x') {
       setCaptureResolution(savedResolution);
     }
     const savedExecutionMode = window.localStorage.getItem(EXECUTION_MODE_STORAGE_KEY);
     if (savedExecutionMode === 'sequential' || savedExecutionMode === 'parallel5') {
       setExecutionMode(savedExecutionMode);
+    }
+  }, []);
+
+  useEffect(() => {
+    const memoryValue = Number((navigator as Navigator & { deviceMemory?: number }).deviceMemory);
+    if (Number.isFinite(memoryValue) && memoryValue > 0) {
+      setDeviceMemoryGb(memoryValue);
     }
   }, []);
 
@@ -960,9 +983,13 @@ export function InsightCaptureWorkspaceClient() {
               onChange={(event) => setCaptureResolution(event.currentTarget.value as CaptureResolution)}
               value={captureResolution}
             >
-              <option value="hires2_5x">Hi-Res 2.5x (default)</option>
+              <option value="auto_hq">Auto HQ (recommended, slower)</option>
+              <option value="hires2_5x">Hi-Res 2.5x</option>
               <option value="hires3x">Hi-Res 3x</option>
             </select>
+            <p className="text-xs text-muted-foreground">
+              Auto HQ prioritizes sharpness and stability with extra waits/retries. It may take longer per post.
+            </p>
           </div>
 
           <div className="grid gap-2">
@@ -976,9 +1003,15 @@ export function InsightCaptureWorkspaceClient() {
               <option value="parallel5">Turbo (up to 5 posts in parallel)</option>
             </select>
             <p className="text-xs text-muted-foreground">
-              Turbo is faster but may fail more often on Facebook.
+              Turbo is faster but may fail more often on Facebook. Auto HQ can force Stable x1 on lower-memory devices.
             </p>
           </div>
+          {shouldForceSequentialForQuality ? (
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+              Auto HQ guardrail active: this device reports{` `}
+              {deviceMemoryGb ? `${deviceMemoryGb} GB` : 'low memory'}, so capture runs in Stable x1 for better output consistency.
+            </div>
+          ) : null}
 
           <div className="grid gap-2">
             <label className="text-xs font-medium">Save destination</label>
@@ -1042,7 +1075,7 @@ export function InsightCaptureWorkspaceClient() {
                 </>
               ) : (
                 `Start capture (${queuePayload?.items.length ?? 0} posts, ${
-                  executionMode === 'parallel5' ? 'Turbo x5' : 'Stable x1'
+                  effectiveExecutionMode === 'parallel5' ? 'Turbo x5' : 'Stable x1'
                 })`
               )}
             </Button>

@@ -811,7 +811,10 @@ async function runCapture(payload, runtimeContext = {}) {
       tabId,
       windowId,
       steps,
-      captureResolution
+      captureResolution,
+      {
+        clientDeviceMemoryGb: payload.clientDeviceMemoryGb
+      }
     );
     await emitProgress('running', 'Saving screenshot file...', 95);
 
@@ -953,6 +956,9 @@ async function waitForPageSwitchContext(tabId, pageName, steps, timeoutMs = 1200
 
 function normalizeCaptureResolution(raw) {
   const value = String(raw || '').trim().toLowerCase();
+  if (value === 'auto_hq' || value === 'autohq' || value === 'auto') {
+    return 'auto_hq';
+  }
   if (value === 'hires2x') {
     return 'hires2x';
   }
@@ -988,7 +994,17 @@ async function waitForInsightsRenderReady(tabId, timeoutMs = 20000) {
   };
 }
 
-async function captureInsightsSingleShot(tabId, windowId, steps, captureResolution) {
+async function captureInsightsSingleShot(
+  tabId,
+  windowId,
+  steps,
+  captureResolution,
+  captureOptions = {}
+) {
+  if (captureResolution === 'auto_hq') {
+    return await captureInsightsWithAutoQuality(tabId, windowId, steps, captureOptions);
+  }
+
   await chrome.tabs
     .setZoomSettings(tabId, {
       mode: 'automatic',
@@ -1032,18 +1048,54 @@ async function captureInsightsSingleShot(tabId, windowId, steps, captureResoluti
     `Applied adaptive zoom ${selectedZoom}x (${isVideoLayout ? 'video' : 'standard'} layout, ${lastCoverageStatus}).`
   );
 
+  const captureViewportState = await executeInTab(tabId, prepareInsightsCaptureViewportInPage);
+  const clipWidthOverride =
+    Number.isFinite(Number(captureViewportState?.recommendedClipWidth))
+      ? Number(captureViewportState.recommendedClipWidth)
+      : null;
+  const clipHeightOverride =
+    Number.isFinite(Number(captureViewportState?.recommendedClipHeight))
+      ? Number(captureViewportState.recommendedClipHeight)
+      : null;
+  if (clipWidthOverride) {
+    steps.push(`Using content-aware capture width: ${Math.round(clipWidthOverride)}px.`);
+  }
+  if (clipHeightOverride) {
+    steps.push(`Using content-aware capture height: ${Math.round(clipHeightOverride)}px.`);
+  }
+
   let dataUrl;
-  if (captureResolution === 'standard') {
-    dataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: 'png' });
-    steps.push('Captured in standard resolution.');
-  } else {
-    const scale =
-      captureResolution === 'hires3x'
-        ? 3
-        : captureResolution === 'hires2_5x'
-          ? 2.5
-          : 2;
-    dataUrl = await captureHiResWithDebugger(tabId, windowId, scale, steps);
+  try {
+    if (captureResolution === 'standard') {
+      dataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: 'png' });
+      if (clipWidthOverride || clipHeightOverride) {
+        dataUrl = await cropDataUrlToBox(dataUrl, {
+          width: clipWidthOverride,
+          height: clipHeightOverride
+        });
+        steps.push('Captured in standard resolution and cropped to content-aware bounds.');
+      } else {
+        steps.push('Captured in standard resolution.');
+      }
+    } else {
+      const scale =
+        captureResolution === 'hires3x'
+          ? 3
+          : captureResolution === 'hires2_5x'
+            ? 2.5
+            : 2;
+      dataUrl = await captureHiResWithDebugger(tabId, windowId, scale, steps, {
+        width: clipWidthOverride,
+        height: clipHeightOverride
+      });
+    }
+    const trimmedDataUrl = await trimDataUrlRightBottomBackground(dataUrl);
+    if (trimmedDataUrl !== dataUrl) {
+      dataUrl = trimmedDataUrl;
+      steps.push('Trimmed right/bottom background area from captured image.');
+    }
+  } finally {
+    await executeInTab(tabId, cleanupInsightsCaptureViewportInPage).catch(() => undefined);
   }
 
   await applyZoomWithVerification(tabId, 1).catch(() => undefined);
@@ -1054,6 +1106,165 @@ async function captureInsightsSingleShot(tabId, windowId, steps, captureResoluti
 
   steps.push('Saved single-shot insights screenshot (no image stitching).');
   return dataUrl;
+}
+
+function resolveAutoQualityPlan(clientDeviceMemoryGb) {
+  const memory = Number(clientDeviceMemoryGb);
+  const isLowMemory = Number.isFinite(memory) && memory > 0 && memory <= 8;
+  if (isLowMemory) {
+    return [
+      { resolution: 'hires2_5x', tries: 2, settleDelayMs: 950 },
+      { resolution: 'hires2x', tries: 2, settleDelayMs: 950 },
+      { resolution: 'standard', tries: 1, settleDelayMs: 700 }
+    ];
+  }
+  return [
+    { resolution: 'hires3x', tries: 2, settleDelayMs: 1050 },
+    { resolution: 'hires2_5x', tries: 2, settleDelayMs: 900 },
+    { resolution: 'hires2x', tries: 1, settleDelayMs: 800 }
+  ];
+}
+
+function scoreCaptureQuality(metrics) {
+  // Lower bright ratio and higher variance generally indicate a cleaner dark-mode insights render.
+  return metrics.varianceLuma - metrics.brightRatio * 700;
+}
+
+function isCaptureQualityAcceptable(metrics) {
+  if (!Number.isFinite(metrics.brightRatio) || !Number.isFinite(metrics.varianceLuma)) {
+    return false;
+  }
+  if (metrics.brightRatio >= 0.34) {
+    return false;
+  }
+  if (metrics.varianceLuma <= 80) {
+    return false;
+  }
+  return true;
+}
+
+async function analyzeCaptureQuality(dataUrl) {
+  const blob = await fetch(dataUrl).then((response) => response.blob());
+  const bitmap = await createImageBitmap(blob);
+  const width = Math.max(1, bitmap.width);
+  const height = Math.max(1, bitmap.height);
+  const canvas = new OffscreenCanvas(width, height);
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  if (!context) {
+    return {
+      width,
+      height,
+      brightRatio: 1,
+      varianceLuma: 0
+    };
+  }
+
+  context.drawImage(bitmap, 0, 0);
+  const imageData = context.getImageData(0, 0, width, height);
+  const pixels = imageData.data;
+  let sampleCount = 0;
+  let brightCount = 0;
+  let lumaSum = 0;
+  let lumaSquaredSum = 0;
+  const step = 3;
+
+  for (let y = 0; y < height; y += step) {
+    for (let x = 0; x < width; x += step) {
+      const offset = (y * width + x) * 4;
+      const r = pixels[offset];
+      const g = pixels[offset + 1];
+      const b = pixels[offset + 2];
+      const a = pixels[offset + 3];
+      if (a < 20) {
+        continue;
+      }
+      sampleCount += 1;
+      if (r > 232 && g > 232 && b > 232) {
+        brightCount += 1;
+      }
+      const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      lumaSum += luma;
+      lumaSquaredSum += luma * luma;
+    }
+  }
+
+  if (sampleCount === 0) {
+    return {
+      width,
+      height,
+      brightRatio: 1,
+      varianceLuma: 0
+    };
+  }
+
+  const meanLuma = lumaSum / sampleCount;
+  const varianceLuma = Math.max(0, lumaSquaredSum / sampleCount - meanLuma * meanLuma);
+  const brightRatio = brightCount / sampleCount;
+  return {
+    width,
+    height,
+    brightRatio,
+    varianceLuma
+  };
+}
+
+async function captureInsightsWithAutoQuality(tabId, windowId, steps, captureOptions = {}) {
+  const qualityPlan = resolveAutoQualityPlan(captureOptions.clientDeviceMemoryGb);
+  steps.push(
+    `Auto HQ enabled (${Number.isFinite(Number(captureOptions.clientDeviceMemoryGb)) ? `device memory ${captureOptions.clientDeviceMemoryGb} GB` : 'device memory unknown'}).`
+  );
+
+  let bestCandidate = null;
+  for (const entry of qualityPlan) {
+    for (let attempt = 1; attempt <= entry.tries; attempt += 1) {
+      await delay(entry.settleDelayMs);
+      const renderCheck = await waitForInsightsRenderReady(tabId, 9000);
+      steps.push(
+        `Auto HQ pre-check ${entry.resolution} attempt ${attempt}/${entry.tries}: ${renderCheck.status}`
+      );
+
+      const dataUrl = await captureInsightsSingleShot(
+        tabId,
+        windowId,
+        steps,
+        entry.resolution,
+        captureOptions
+      );
+      const metrics = await analyzeCaptureQuality(dataUrl);
+      const score = scoreCaptureQuality(metrics);
+      const acceptable = isCaptureQualityAcceptable(metrics);
+      steps.push(
+        `Auto HQ evaluate ${entry.resolution} attempt ${attempt}: bright=${(
+          metrics.brightRatio * 100
+        ).toFixed(1)}%, variance=${Math.round(metrics.varianceLuma)}, score=${Math.round(score)}${
+          acceptable ? ' (accepted)' : ''
+        }`
+      );
+
+      if (!bestCandidate || score > bestCandidate.score) {
+        bestCandidate = {
+          dataUrl,
+          score,
+          resolution: entry.resolution,
+          metrics
+        };
+      }
+
+      if (acceptable) {
+        steps.push(`Auto HQ selected ${entry.resolution} (attempt ${attempt}).`);
+        return dataUrl;
+      }
+    }
+  }
+
+  if (bestCandidate) {
+    steps.push(
+      `Auto HQ fallback selected ${bestCandidate.resolution} (best score ${Math.round(bestCandidate.score)}).`
+    );
+    return bestCandidate.dataUrl;
+  }
+
+  throw new Error('Auto HQ could not produce a valid screenshot.');
 }
 
 async function applyZoomWithVerification(tabId, targetZoom, maxAttempts = 3) {
@@ -1157,7 +1368,146 @@ function inspectInsightsViewportCoverageInPage(isVideoLayout) {
   };
 }
 
-async function captureHiResWithDebugger(tabId, windowId, scale, steps) {
+function prepareInsightsCaptureViewportInPage() {
+  const STYLE_ID = 'bizgital-insight-capture-hide-scrollbar-style';
+  let styleElement = document.getElementById(STYLE_ID);
+  if (!styleElement) {
+    styleElement = document.createElement('style');
+    styleElement.id = STYLE_ID;
+    styleElement.textContent = `
+      html, body {
+        overflow: hidden !important;
+      }
+      *::-webkit-scrollbar {
+        width: 0 !important;
+        height: 0 !important;
+        background: transparent !important;
+      }
+    `;
+    document.head.appendChild(styleElement);
+  }
+
+  const findByText = (text) => {
+    const normalized = String(text || '').toLowerCase();
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT);
+    let node = walker.nextNode();
+    while (node) {
+      const content = (node.textContent || '').toLowerCase();
+      if (content.includes(normalized)) {
+        return node;
+      }
+      node = walker.nextNode();
+    }
+    return null;
+  };
+
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+
+  const pickBestAncestorRect = (seedNode, validator, maxDepth = 10) => {
+    if (!seedNode || !(seedNode instanceof Element)) {
+      return null;
+    }
+
+    let current = seedNode;
+    let bestRect = null;
+    let bestArea = 0;
+    for (let depth = 0; depth < maxDepth; depth += 1) {
+      const rect = current.getBoundingClientRect();
+      if (validator(rect)) {
+        const area = rect.width * rect.height;
+        if (area > bestArea) {
+          bestArea = area;
+          bestRect = rect;
+        }
+      }
+
+      if (!current.parentElement) {
+        break;
+      }
+      current = current.parentElement;
+    }
+
+    return bestRect;
+  };
+
+  const insightsSeeds = [
+    findByText('net follows'),
+    findByText('interactions'),
+    findByText('who viewed your content'),
+    findByText('audience retention'),
+    findByText('link clicks')
+  ].filter(Boolean);
+
+  const insightsRects = [];
+  for (const seed of insightsSeeds) {
+    const rect = pickBestAncestorRect(
+      seed,
+      (candidate) =>
+        candidate.left > 120 &&
+        candidate.top >= 36 &&
+        candidate.width >= 420 &&
+        candidate.height >= 220 &&
+        candidate.right <= viewportWidth - 20 &&
+        candidate.bottom <= viewportHeight - 20
+    );
+    if (rect) {
+      insightsRects.push(rect);
+    }
+  }
+
+  const leftRailSeed = findByText('post insights') || findByText('your profile');
+  const leftRailRect = pickBestAncestorRect(
+    leftRailSeed,
+    (candidate) =>
+      candidate.left >= -8 &&
+      candidate.left <= 30 &&
+      candidate.width >= 220 &&
+      candidate.width <= 420 &&
+      candidate.height >= 320 &&
+      candidate.bottom <= viewportHeight
+  );
+
+  const rightCandidates = insightsRects.map((rect) => rect.right);
+  if (leftRailRect) {
+    rightCandidates.push(leftRailRect.right);
+  }
+  const bottomCandidates = insightsRects.map((rect) => rect.bottom);
+  if (leftRailRect) {
+    bottomCandidates.push(leftRailRect.bottom);
+  }
+
+  const fallbackWidth = Math.max(1, Math.floor(viewportWidth - 10));
+  const rawRight = rightCandidates.length > 0 ? Math.max(...rightCandidates) : fallbackWidth;
+  const recommendedClipWidth = Math.max(1, Math.min(fallbackWidth, Math.ceil(rawRight + 10)));
+  const fallbackHeight = Math.max(1, Math.floor(viewportHeight - 10));
+  const rawBottom = bottomCandidates.length > 0 ? Math.max(...bottomCandidates) : fallbackHeight;
+  const recommendedClipHeight = Math.max(1, Math.min(fallbackHeight, Math.ceil(rawBottom + 14)));
+
+  return {
+    viewportWidth,
+    viewportHeight,
+    recommendedClipWidth,
+    recommendedClipHeight
+  };
+}
+
+function cleanupInsightsCaptureViewportInPage() {
+  const STYLE_ID = 'bizgital-insight-capture-hide-scrollbar-style';
+  const styleElement = document.getElementById(STYLE_ID);
+  if (styleElement) {
+    styleElement.remove();
+  }
+  return { cleaned: true };
+}
+
+async function captureHiResWithDebugger(
+  tabId,
+  windowId,
+  scale,
+  steps,
+  clipOverrides = { width: null, height: null }
+) {
   const target = { tabId };
   let attached = false;
 
@@ -1166,8 +1516,30 @@ async function captureHiResWithDebugger(tabId, windowId, scale, steps) {
     attached = true;
     const layoutMetrics = await chrome.debugger.sendCommand(target, 'Page.getLayoutMetrics');
     const visualViewport = layoutMetrics?.visualViewport;
-    const clipWidth = Math.max(1, Math.floor(Number(visualViewport?.clientWidth) || 1920));
-    const clipHeight = Math.max(1, Math.floor(Number(visualViewport?.clientHeight) || 1080));
+    const visualViewportWidth = Math.max(1, Math.floor(Number(visualViewport?.clientWidth) || 1920));
+    const visualViewportHeight = Math.max(1, Math.floor(Number(visualViewport?.clientHeight) || 1080));
+    const clipWidth = Math.max(
+      1,
+      Math.min(
+        visualViewportWidth,
+        Math.floor(
+          Number.isFinite(Number(clipOverrides?.width))
+            ? Number(clipOverrides.width)
+            : visualViewportWidth
+        )
+      )
+    );
+    const clipHeight = Math.max(
+      1,
+      Math.min(
+        visualViewportHeight,
+        Math.floor(
+          Number.isFinite(Number(clipOverrides?.height))
+            ? Number(clipOverrides.height)
+            : visualViewportHeight
+        )
+      )
+    );
     const clipX = Number(visualViewport?.pageX) || 0;
     const clipY = Number(visualViewport?.pageY) || 0;
 
@@ -1196,6 +1568,143 @@ async function captureHiResWithDebugger(tabId, windowId, scale, steps) {
       await chrome.debugger.detach(target).catch(() => undefined);
     }
   }
+}
+
+async function cropDataUrlToBox(dataUrl, bounds = { width: null, height: null }) {
+  const dimensions = await measureDataUrlDimensions(dataUrl);
+  const sourceWidth = Math.max(1, dimensions.width);
+  const sourceHeight = Math.max(1, dimensions.height);
+  const desiredWidth = Math.max(
+    1,
+    Math.min(sourceWidth, Math.floor(Number(bounds?.width) || sourceWidth))
+  );
+  const desiredHeight = Math.max(
+    1,
+    Math.min(sourceHeight, Math.floor(Number(bounds?.height) || sourceHeight))
+  );
+
+  if (desiredWidth >= sourceWidth && desiredHeight >= sourceHeight) {
+    return dataUrl;
+  }
+
+  const blob = await fetch(dataUrl).then((response) => response.blob());
+  const bitmap = await createImageBitmap(blob);
+  const canvas = new OffscreenCanvas(desiredWidth, desiredHeight);
+  const context = canvas.getContext('2d');
+  if (!context) {
+    return dataUrl;
+  }
+  context.drawImage(bitmap, 0, 0, desiredWidth, desiredHeight, 0, 0, desiredWidth, desiredHeight);
+  const croppedBlob = await canvas.convertToBlob({ type: 'image/png' });
+  const buffer = await croppedBlob.arrayBuffer();
+  return `data:image/png;base64,${arrayBufferToBase64(buffer)}`;
+}
+
+function arrayBufferToBase64(buffer) {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
+}
+
+async function trimDataUrlRightBottomBackground(dataUrl) {
+  const blob = await fetch(dataUrl).then((response) => response.blob());
+  const bitmap = await createImageBitmap(blob);
+  const sourceWidth = Math.max(1, bitmap.width);
+  const sourceHeight = Math.max(1, bitmap.height);
+
+  const canvas = new OffscreenCanvas(sourceWidth, sourceHeight);
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  if (!context) {
+    return dataUrl;
+  }
+
+  context.drawImage(bitmap, 0, 0);
+  const imageData = context.getImageData(0, 0, sourceWidth, sourceHeight);
+  const pixels = imageData.data;
+
+  const sampleX = Math.max(0, sourceWidth - 2);
+  const sampleY = Math.max(0, sourceHeight - 2);
+  const sampleOffset = (sampleY * sourceWidth + sampleX) * 4;
+  const bgR = pixels[sampleOffset];
+  const bgG = pixels[sampleOffset + 1];
+  const bgB = pixels[sampleOffset + 2];
+  const bgA = pixels[sampleOffset + 3];
+
+  const isBg = (r, g, b, a) =>
+    Math.abs(r - bgR) <= 10 &&
+    Math.abs(g - bgG) <= 10 &&
+    Math.abs(b - bgB) <= 10 &&
+    Math.abs(a - bgA) <= 10;
+
+  const minNonBgPixelsPerColumn = Math.max(3, Math.floor(sourceHeight * 0.004));
+  const minNonBgPixelsPerRow = Math.max(3, Math.floor(sourceWidth * 0.004));
+
+  let rightEdge = sourceWidth - 1;
+  for (let x = sourceWidth - 1; x >= 0; x -= 1) {
+    let nonBgCount = 0;
+    for (let y = 0; y < sourceHeight; y += 2) {
+      const offset = (y * sourceWidth + x) * 4;
+      const r = pixels[offset];
+      const g = pixels[offset + 1];
+      const b = pixels[offset + 2];
+      const a = pixels[offset + 3];
+      if (!isBg(r, g, b, a)) {
+        nonBgCount += 1;
+        if (nonBgCount >= minNonBgPixelsPerColumn) {
+          break;
+        }
+      }
+    }
+    if (nonBgCount >= minNonBgPixelsPerColumn) {
+      rightEdge = x;
+      break;
+    }
+  }
+
+  let bottomEdge = sourceHeight - 1;
+  for (let y = sourceHeight - 1; y >= 0; y -= 1) {
+    let nonBgCount = 0;
+    for (let x = 0; x < sourceWidth; x += 2) {
+      const offset = (y * sourceWidth + x) * 4;
+      const r = pixels[offset];
+      const g = pixels[offset + 1];
+      const b = pixels[offset + 2];
+      const a = pixels[offset + 3];
+      if (!isBg(r, g, b, a)) {
+        nonBgCount += 1;
+        if (nonBgCount >= minNonBgPixelsPerRow) {
+          break;
+        }
+      }
+    }
+    if (nonBgCount >= minNonBgPixelsPerRow) {
+      bottomEdge = y;
+      break;
+    }
+  }
+
+  const margin = 6;
+  const trimmedWidth = Math.max(1, Math.min(sourceWidth, rightEdge + 1 + margin));
+  const trimmedHeight = Math.max(1, Math.min(sourceHeight, bottomEdge + 1 + margin));
+
+  if (trimmedWidth >= sourceWidth && trimmedHeight >= sourceHeight) {
+    return dataUrl;
+  }
+
+  const trimmedCanvas = new OffscreenCanvas(trimmedWidth, trimmedHeight);
+  const trimmedContext = trimmedCanvas.getContext('2d');
+  if (!trimmedContext) {
+    return dataUrl;
+  }
+  trimmedContext.drawImage(bitmap, 0, 0, trimmedWidth, trimmedHeight, 0, 0, trimmedWidth, trimmedHeight);
+  const trimmedBlob = await trimmedCanvas.convertToBlob({ type: 'image/png' });
+  const trimmedBuffer = await trimmedBlob.arrayBuffer();
+  return `data:image/png;base64,${arrayBufferToBase64(trimmedBuffer)}`;
 }
 
 async function measureDataUrlDimensions(dataUrl) {

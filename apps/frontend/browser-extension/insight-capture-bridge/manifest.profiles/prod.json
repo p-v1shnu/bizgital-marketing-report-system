@@ -1,0 +1,9 @@
+{
+  "host_permissions": [
+    "https://report.bizgital.com/*",
+    "https://*.facebook.com/*"
+  ],
+  "content_script_matches": [
+    "https://report.bizgital.com/*"
+  ]
+}

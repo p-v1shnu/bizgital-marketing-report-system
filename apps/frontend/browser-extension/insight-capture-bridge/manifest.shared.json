@@ -12,12 +12,7 @@
     "debugger",
     "storage"
   ],
-  "host_permissions": [
-    "http://localhost/*",
-    "http://127.0.0.1/*",
-    "https://report.bizgital.com/*",
-    "https://*.facebook.com/*"
-  ],
+  "host_permissions": [],
   "background": {
     "service_worker": "background.js",
     "type": "module"
@@ -44,11 +39,7 @@
   },
   "content_scripts": [
     {
-      "matches": [
-        "http://localhost/*",
-        "http://127.0.0.1/*",
-        "https://report.bizgital.com/*"
-      ],
+      "matches": [],
       "js": [
         "content-bridge.js"
       ],

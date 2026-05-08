@@ -43,6 +43,26 @@ Use helper scripts in:
 Thai guide:
 `deployment/dev-mode/INSTALL_TH.md`
 
+## Manifest Profiles (Dev / Prod)
+
+This extension now uses split manifest profiles:
+
+- Shared base: `manifest.shared.json`
+- Dev profile: `manifest.profiles/dev.json` (includes localhost)
+- Prod profile: `manifest.profiles/prod.json` (store-safe host patterns)
+
+Generate `manifest.json` for local unpacked usage:
+
+```powershell
+.\deployment\build-manifest.ps1 -Profile dev
+```
+
+Build production zip for Chrome Web Store upload:
+
+```powershell
+.\deployment\build-prod-zip.ps1
+```
+
 ## Install (Managed Policy, Internal)
 
 For internal production rollout without Dev Mode:
