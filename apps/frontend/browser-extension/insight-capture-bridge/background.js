@@ -11,6 +11,8 @@ const activeWorkerLocks = new Set();
 const windowGroupWindowIdByKey = new Map();
 const windowGroupCreatePromiseByKey = new Map();
 const MAX_RUNTIME_LOG_ITEMS = 40;
+let persistTimer = null;
+const PERSIST_DEBOUNCE_MS = 250;
 const DEFAULT_RUNTIME_CAPTURE_STATE = {
   completedCount: 0,
   successCount: 0,
@@ -109,6 +111,22 @@ function selectTopProgress(progressByWorkerMap) {
 }
 
 function persistRuntimeState() {
+  if (persistTimer) {
+    return;
+  }
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    void chrome.storage.session
+      .set({ runtimeCaptureState })
+      .catch(() => undefined);
+  }, PERSIST_DEBOUNCE_MS);
+}
+
+function flushRuntimeStateNow() {
+  if (persistTimer) {
+    clearTimeout(persistTimer);
+    persistTimer = null;
+  }
   void chrome.storage.session
     .set({ runtimeCaptureState })
     .catch(() => undefined);
@@ -133,6 +151,7 @@ function buildRuntimeStatusSnapshot() {
     successCount: runtimeCaptureState.successCount,
     failureCount: runtimeCaptureState.failureCount,
     lastEvent: runtimeCaptureState.lastEvent,
+    lastProgressByWorker: { ...(runtimeCaptureState.lastProgressByWorker || {}) },
     lastProgress: runtimeCaptureState.lastProgress,
     recentRuns: [...runtimeCaptureState.recentRuns],
     lastUpdatedAt: runtimeCaptureState.lastUpdatedAt
@@ -153,6 +172,7 @@ function clearRuntimeLogs() {
     recentRuns: [],
     lastEvent: activeWorkerLocks.size > 0 ? 'Capture is still running.' : 'Logs cleared.'
   });
+  flushRuntimeStateNow();
 }
 
 function recordRuntimeOutcome({ workerKey, requestId, result, startedAt }) {
@@ -205,6 +225,12 @@ function recordRuntimeOutcome({ workerKey, requestId, result, startedAt }) {
       ? `Capture completed (${workerKey}).`
       : `Capture failed (${workerKey}).`
   });
+
+  runtimeProgressByWorker.delete(workerKey);
+  updateRuntimeState({
+    lastProgressByWorker: snapshotRuntimeProgressMap()
+  });
+  flushRuntimeStateNow();
 }
 
 let runtimeStateHydrationPromise = null;

@@ -12,6 +12,7 @@ const completedCountEl = document.getElementById('completedCount');
 const successCountEl = document.getElementById('successCount');
 const failedCountEl = document.getElementById('failedCount');
 const progressTextEl = document.getElementById('progressText');
+const progressListEl = document.getElementById('progressList');
 const logsEl = document.getElementById('logs');
 
 const refreshBtn = document.getElementById('refreshBtn');
@@ -62,11 +63,6 @@ async function loadAppOrigin() {
   const stored = await chrome.storage.local.get('appOrigin').catch(() => ({}));
   const storedOrigin = normalizeAppOrigin(stored?.appOrigin);
   appOrigin = storedOrigin || resolveDefaultAppOrigin();
-}
-
-async function saveAppOrigin(nextOrigin) {
-  appOrigin = normalizeAppOrigin(nextOrigin) || resolveDefaultAppOrigin();
-  await chrome.storage.local.set({ appOrigin });
 }
 
 function toLocalText(isoString) {
@@ -177,6 +173,27 @@ function computeNextPollMs(data) {
   return SLOW_POLL_MS;
 }
 
+function renderProgressLines(lastProgressByWorker) {
+  const entries = Object.entries(lastProgressByWorker || {}).filter(
+    ([workerKey, progress]) => Boolean(workerKey) && Boolean(progress)
+  );
+  if (entries.length <= 1) {
+    progressListEl.style.display = 'none';
+    progressListEl.innerHTML = '';
+    return;
+  }
+
+  progressListEl.style.display = 'grid';
+  progressListEl.innerHTML = '';
+  for (const [workerKey, progress] of entries) {
+    const line = document.createElement('div');
+    const percentText =
+      typeof progress?.percent === 'number' ? ` (${progress.percent}%)` : '';
+    line.textContent = `[${workerKey}] ${progress?.message || 'Running'}${percentText}`;
+    progressListEl.appendChild(line);
+  }
+}
+
 function scheduleNextPoll(delayMs) {
   if (pollTimer) {
     window.clearTimeout(pollTimer);
@@ -192,6 +209,8 @@ function renderStatus(statusResponse) {
     setBridgeState(false);
     lastEventEl.textContent = statusResponse?.error || 'Failed to load runtime status.';
     progressTextEl.textContent = 'Idle';
+    progressListEl.style.display = 'none';
+    progressListEl.innerHTML = '';
     return null;
   }
 
@@ -214,6 +233,7 @@ function renderStatus(statusResponse) {
   } else {
     progressTextEl.textContent = 'Idle';
   }
+  renderProgressLines(data.lastProgressByWorker || {});
 
   renderLogs(data.recentRuns || []);
   return data;
@@ -236,6 +256,8 @@ async function refreshStatus() {
     const message = error instanceof Error ? error.message : 'Failed to reach extension runtime.';
     lastEventEl.textContent = message;
     progressTextEl.textContent = 'Idle';
+    progressListEl.style.display = 'none';
+    progressListEl.innerHTML = '';
     scheduleNextPoll(SLOW_POLL_MS);
   } finally {
     refreshBtn.disabled = false;
@@ -275,15 +297,12 @@ openImportBtn.addEventListener('click', async () => {
 });
 
 settingsBtn.addEventListener('click', async () => {
-  const entered = window.prompt(
-    'Set app origin for workspace links (example: https://report.bizgital.com)',
-    appOrigin
-  );
-  if (entered === null) {
-    return;
+  try {
+    await chrome.runtime.openOptionsPage();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to open settings.';
+    lastEventEl.textContent = message;
   }
-  await saveAppOrigin(entered);
-  lastEventEl.textContent = `Saved app origin: ${appOrigin}`;
 });
 
 void (async () => {
