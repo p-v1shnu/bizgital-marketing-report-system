@@ -131,6 +131,15 @@ type CaptureQueuePayload = {
   items: CaptureQueueItem[];
 };
 
+type CaptureQueueBuildResult = {
+  payload: CaptureQueuePayload;
+  missingPermalinkColumn: boolean;
+  missingPageIdColumn: boolean;
+  rowsMissingPermalink: number;
+  rowsMissingPageId: number;
+  rowsMissingBoth: number;
+};
+
 const manualStoragePrefix = 'bizgital-marketing-report.import.manual-values';
 const manualHeaderMaxValue = 999_999_999_999_999;
 const MANUAL_CONTENT_STYLE_SOURCE_LABEL = 'Content Style';
@@ -1213,7 +1222,7 @@ export function ImportWorkingTable({
 
     return map;
   }, [sourcePreview.columns]);
-  const captureQueuePayload = useMemo<CaptureQueuePayload>(() => {
+  const captureQueueBuildResult = useMemo<CaptureQueueBuildResult>(() => {
     const permalinkColumn =
       sourcePreview.columns.find((column) => {
         const normalizedRaw = normalizeLabel(column.rawLabel);
@@ -1239,14 +1248,29 @@ export function ImportWorkingTable({
         return normalizedRaw === normalizeLabel('Page name') || normalizedRaw === normalizeLabel('Page Name');
       }) ?? null;
 
+    const missingPermalinkColumn = !permalinkColumn;
+    const missingPageIdColumn = !pageIdColumn;
     const items: CaptureQueueItem[] = [];
+    let rowsMissingPermalink = 0;
+    let rowsMissingPageId = 0;
+    let rowsMissingBoth = 0;
+
     for (const sourceRow of sourcePreview.rows) {
       if (!permalinkColumn || !pageIdColumn) {
         continue;
       }
       const postUrl = normalizeFacebookPostUrl(sourceRow.cells[permalinkColumn.key] ?? '');
       const pageId = normalizePageIdFromText(sourceRow.cells[pageIdColumn.key] ?? '');
-      if (!postUrl || !pageId) {
+      if (!postUrl && !pageId) {
+        rowsMissingBoth += 1;
+        continue;
+      }
+      if (!postUrl) {
+        rowsMissingPermalink += 1;
+        continue;
+      }
+      if (!pageId) {
+        rowsMissingPageId += 1;
         continue;
       }
 
@@ -1263,17 +1287,68 @@ export function ImportWorkingTable({
     }
 
     return {
-      brandLabel,
-      reportMonthKey,
-      createdAt: new Date().toISOString(),
-      totalSourceRows: sourcePreview.totalRows,
-      totalEligibleRows: items.length,
-      items
+      payload: {
+        brandLabel,
+        reportMonthKey,
+        createdAt: new Date().toISOString(),
+        totalSourceRows: sourcePreview.totalRows,
+        totalEligibleRows: items.length,
+        items
+      },
+      missingPermalinkColumn,
+      missingPageIdColumn,
+      rowsMissingPermalink,
+      rowsMissingPageId,
+      rowsMissingBoth
     };
   }, [brandLabel, reportMonthKey, sourcePreview.columns, sourcePreview.rows, sourcePreview.totalRows]);
+  const captureQueuePayload = captureQueueBuildResult.payload;
+  const captureQueueBlockingMessage = useMemo(() => {
+    if (captureQueueBuildResult.missingPermalinkColumn && captureQueueBuildResult.missingPageIdColumn) {
+      return 'Capture disabled: missing Permalink and Page ID columns in the imported SOURCE file.';
+    }
+    if (captureQueueBuildResult.missingPermalinkColumn) {
+      return 'Capture disabled: missing Permalink column in the imported SOURCE file.';
+    }
+    if (captureQueueBuildResult.missingPageIdColumn) {
+      return 'Capture disabled: missing Page ID column in the imported SOURCE file.';
+    }
+    if (captureQueuePayload.totalEligibleRows === 0) {
+      return 'Capture disabled: no eligible SOURCE rows. Fill both Permalink and Page ID before capturing insights.';
+    }
+    return null;
+  }, [
+    captureQueueBuildResult.missingPageIdColumn,
+    captureQueueBuildResult.missingPermalinkColumn,
+    captureQueuePayload.totalEligibleRows
+  ]);
+  const captureQueueWarningMessage = useMemo(() => {
+    if (captureQueueBlockingMessage) {
+      return null;
+    }
+
+    const skippedRows =
+      captureQueueBuildResult.rowsMissingPermalink +
+      captureQueueBuildResult.rowsMissingPageId +
+      captureQueueBuildResult.rowsMissingBoth;
+    if (skippedRows === 0) {
+      return null;
+    }
+
+    return `Warning: ${skippedRows} SOURCE row(s) will be skipped because Permalink or Page ID is missing.`;
+  }, [
+    captureQueueBlockingMessage,
+    captureQueueBuildResult.rowsMissingBoth,
+    captureQueueBuildResult.rowsMissingPageId,
+    captureQueueBuildResult.rowsMissingPermalink
+  ]);
 
   function openCaptureWorkspaceTab() {
     setCaptureLaunchError(null);
+    if (captureQueueBlockingMessage) {
+      setCaptureLaunchError(captureQueueBlockingMessage);
+      return;
+    }
     if (captureQueuePayload.items.length === 0) {
       setCaptureLaunchError(
         'No eligible SOURCE rows found. Ensure Permalink and Page ID exist in the imported file.'
@@ -2197,6 +2272,7 @@ export function ImportWorkingTable({
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button
+            disabled={Boolean(captureQueueBlockingMessage)}
             onClick={openCaptureWorkspaceTab}
             size="sm"
             type="button"
@@ -2223,6 +2299,16 @@ export function ImportWorkingTable({
       {captureLaunchError ? (
         <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
           {captureLaunchError}
+        </div>
+      ) : null}
+      {!captureLaunchError && captureQueueBlockingMessage ? (
+        <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
+          {captureQueueBlockingMessage}
+        </div>
+      ) : null}
+      {!captureLaunchError && !captureQueueBlockingMessage && captureQueueWarningMessage ? (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+          {captureQueueWarningMessage}
         </div>
       ) : null}
 
