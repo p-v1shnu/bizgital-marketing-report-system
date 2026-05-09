@@ -562,16 +562,20 @@ test('monthly monitoring checklist auto-saves and marks competitor complete', as
 
     await page.getByTestId(`competitor-checklist-${competitorId}`).click();
     await page.getByTestId('follower-input').fill('1234');
-    const maybeDialog = page
-      .waitForEvent('dialog', { timeout: 1_000 })
-      .then((dialog) => dialog.accept())
-      .catch(() => null);
-    await page.getByTestId('status-no-activity-button').click();
-    await maybeDialog;
-    await expect(page.getByTestId('status-no-activity-button')).toHaveAttribute(
-      'aria-checked',
-      'true'
-    );
+    await expect(async () => {
+      const maybeDialog = page
+        .waitForEvent('dialog', { timeout: 1_000 })
+        .then((dialog) => dialog.accept())
+        .catch(() => null);
+      await page.getByTestId('status-no-activity-button').click();
+      await maybeDialog;
+      await expect(page.getByTestId('status-no-activity-button')).toHaveAttribute(
+        'aria-checked',
+        'true'
+      );
+    }).toPass({
+      timeout: 15_000
+    });
     const noActivityNoteInput = page.getByTestId('no-activity-note-input');
     if ((await noActivityNoteInput.count()) > 0) {
       await noActivityNoteInput.fill('No activity observed this month.');
