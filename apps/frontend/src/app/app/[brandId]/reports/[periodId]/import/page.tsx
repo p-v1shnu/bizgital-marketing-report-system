@@ -254,6 +254,7 @@ export default async function ImportPage({ params, searchParams }: ImportPagePro
   const sourcePreview = sourcePreviewResult?.preview ?? null;
   const datasetPreview = datasetResult?.preview ?? null;
   const latestJob = sourcePreviewResult?.importJob ?? importJobs.items[0] ?? null;
+  const hasUploadedImportJob = !!latestJob;
   const latestVersionState = detail.period.latestVersionState;
   const isAwaitingDecision = detail.period.reviewReadiness.overall === 'awaiting_decision';
   const isApproved = detail.period.reviewReadiness.overall === 'published';
@@ -322,8 +323,8 @@ export default async function ImportPage({ params, searchParams }: ImportPagePro
   const isMappingFallbackRequested = resolvedSearchParams.mappingFallback === 'true';
   const isMappingResolvedRequested = resolvedSearchParams.mappingResolved === 'true';
   const shouldShowMappingFallback =
-    isMappingFallbackRequested ||
-    hasMissingRequiredMappings;
+    hasUploadedImportJob &&
+    (isMappingFallbackRequested || hasMissingRequiredMappings);
   const canAutoClearMappingFallback = !hasMissingRequiredMappings;
   const latestImportBadgeLabel = latestJob
     ? `Latest import: ${latestJob.status.replaceAll('_', ' ')}`
@@ -481,6 +482,7 @@ export default async function ImportPage({ params, searchParams }: ImportPagePro
           canAccessImportMappingAdmin={canAccessImportMappingAdmin}
           canAccessPeriodMapping={canAccessPeriodMapping}
           canAutoClearMappingFallback={canAutoClearMappingFallback}
+          hasUploadedImportJob={hasUploadedImportJob}
           isMappingFallbackRequested={isMappingFallbackRequested}
           isMappingResolvedRequested={isMappingResolvedRequested}
           mappingHref={mappingHref}

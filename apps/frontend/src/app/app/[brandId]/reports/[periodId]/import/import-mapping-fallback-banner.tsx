@@ -10,6 +10,7 @@ import { Card, CardContent } from '@/components/ui/card';
 type ImportMappingFallbackBannerProps = {
   brandId: string;
   periodId: string;
+  hasUploadedImportJob: boolean;
   shouldShowInitially: boolean;
   isMappingFallbackRequested: boolean;
   isMappingResolvedRequested: boolean;
@@ -27,6 +28,7 @@ function toFallbackStorageKey(brandId: string, periodId: string) {
 export function ImportMappingFallbackBanner({
   brandId,
   periodId,
+  hasUploadedImportJob,
   shouldShowInitially,
   isMappingFallbackRequested,
   isMappingResolvedRequested,
@@ -44,6 +46,12 @@ export function ImportMappingFallbackBanner({
 
   useEffect(() => {
     if (typeof window === 'undefined') {
+      return;
+    }
+
+    if (!hasUploadedImportJob) {
+      window.localStorage.removeItem(storageKey);
+      setIsVisible(false);
       return;
     }
 
@@ -66,6 +74,7 @@ export function ImportMappingFallbackBanner({
     setIsVisible(false);
   }, [
     canAutoClearMappingFallback,
+    hasUploadedImportJob,
     isMappingFallbackRequested,
     isMappingResolvedRequested,
     shouldShowInitially,

@@ -5,6 +5,8 @@ import * as XLSX from 'xlsx';
 
 import { isNonEmptyCsvRow, parseCsvRows } from './imports.csv';
 
+const DISALLOWED_INVISIBLE_CHARS_REGEX = /[\u200B\u200C\u200D\u2060\uFEFF]/g;
+
 export type ParsedImportDocument = {
   sourceType: 'csv' | 'excel';
   sheetName: string | null;
@@ -46,7 +48,7 @@ function normalizeRow(row: unknown[]) {
       return '';
     }
 
-    return String(value).trim();
+    return sanitizeImportCellValue(String(value));
   });
 }
 
@@ -57,13 +59,17 @@ function isNonEmptyRow(row: string[]) {
 async function parseCsvDocument(filePath: string): Promise<ParsedImportDocument> {
   const rawBuffer = await readFile(filePath);
   const rawContent = decodeCsvBuffer(rawBuffer);
-  const rows = parseCsvRows(rawContent).map((row) => row.map((value) => value.trim()));
+  const rows = parseCsvRows(rawContent).map((row) => row.map((value) => sanitizeImportCellValue(value)));
   const headerRowIndex = rows.findIndex((row) => isNonEmptyCsvRow(row));
 
   return buildParsedDocument(rows, headerRowIndex, {
     sourceType: 'csv',
     sheetName: null
   });
+}
+
+function sanitizeImportCellValue(value: string) {
+  return value.replace(DISALLOWED_INVISIBLE_CHARS_REGEX, '').trim();
 }
 
 function decodeCsvBuffer(buffer: Buffer): string {
