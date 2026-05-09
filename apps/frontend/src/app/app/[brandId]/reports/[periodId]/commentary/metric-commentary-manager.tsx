@@ -174,9 +174,15 @@ export function MetricCommentaryManager({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const requestSequenceRef = useRef(0);
+  const scopeKeyRef = useRef(`${brandId}:${periodId}`);
+  const currentValuesRef = useRef(values);
   const lastPersistedValuesRef = useRef(
     toFormValues(initialItems, isFirstReportingMonth, firstMonthDefaultRemark)
   );
+
+  useEffect(() => {
+    currentValuesRef.current = values;
+  }, [values]);
 
   useEffect(() => {
     const nextValues = toFormValues(
@@ -184,13 +190,28 @@ export function MetricCommentaryManager({
       isFirstReportingMonth,
       firstMonthDefaultRemark
     );
+
+    const nextScopeKey = `${brandId}:${periodId}`;
+    const scopeChanged = scopeKeyRef.current !== nextScopeKey;
+    scopeKeyRef.current = nextScopeKey;
+
+    const hasUnsavedLocalChanges = !areFormValuesEqual(
+      currentValuesRef.current,
+      lastPersistedValuesRef.current
+    );
+
+    // Keep local in-progress edits and avoid server refresh snapping text backward while typing.
+    if (!scopeChanged && hasUnsavedLocalChanges) {
+      return;
+    }
+
     setValues(nextValues);
     setSaveStatus('idle');
     setSaveError(null);
     setSavedAt(null);
     lastPersistedValuesRef.current = nextValues;
     requestSequenceRef.current += 1;
-  }, [firstMonthDefaultRemark, initialItems, isFirstReportingMonth]);
+  }, [brandId, periodId, firstMonthDefaultRemark, initialItems, isFirstReportingMonth]);
 
   const errors = useMemo(
     () => validate(values, initialItems, viewersInputReady),
