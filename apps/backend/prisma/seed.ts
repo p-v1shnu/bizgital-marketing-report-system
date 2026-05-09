@@ -169,30 +169,64 @@ async function main() {
     });
   }
 
+  const currentYear = new Date().getUTCFullYear();
+
+  async function ensureSeedCompetitor(input: {
+    name: string;
+    primaryPlatform: string;
+    facebookUrl?: string | null;
+    instagramUrl?: string | null;
+  }) {
+    const existingBrandCompetitor = await prisma.brandCompetitor.findFirst({
+      where: {
+        brandId: demoBrand.id,
+        competitor: {
+          name: input.name
+        }
+      },
+      orderBy: {
+        activeFromYear: 'desc'
+      },
+      include: {
+        competitor: true
+      }
+    });
+
+    const competitor =
+      existingBrandCompetitor?.competitor ??
+      (await prisma.competitor.create({
+        data: {
+          name: input.name,
+          primaryPlatform: input.primaryPlatform,
+          facebookUrl: input.facebookUrl ?? null,
+          instagramUrl: input.instagramUrl ?? null
+        }
+      }));
+
+    if (existingBrandCompetitor?.competitor) {
+      await prisma.competitor.update({
+        where: { id: existingBrandCompetitor.competitor.id },
+        data: {
+          primaryPlatform: input.primaryPlatform,
+          facebookUrl: input.facebookUrl ?? null,
+          instagramUrl: input.instagramUrl ?? null
+        }
+      });
+    }
+
+    return competitor;
+  }
+
   const competitors = await Promise.all([
-    prisma.competitor.upsert({
-      where: { name: 'Sample Competitor A' },
-      update: {
-        primaryPlatform: 'Facebook',
-        facebookUrl: 'https://facebook.com/sample-competitor-a'
-      },
-      create: {
-        name: 'Sample Competitor A',
-        primaryPlatform: 'Facebook',
-        facebookUrl: 'https://facebook.com/sample-competitor-a'
-      }
+    ensureSeedCompetitor({
+      name: 'Sample Competitor A',
+      primaryPlatform: 'Facebook',
+      facebookUrl: 'https://facebook.com/sample-competitor-a'
     }),
-    prisma.competitor.upsert({
-      where: { name: 'Sample Competitor B' },
-      update: {
-        primaryPlatform: 'Instagram',
-        instagramUrl: 'https://instagram.com/samplecompetitorb'
-      },
-      create: {
-        name: 'Sample Competitor B',
-        primaryPlatform: 'Instagram',
-        instagramUrl: 'https://instagram.com/samplecompetitorb'
-      }
+    ensureSeedCompetitor({
+      name: 'Sample Competitor B',
+      primaryPlatform: 'Instagram',
+      instagramUrl: 'https://instagram.com/samplecompetitorb'
     })
   ]);
 
@@ -202,7 +236,7 @@ async function main() {
         brand_competitor_brand_competitor_year_unique: {
           brandId: demoBrand.id,
           competitorId: competitor.id,
-          activeFromYear: new Date().getUTCFullYear()
+          activeFromYear: currentYear
         }
       },
       update: {
@@ -212,7 +246,7 @@ async function main() {
       create: {
         brandId: demoBrand.id,
         competitorId: competitor.id,
-        activeFromYear: new Date().getUTCFullYear(),
+        activeFromYear: currentYear,
         displayOrder: index + 1,
         status: BrandCompetitorStatus.active
       }
@@ -245,8 +279,6 @@ async function main() {
       }
     })
   ]);
-
-  const currentYear = new Date().getUTCFullYear();
 
   for (const [index, questionMaster] of questionMasters.entries()) {
     await prisma.brandQuestionActivation.upsert({
