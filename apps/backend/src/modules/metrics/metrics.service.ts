@@ -1752,9 +1752,13 @@ export class MetricsService {
       return new Map();
     }
 
-    const availableColumns = parsedDocument.headerRow
-      .map(column => column.trim())
-      .filter(column => column.length > 0);
+    const sourceColumns = parsedDocument.headerRow
+      .map((column, index) => ({
+        index,
+        label: column.trim()
+      }))
+      .filter((column) => column.label.length > 0);
+    const availableColumns = sourceColumns.map((column) => column.label);
     const displayColumnByRaw = new Map<string, string>();
     for (const rawColumn of availableColumns) {
       const displayColumn = this.columnConfigService.resolveImportColumnDisplayLabel(
@@ -1802,8 +1806,9 @@ export class MetricsService {
       const rowMap = Object.fromEntries(
         availableColumnsWithManual.map((columnLabel) => [columnLabel, null as string | null])
       );
-      for (const [columnIndex, rawColumnLabel] of availableColumns.entries()) {
-        const value = row[columnIndex]?.trim() || null;
+      for (const sourceColumn of sourceColumns) {
+        const rawColumnLabel = sourceColumn.label;
+        const value = row[sourceColumn.index]?.trim() || null;
         rowMap[rawColumnLabel] = value;
         const displayColumnLabel = displayColumnByRaw.get(rawColumnLabel);
         if (displayColumnLabel) {

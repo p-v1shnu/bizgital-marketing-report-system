@@ -20,6 +20,14 @@ import type { ImportJobListResponse, ImportPreviewResponse } from './imports.typ
 
 const ALLOWED_IMPORT_EXTENSIONS = new Set(['.csv', '.xls', '.xlsx']);
 const IMPORT_COLUMN_SAMPLE_MAX_LENGTH = 180;
+const CRITICAL_METRIC_HEADER_ALIASES = {
+  views: ['Views', 'View count', 'Total views', 'Video views'],
+  viewersPost: ['Viewers (Post)', 'Reach', 'IMPRESSION:UNIQUE_USERS', 'Unique users'],
+  videoViews3s: ['3-second video views', '3 second video views', '3s video views', 'Video views 3s'],
+  engagement: ['Engagement'],
+  engagementA: ['Reactions, comments and shares', 'Reactions, Comments and Shares'],
+  engagementB: ['Total clicks', 'Total Clicks']
+} as const;
 
 function toStoredSampleValue(value: string | null) {
   if (!value) {
@@ -149,6 +157,7 @@ export class ImportsService {
     }
 
     await this.assertAllowedFile(file);
+    await this.assertCriticalMetricHeaders(file);
 
     const created = await this.prisma.importJob.create({
       data: {
@@ -400,6 +409,65 @@ export class ImportsService {
     }
 
     return true;
+  }
+
+  private async assertCriticalMetricHeaders(file: Express.Multer.File) {
+    let parsed;
+
+    try {
+      parsed = await parseImportDocument(file.path, file.originalname);
+    } catch {
+      await this.deleteRejectedUpload(file.path);
+      throw new BadRequestException('Import file could not be parsed for required metric headers.');
+    }
+
+    const normalizedHeaders = new Set(
+      parsed.headerRow
+        .map((header) => this.normalizeHeaderKey(header))
+        .filter((header) => header.length > 0)
+    );
+    const hasAnyHeader = (candidates: readonly string[]) =>
+      candidates.some((candidate) => normalizedHeaders.has(this.normalizeHeaderKey(candidate)));
+
+    const missingLabels: string[] = [];
+
+    if (!hasAnyHeader(CRITICAL_METRIC_HEADER_ALIASES.views)) {
+      missingLabels.push('Views');
+    }
+
+    if (!hasAnyHeader(CRITICAL_METRIC_HEADER_ALIASES.viewersPost)) {
+      missingLabels.push('Viewers (Post) / Reach');
+    }
+
+    if (!hasAnyHeader(CRITICAL_METRIC_HEADER_ALIASES.videoViews3s)) {
+      missingLabels.push('3-second video views');
+    }
+
+    const hasEngagement =
+      hasAnyHeader(CRITICAL_METRIC_HEADER_ALIASES.engagement) ||
+      (hasAnyHeader(CRITICAL_METRIC_HEADER_ALIASES.engagementA) &&
+        hasAnyHeader(CRITICAL_METRIC_HEADER_ALIASES.engagementB));
+
+    if (!hasEngagement) {
+      missingLabels.push('Engagement (or both Reactions, comments and shares + Total clicks)');
+    }
+
+    if (missingLabels.length === 0) {
+      return;
+    }
+
+    await this.deleteRejectedUpload(file.path);
+    throw new BadRequestException(
+      `Missing required metric columns: ${missingLabels.join(', ')}.`
+    );
+  }
+
+  private normalizeHeaderKey(value: string | null | undefined) {
+    return String(value ?? '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   private isUtf16EncodedText(header: Buffer) {
