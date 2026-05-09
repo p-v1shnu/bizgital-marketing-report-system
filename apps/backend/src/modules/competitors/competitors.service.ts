@@ -636,6 +636,63 @@ export class CompetitorsService {
     const currentYear = new Date().getUTCFullYear();
 
     return this.prisma.$transaction(async (tx) => {
+      const existingByName = await tx.competitor.findFirst({
+        where: {
+          name: normalized.name
+        },
+        select: {
+          id: true
+        }
+      });
+
+      if (existingByName) {
+        const alreadyVisibleToBrand = await tx.competitor.findFirst({
+          where: {
+            id: existingByName.id,
+            OR: [
+              {
+                brandCompetitorAssignments: {
+                  some: {
+                    brandId: brand.id
+                  }
+                }
+              },
+              {
+                brandCompetitors: {
+                  some: {
+                    brandId: brand.id
+                  }
+                }
+              }
+            ]
+          },
+          select: {
+            id: true
+          }
+        });
+
+        if (alreadyVisibleToBrand) {
+          throw new ConflictException('Competitor already exists in this brand.');
+        }
+
+        await tx.brandCompetitor.create({
+          data: {
+            brandId: brand.id,
+            competitorId: existingByName.id,
+            activeFromYear: currentYear,
+            activeToYear: null,
+            displayOrder: 0,
+            status: BrandCompetitorStatus.inactive
+          }
+        });
+
+        return tx.competitor.findUniqueOrThrow({
+          where: {
+            id: existingByName.id
+          }
+        });
+      }
+
       const created = await tx.competitor.create({
         data: normalized
       });
