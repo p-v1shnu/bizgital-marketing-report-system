@@ -39,6 +39,49 @@ type CatalogTab = 'active' | 'inactive';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? '/api';
 
+function trimTrailingSlash(value: string) {
+  return value.endsWith('/') ? value.slice(0, -1) : value;
+}
+
+function getApiBaseCandidates() {
+  const candidates = [trimTrailingSlash(apiBase)];
+
+  if (typeof window !== 'undefined') {
+    const { hostname, protocol } = window.location;
+    const fallbackCandidates = [
+      `${protocol}//${hostname}:3003/api`,
+      `http://${hostname}:3003/api`
+    ].map(trimTrailingSlash);
+
+    for (const candidate of fallbackCandidates) {
+      if (!candidates.includes(candidate)) {
+        candidates.push(candidate);
+      }
+    }
+  }
+
+  return candidates;
+}
+
+async function fetchWithApiBaseFallback(path: string, init?: RequestInit) {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  const candidates = getApiBaseCandidates();
+  let lastError: unknown = null;
+
+  for (const base of candidates) {
+    try {
+      return await fetch(`${base}${normalizedPath}`, {
+        ...init,
+        credentials: init?.credentials ?? 'include'
+      });
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error('Failed to reach API.');
+}
+
 function emptyCatalogDraft(): CatalogDraft {
   return {
     name: '',
@@ -249,9 +292,12 @@ export function CompetitorSetupManager({
   }
 
   async function fetchYearSetup(year: number) {
-    const response = await fetch(`${apiBase}/brands/${brandId}/competitor-setup/${year}`, {
+    const response = await fetchWithApiBaseFallback(
+      `/brands/${brandId}/competitor-setup/${year}`,
+      {
       cache: 'no-store'
-    });
+      }
+    );
     const payload = (await response
       .json()
       .catch(() => null)) as CompetitorYearSetupResponse | { message?: string | string[] } | null;
@@ -298,8 +344,8 @@ export function CompetitorSetupManager({
     setStatus({ message: null, error: null });
 
     try {
-      const response = await fetch(
-        `${apiBase}/brands/${brandId}/competitor-setup/${selectedYear}/assignments`,
+      const response = await fetchWithApiBaseFallback(
+        `/brands/${brandId}/competitor-setup/${selectedYear}/assignments`,
         {
           method: 'POST',
           headers: {
@@ -363,8 +409,8 @@ export function CompetitorSetupManager({
     setStatus({ message: null, error: null });
 
     try {
-      const response = await fetch(
-        `${apiBase}/brands/${brandId}/competitor-setup/${selectedYear}/assignments/${competitorId}/status`,
+      const response = await fetchWithApiBaseFallback(
+        `/brands/${brandId}/competitor-setup/${selectedYear}/assignments/${competitorId}/status`,
         {
           method: 'PATCH',
           headers: {
@@ -455,10 +501,10 @@ export function CompetitorSetupManager({
     try {
       const endpoint =
         modalMode === 'create' || !editingCompetitorId
-          ? `${apiBase}/brands/${brandId}/competitor-setup/catalog`
-          : `${apiBase}/brands/${brandId}/competitor-setup/catalog/${editingCompetitorId}`;
+          ? `/brands/${brandId}/competitor-setup/catalog`
+          : `/brands/${brandId}/competitor-setup/catalog/${editingCompetitorId}`;
       const method = modalMode === 'create' || !editingCompetitorId ? 'POST' : 'PATCH';
-      const response = await fetch(endpoint, {
+      const response = await fetchWithApiBaseFallback(endpoint, {
         method,
         headers: {
           'Content-Type': 'application/json'
@@ -486,8 +532,10 @@ export function CompetitorSetupManager({
             ? `Created "${name}".`
             : `Updated "${name}".`
       });
-    } catch {
-      setStatus({ error: 'Failed to save competitor.' });
+    } catch (error) {
+      setStatus({
+        error: error instanceof Error ? error.message : 'Failed to save competitor.'
+      });
     } finally {
       setPendingKey(null);
     }
@@ -506,8 +554,8 @@ export function CompetitorSetupManager({
     setStatus({ message: null, error: null });
 
     try {
-      const response = await fetch(
-        `${apiBase}/brands/${brandId}/competitor-setup/catalog/${item.id}`,
+      const response = await fetchWithApiBaseFallback(
+        `/brands/${brandId}/competitor-setup/catalog/${item.id}`,
         {
           method: 'DELETE'
         }

@@ -88,7 +88,7 @@ services:
       - automation-browser
     environment:
       NODE_ENV: development
-      PORT: 3000
+      PORT: 3200
       APP_ORIGIN: http://localhost:${FRONTEND_PORT:-3200}
       NEXT_PUBLIC_APP_NAME: BIZGITAL Marketing Report
       INTERNAL_API_BASE_URL: http://backend:3003/${API_PREFIX:-api}
@@ -105,7 +105,7 @@ services:
       INSIGHT_CAPTURE_LOGIN_URL: ${INSIGHT_CAPTURE_LOGIN_URL:-http://localhost:6081/vnc.html?autoconnect=true&resize=remote}
     command: npm run dev:docker --workspace @bizgital-marketing-report/frontend
     ports:
-      - "127.0.0.1:${FRONTEND_PORT:-3200}:3000"
+      - "127.0.0.1:${FRONTEND_PORT:-3200}:3200"
     volumes:
       - ./apps/frontend:/workspace/apps/frontend
       - ./tsconfig.base.json:/workspace/tsconfig.base.json

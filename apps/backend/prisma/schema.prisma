@@ -588,7 +588,7 @@ model TopContentCard {
 
 model Competitor {
   id              String   @id @default(cuid())
-  name            String   @unique
+  name            String
   primaryPlatform String   @map("primary_platform")
   status          CompetitorStatus @default(active)
   websiteUrl      String?  @db.Text @map("website_url")
