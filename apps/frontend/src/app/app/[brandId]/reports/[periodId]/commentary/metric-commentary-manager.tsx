@@ -199,9 +199,18 @@ export function MetricCommentaryManager({
       currentValuesRef.current,
       lastPersistedValuesRef.current
     );
+    const serverSnapshotMatchesLastPersisted = areFormValuesEqual(
+      nextValues,
+      lastPersistedValuesRef.current
+    );
 
     // Keep local in-progress edits and avoid server refresh snapping text backward while typing.
     if (!scopeChanged && hasUnsavedLocalChanges) {
+      return;
+    }
+    // Ignore stale server snapshots on same scope. This avoids production latency races
+    // where refresh data can arrive older than the latest successful local save.
+    if (!scopeChanged && !serverSnapshotMatchesLastPersisted) {
       return;
     }
 
