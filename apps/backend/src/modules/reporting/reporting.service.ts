@@ -2075,7 +2075,15 @@ export class ReportingService implements OnModuleInit {
     }
 
     for (const period of expiredPeriods) {
-      await this.purgeDeletedReportingPeriodById(period.id);
+      try {
+        await this.purgeDeletedReportingPeriodById(period.id);
+      } catch (error) {
+        this.logger.warn(
+          `Skipping recycle-bin purge for period ${period.id}: ${
+            error instanceof Error ? error.message : 'Unknown error'
+          }`
+        );
+      }
     }
   }
 
