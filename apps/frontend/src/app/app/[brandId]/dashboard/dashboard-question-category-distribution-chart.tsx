@@ -273,7 +273,7 @@ export function DashboardQuestionCategoryDistributionChart({
                   const point = labelProps?.payload as
                     | DashboardQuestionCategoryDistributionPoint
                     | undefined;
-                  const categoryLabel = String(point?.label ?? '');
+                  const categoryLabel = String(labelProps?.value ?? point?.label ?? '');
                   if (!categoryLabel) {
                     return null;
                   }
