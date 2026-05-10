@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle2, Circle, Copy } from 'lucide-react';
+import { BarChart3, CheckCircle2, Circle, Copy, UsersRound } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -554,31 +554,35 @@ export function BrandYearSetupManager({
 
         <div className="mt-4 flex flex-wrap gap-2">
           <Button
+            aria-pressed={editorTab === 'kpi'}
+            className={`border px-4 ${
+              editorTab === 'kpi'
+                ? 'border-primary/40 bg-primary/10 text-foreground shadow-sm shadow-primary/10 hover:bg-primary/12'
+                : 'border-border/70 bg-transparent text-muted-foreground hover:border-primary/30 hover:bg-primary/5 hover:text-foreground'
+            }`}
             disabled={pendingKey !== null}
             onClick={() => setEditorTab('kpi')}
             size="sm"
             type="button"
             variant="outline"
-            className={
-              editorTab === 'kpi'
-                ? 'bg-background text-foreground shadow-sm shadow-black/5'
-                : undefined
-            }
           >
+            <BarChart3 className="text-primary" />
             KPI
           </Button>
           <Button
+            aria-pressed={editorTab === 'competitors'}
+            className={`border px-4 ${
+              editorTab === 'competitors'
+                ? 'border-primary/40 bg-primary/10 text-foreground shadow-sm shadow-primary/10 hover:bg-primary/12'
+                : 'border-border/70 bg-transparent text-muted-foreground hover:border-primary/30 hover:bg-primary/5 hover:text-foreground'
+            }`}
             disabled={pendingKey !== null}
             onClick={() => setEditorTab('competitors')}
             size="sm"
             type="button"
             variant="outline"
-            className={
-              editorTab === 'competitors'
-                ? 'bg-background text-foreground shadow-sm shadow-black/5'
-                : undefined
-            }
           >
+            <UsersRound className="text-primary" />
             Competitors
           </Button>
         </div>
