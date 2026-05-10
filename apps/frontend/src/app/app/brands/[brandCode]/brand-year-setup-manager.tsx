@@ -472,10 +472,16 @@ export function BrandYearSetupManager({
         </div>
       ) : null}
 
-      <div className="rounded-[24px] border border-border/60 bg-background/60 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="text-base font-semibold text-foreground">Year setup</div>
-          <div className="flex flex-wrap gap-2">
+      <div className="rounded-[24px] border border-border/60 bg-background/60 p-4 shadow-sm shadow-black/5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-1">
+            <div className="text-base font-semibold text-foreground">Year setup</div>
+            <p className="max-w-2xl text-sm text-muted-foreground">
+              Choose the reporting year, set whether competitor tracking is required, then copy
+              setup data when you need a faster start.
+            </p>
+          </div>
+          <div className="flex flex-wrap justify-end gap-2">
             <Badge variant="outline">{setup.competitorMode.label}</Badge>
             <Badge variant="outline">
               {setup.canCreateReport ? 'Ready for reporting' : 'Setup required'}
@@ -483,12 +489,16 @@ export function BrandYearSetupManager({
           </div>
         </div>
 
-        <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,260px)_minmax(0,320px)_auto] xl:items-end">
-          <div className="space-y-2">
-            <label className="text-sm font-medium" htmlFor="year-setup-selected-year">
+        <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(220px,0.8fr)_minmax(300px,1fr)] 2xl:grid-cols-[minmax(220px,0.72fr)_minmax(300px,0.95fr)_minmax(0,1.35fr)]">
+          <div className="rounded-[20px] border border-border/60 bg-background/70 p-3">
+            <label
+              className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground"
+              htmlFor="year-setup-selected-year"
+            >
               Selected year
             </label>
             <Select
+              className="h-11"
               disabled={pendingKey !== null}
               id="year-setup-selected-year"
               onChange={(event) => void loadYear(Number(event.currentTarget.value))}
@@ -502,15 +512,17 @@ export function BrandYearSetupManager({
             </Select>
           </div>
 
-          <div className="space-y-2">
-            <div className="text-sm font-medium">Competitor mode</div>
-            <div className="flex rounded-2xl border border-border/60 bg-background/70 p-1">
+          <div className="rounded-[20px] border border-border/60 bg-background/70 p-3">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Competitor mode
+            </div>
+            <div className="grid grid-cols-2 gap-1 rounded-2xl border border-border/60 bg-muted/20 p-1">
               {(['with_competitors', 'without_competitors'] as const).map((mode) => (
                 <button
-                  className={`flex-1 rounded-xl px-3 py-2 text-sm font-medium transition ${
+                  className={`min-h-10 rounded-xl px-3 py-2 text-center text-sm font-semibold leading-tight transition ${
                     competitorSetup.summary.mode === mode
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-muted-foreground hover:text-foreground'
+                      ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/20'
+                      : 'text-muted-foreground hover:bg-background/80 hover:text-foreground'
                   }`}
                   disabled={pendingKey !== null || !competitorSetup.summary.canChangeMode}
                   key={mode}
@@ -527,42 +539,50 @@ export function BrandYearSetupManager({
             </div>
             {!competitorSetup.summary.canChangeMode &&
             competitorSetup.summary.modeChangeBlockedReason ? (
-              <div className="text-xs text-muted-foreground">
+              <div className="mt-2 text-xs text-muted-foreground">
                 {competitorSetup.summary.modeChangeBlockedReason}
               </div>
             ) : null}
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            <Button
-              disabled={pendingKey !== null}
-              onClick={() => openCopyModal('kpi')}
-              size="sm"
-              type="button"
-              variant="outline"
-            >
-              <Copy />
-              Copy KPI
-            </Button>
-            <Button
-              disabled={pendingKey !== null}
-              onClick={() => openCopyModal('competitors')}
-              size="sm"
-              type="button"
-              variant="outline"
-            >
-              <Copy />
-              Copy competitors
-            </Button>
-            <Button
-              disabled={pendingKey !== null}
-              onClick={() => openCopyModal('both')}
-              size="sm"
-              type="button"
-            >
-              <Copy />
-              Copy KPI + competitors
-            </Button>
+          <div className="rounded-[20px] border border-border/60 bg-background/70 p-3 lg:col-span-2 2xl:col-span-1">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Copy setup from another year
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                className="justify-center"
+                disabled={pendingKey !== null}
+                onClick={() => openCopyModal('kpi')}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                <Copy />
+                Copy KPI
+              </Button>
+              <Button
+                className="justify-center"
+                disabled={pendingKey !== null}
+                onClick={() => openCopyModal('competitors')}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                <Copy />
+                Copy competitors
+              </Button>
+              <Button
+                className="justify-center"
+                disabled={pendingKey !== null}
+                onClick={() => openCopyModal('both')}
+                size="sm"
+                type="button"
+              >
+                <Copy />
+                Copy KPI + competitors
+              </Button>
+            </div>
           </div>
         </div>
       </div>
