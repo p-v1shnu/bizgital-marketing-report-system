@@ -259,6 +259,7 @@ export function DashboardQuestionCategoryDistributionChart({
               barSize={barSize}
               dataKey="count"
               fill="#10b981"
+              minPointSize={Math.max(2, Math.round(barSize * 0.08))}
               radius={[0, 12, 12, 0]}
             >
               <LabelList
