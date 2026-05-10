@@ -8,6 +8,7 @@ import { ClearFlashQueryParams } from './clear-flash-query-params';
 import { GlobalAppShell } from './global-app-shell';
 
 const sidebarCookieKey = 'bizgital_marketing_report_global_sidebar_collapsed';
+const themeModeCookieKey = 'bizgital_marketing_report_theme_mode';
 
 type AppLayoutProps = {
   children: ReactNode;
@@ -21,6 +22,11 @@ export default async function AppLayout({ children }: AppLayoutProps) {
   const cookieStore = await cookies();
   const initialSidebarCollapsed =
     cookieStore.get(sidebarCookieKey)?.value === 'true';
+  const storedThemeMode = cookieStore.get(themeModeCookieKey)?.value;
+  const initialThemeMode =
+    storedThemeMode === 'dark' || storedThemeMode === 'light' || storedThemeMode === 'auto'
+      ? storedThemeMode
+      : 'auto';
 
   return (
     <GlobalAppShell
@@ -30,6 +36,7 @@ export default async function AppLayout({ children }: AppLayoutProps) {
         email: context.user.email
       }}
       initialSidebarCollapsed={initialSidebarCollapsed}
+      initialThemeMode={initialThemeMode}
       showSuperAdminSetupModeWarning={showSuperAdminSetupModeWarning}
     >
       <ClearFlashQueryParams />

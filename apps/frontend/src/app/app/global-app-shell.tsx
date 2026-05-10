@@ -3,14 +3,17 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   Building2,
   ChevronLeft,
   ChevronRight,
   FolderKanban,
+  Laptop,
   LogOut,
+  Moon,
   Settings2,
+  Sun,
   UserCircle2
 } from 'lucide-react';
 
@@ -19,6 +22,10 @@ import { cn } from '@/lib/utils';
 
 const sidebarStorageKey = 'bizgital-marketing-report.global-sidebar-collapsed';
 const sidebarCookieKey = 'bizgital_marketing_report_global_sidebar_collapsed';
+const themeModeStorageKey = 'bizgital-marketing-report.theme-mode';
+const themeModeCookieKey = 'bizgital_marketing_report_theme_mode';
+
+type ThemeMode = 'auto' | 'dark' | 'light';
 
 const navigation: Array<{
   href: string;
@@ -52,6 +59,7 @@ type GlobalAppShellProps = {
   };
   canAccessAdmin: boolean;
   initialSidebarCollapsed?: boolean;
+  initialThemeMode?: ThemeMode;
   showSuperAdminSetupModeWarning?: boolean;
 };
 
@@ -60,13 +68,36 @@ export function GlobalAppShell({
   currentUser,
   canAccessAdmin,
   initialSidebarCollapsed = false,
+  initialThemeMode = 'auto',
   showSuperAdminSetupModeWarning = false
 }: GlobalAppShellProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(initialSidebarCollapsed);
+  const [themeMode, setThemeMode] = useState<ThemeMode>(initialThemeMode);
   const visibleNavigation = navigation.filter(
     (item) => !item.adminOnly || canAccessAdmin
   );
+
+  useEffect(() => {
+    const savedThemeMode = window.localStorage.getItem(themeModeStorageKey);
+    if (savedThemeMode === 'auto' || savedThemeMode === 'dark' || savedThemeMode === 'light') {
+      setThemeMode(savedThemeMode);
+    }
+  }, []);
+
+  useEffect(() => {
+    const nextMode = themeMode;
+    window.localStorage.setItem(themeModeStorageKey, nextMode);
+    document.cookie = `${themeModeCookieKey}=${nextMode}; path=/; max-age=31536000; samesite=lax`;
+
+    const rootElement = document.documentElement;
+    if (nextMode === 'auto') {
+      rootElement.removeAttribute('data-theme-preference');
+      return;
+    }
+
+    rootElement.setAttribute('data-theme-preference', nextMode);
+  }, [themeMode]);
 
   function toggleSidebar() {
     setCollapsed((current) => {
@@ -78,7 +109,10 @@ export function GlobalAppShell({
   }
 
   return (
-    <div className="min-h-screen bg-background lg:flex">
+    <div
+      className="min-h-screen bg-background lg:flex"
+      data-theme-preference={themeMode === 'auto' ? undefined : themeMode}
+    >
       <aside
         className={cn(
           'border-b border-border/70 bg-card/45 transition-all duration-200 lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:border-r lg:border-b-0',
@@ -191,6 +225,57 @@ export function GlobalAppShell({
             <div className="mt-2 text-sm text-foreground">
               Daily reporting stays inside brand workspaces. Brand setup lives in the
               admin layer.
+            </div>
+          </div>
+          <div
+            className={cn(
+              'rounded-[24px] border border-border/60 bg-background/70 px-4 py-4',
+              collapsed && 'hidden'
+            )}
+          >
+            <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+              Theme
+            </div>
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              <button
+                className={cn(
+                  'inline-flex items-center justify-center gap-1 rounded-xl border px-2 py-1.5 text-xs font-medium transition',
+                  themeMode === 'auto'
+                    ? 'border-primary/40 bg-primary/15 text-foreground'
+                    : 'border-border/60 text-muted-foreground hover:border-border hover:text-foreground'
+                )}
+                onClick={() => setThemeMode('auto')}
+                type="button"
+              >
+                <Laptop className="size-3.5" />
+                <span>Auto</span>
+              </button>
+              <button
+                className={cn(
+                  'inline-flex items-center justify-center gap-1 rounded-xl border px-2 py-1.5 text-xs font-medium transition',
+                  themeMode === 'dark'
+                    ? 'border-primary/40 bg-primary/15 text-foreground'
+                    : 'border-border/60 text-muted-foreground hover:border-border hover:text-foreground'
+                )}
+                onClick={() => setThemeMode('dark')}
+                type="button"
+              >
+                <Moon className="size-3.5" />
+                <span>Dark</span>
+              </button>
+              <button
+                className={cn(
+                  'inline-flex items-center justify-center gap-1 rounded-xl border px-2 py-1.5 text-xs font-medium transition',
+                  themeMode === 'light'
+                    ? 'border-primary/40 bg-primary/15 text-foreground'
+                    : 'border-border/60 text-muted-foreground hover:border-border hover:text-foreground'
+                )}
+                onClick={() => setThemeMode('light')}
+                type="button"
+              >
+                <Sun className="size-3.5" />
+                <span>Light</span>
+              </button>
             </div>
           </div>
           <button
