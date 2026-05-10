@@ -272,6 +272,14 @@ export function CompetitorSetupManager({
     return new Map(setup.availableCompetitors.map((item) => [item.id, item]));
   }, [setup.availableCompetitors]);
 
+  const catalogCounts = useMemo(
+    () => ({
+      active: setup.availableCompetitors.filter((item) => item.status === 'active').length,
+      inactive: setup.availableCompetitors.filter((item) => item.status === 'inactive').length
+    }),
+    [setup.availableCompetitors]
+  );
+
   const filteredCatalog = useMemo(() => {
     const keyword = query.trim().toLowerCase();
 
@@ -870,33 +878,28 @@ export function CompetitorSetupManager({
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              <Button
-                disabled={pendingKey !== null}
-                onClick={() => setCatalogTab('active')}
-                type="button"
-                variant="outline"
-                className={
-                  catalogTab === 'active'
-                    ? 'bg-background text-foreground shadow-sm shadow-black/5'
-                    : undefined
-                }
-              >
-                Active
-              </Button>
-              <Button
-                disabled={pendingKey !== null}
-                onClick={() => setCatalogTab('inactive')}
-                type="button"
-                variant="outline"
-                className={
-                  catalogTab === 'inactive'
-                    ? 'bg-background text-foreground shadow-sm shadow-black/5'
-                    : undefined
-                }
-              >
-                Inactive
-              </Button>
+            <div className="inline-flex w-fit rounded-full border border-border/70 bg-muted/15 p-1">
+              {(['active', 'inactive'] as const).map((tab) => {
+                const isSelected = catalogTab === tab;
+                const label = tab === 'active' ? 'Active' : 'Inactive';
+
+                return (
+                  <button
+                    aria-pressed={isSelected}
+                    className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                      isSelected
+                        ? 'border border-primary/30 bg-background text-foreground shadow-sm shadow-primary/10'
+                        : 'border border-transparent text-muted-foreground hover:text-foreground'
+                    }`}
+                    disabled={pendingKey !== null}
+                    key={tab}
+                    onClick={() => setCatalogTab(tab)}
+                    type="button"
+                  >
+                    {label} ({catalogCounts[tab]})
+                  </button>
+                );
+              })}
             </div>
           </CardHeader>
 
