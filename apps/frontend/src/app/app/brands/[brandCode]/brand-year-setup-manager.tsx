@@ -10,6 +10,7 @@ import { ModalShell } from '@/components/ui/modal-shell';
 import { Select } from '@/components/ui/select';
 import type {
   BrandKpiPlanResponse,
+  CompetitorReportingMode,
   CompetitorYearSetupResponse,
   KpiCatalogItem,
   ReportingListResponse,
@@ -68,6 +69,10 @@ function buildYearOptionLabel(option: ReportingListResponse['yearOptions'][numbe
   return `${option.year} · setup required`;
 }
 
+function competitorModeLabel(mode: CompetitorReportingMode) {
+  return mode === 'with_competitors' ? 'With Competitors' : 'Without Competitors';
+}
+
 export function BrandYearSetupManager({
   brandCode,
   initialYear,
@@ -90,6 +95,7 @@ export function BrandYearSetupManager({
   const [editorTab, setEditorTab] = useState<EditorTab>(initialEditorTab);
   const [copyMode, setCopyMode] = useState<CopyMode>(null);
   const [copyTargetYear, setCopyTargetYear] = useState<number | null>(null);
+  const [pendingModeChange, setPendingModeChange] = useState<CompetitorReportingMode | null>(null);
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -351,6 +357,54 @@ export function BrandYearSetupManager({
     return payload?.copiedCount ?? 0;
   }
 
+  async function updateCompetitorMode(mode: CompetitorReportingMode) {
+    setPendingKey('competitor-mode');
+    setStatusError(null);
+    setStatusMessage(null);
+
+    try {
+      const response = await fetch(
+        `${apiBase}/brands/${brandCode}/competitor-setup/${selectedYear}/mode`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            mode,
+            effectiveMonth: competitorSetup.summary.nextModeChangeEffectiveMonth ?? undefined
+          })
+        }
+      );
+      const payload = (await response
+        .json()
+        .catch(() => null)) as
+        | CompetitorYearSetupResponse
+        | { message?: string | string[] }
+        | null;
+
+      if (!response.ok) {
+        throw new Error(parseErrorMessage(payload, 'Failed to update competitor mode.'));
+      }
+
+      const updatedCompetitorSetup = payload as CompetitorYearSetupResponse;
+      const refreshed = await fetchReportingYearSetup(selectedYear);
+      setCompetitorSetup(updatedCompetitorSetup);
+      setYearOptions(refreshed.yearOptions);
+      setSetup(refreshed.selectedYearSetup);
+      setStatusMessage(
+        `Competitor mode updated to ${competitorModeLabel(mode)} for ${selectedYear}.`
+      );
+      setPendingModeChange(null);
+    } catch (error) {
+      setStatusError(
+        error instanceof Error ? error.message : 'Failed to update competitor mode.'
+      );
+    } finally {
+      setPendingKey(null);
+    }
+  }
+
   async function confirmCopy() {
     if (!copyMode || copyTargetYear === null) {
       return;
@@ -421,12 +475,15 @@ export function BrandYearSetupManager({
       <div className="rounded-[24px] border border-border/60 bg-background/60 p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="text-base font-semibold text-foreground">Year setup</div>
-          <Badge variant="outline">
-            {setup.canCreateReport ? 'Ready for reporting' : 'Setup required'}
-          </Badge>
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="outline">{setup.competitorMode.label}</Badge>
+            <Badge variant="outline">
+              {setup.canCreateReport ? 'Ready for reporting' : 'Setup required'}
+            </Badge>
+          </div>
         </div>
 
-        <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,260px)_auto] md:items-end">
+        <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,260px)_minmax(0,320px)_auto] xl:items-end">
           <div className="space-y-2">
             <label className="text-sm font-medium" htmlFor="year-setup-selected-year">
               Selected year
@@ -443,6 +500,37 @@ export function BrandYearSetupManager({
                 </option>
               ))}
             </Select>
+          </div>
+
+          <div className="space-y-2">
+            <div className="text-sm font-medium">Competitor mode</div>
+            <div className="flex rounded-2xl border border-border/60 bg-background/70 p-1">
+              {(['with_competitors', 'without_competitors'] as const).map((mode) => (
+                <button
+                  className={`flex-1 rounded-xl px-3 py-2 text-sm font-medium transition ${
+                    competitorSetup.summary.mode === mode
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                  disabled={pendingKey !== null || !competitorSetup.summary.canChangeMode}
+                  key={mode}
+                  onClick={() => {
+                    if (competitorSetup.summary.mode !== mode) {
+                      setPendingModeChange(mode);
+                    }
+                  }}
+                  type="button"
+                >
+                  {competitorModeLabel(mode)}
+                </button>
+              ))}
+            </div>
+            {!competitorSetup.summary.canChangeMode &&
+            competitorSetup.summary.modeChangeBlockedReason ? (
+              <div className="text-xs text-muted-foreground">
+                {competitorSetup.summary.modeChangeBlockedReason}
+              </div>
+            ) : null}
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -612,6 +700,42 @@ export function BrandYearSetupManager({
                 type="button"
               >
                 Confirm copy
+              </Button>
+            </div>
+          </div>
+        </ModalShell>
+      ) : null}
+
+      {pendingModeChange ? (
+        <ModalShell
+          description={`This change will apply from month ${
+            competitorSetup.summary.nextModeChangeEffectiveMonth ?? 1
+          } of ${selectedYear}. Existing reports keep their current mode.`}
+          error={statusError}
+          onClose={() => setPendingModeChange(null)}
+          title={`Switch to ${competitorModeLabel(pendingModeChange)}?`}
+        >
+          <div className="space-y-4">
+            <p className="text-sm leading-6 text-muted-foreground">
+              {pendingModeChange === 'with_competitors'
+                ? 'The workflow will require active competitor assignments and monthly competitor monitoring from the effective month.'
+                : 'The workflow will skip competitor monitoring from the effective month. Existing competitor assignments and monitoring data will stay stored.'}
+            </p>
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                disabled={pendingKey !== null}
+                onClick={() => setPendingModeChange(null)}
+                type="button"
+                variant="outline"
+              >
+                Cancel
+              </Button>
+              <Button
+                disabled={pendingKey !== null}
+                onClick={() => void updateCompetitorMode(pendingModeChange)}
+                type="button"
+              >
+                Confirm change
               </Button>
             </div>
           </div>

@@ -12,6 +12,7 @@ import {
 import { CompetitorsService } from './competitors.service';
 import type {
   SaveCompetitorMasterInput,
+  UpdateCompetitorYearModeInput,
   UpdateAssignmentStatusInput,
   UpdateCompetitorMasterInput
 } from './competitors.types';
@@ -69,6 +70,15 @@ export class CompetitorSetupController {
       year,
       body.competitorIds ?? []
     );
+  }
+
+  @Patch(':year/mode')
+  updateYearMode(
+    @Param('brandId') brandCode: string,
+    @Param('year', ParseIntPipe) year: number,
+    @Body() body: UpdateCompetitorYearModeInput
+  ) {
+    return this.competitorsService.updateYearMode(brandCode, year, body);
   }
 
   @Patch(':year/assignments/:competitorId/status')

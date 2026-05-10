@@ -1,5 +1,6 @@
 import type {
   Brand,
+  CompetitorReportingMode,
   MappingTargetField,
   ReportWorkflowState,
   ReportingPeriod,
@@ -30,6 +31,7 @@ export type ReportingListItem = {
   cadence: 'monthly';
   year: number;
   month: number;
+  competitorMode: CompetitorReportingMode;
   label: string;
   currentState: ReportingPeriodState;
   currentDraftVersionId: string | null;
@@ -106,6 +108,10 @@ export type ReportingListResponse = {
       passed: boolean;
       detail: string;
     }>;
+    competitorMode: {
+      mode: CompetitorReportingMode;
+      label: string;
+    };
   };
   suggestedNextPeriod: {
     year: number;

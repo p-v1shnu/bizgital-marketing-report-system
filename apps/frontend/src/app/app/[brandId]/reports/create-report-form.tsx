@@ -189,7 +189,7 @@ export function CreateReportForm({
             </Button>
           </div>
           <div className="mt-2 text-xs">
-            Review KPI plan and competitor setup in Year Setup before creating reports.
+            Review Year Setup before creating reports.
           </div>
         </div>
       ) : null}

@@ -122,25 +122,27 @@ async function resyncAutosaveSections(brandId: string, periodId: string) {
     getTopContentOverview(brandId, periodId)
   ]);
 
-  await Promise.all(
-    competitorOverview.items.map(item =>
-      saveCompetitorMonitoring(brandId, periodId, item.competitor.id, {
-        status: item.monitoring.status ?? null,
-        followerCount: item.monitoring.followerCount,
-        monthlyPostCount: item.monitoring.monthlyPostCount,
-        highlightNote: item.monitoring.highlightNote,
-        noActivityEvidenceImageUrl: item.monitoring.noActivityEvidenceImageUrl,
-        posts: item.monitoring.posts
-          .slice()
-          .sort((left, right) => left.displayOrder - right.displayOrder)
-          .map((post, index) => ({
-            displayOrder: index + 1,
-            screenshotUrl: post.screenshotUrl,
-            postUrl: post.postUrl
-          }))
-      })
-    )
-  );
+  if (competitorOverview.period.competitorMode === 'with_competitors') {
+    await Promise.all(
+      competitorOverview.items.map(item =>
+        saveCompetitorMonitoring(brandId, periodId, item.competitor.id, {
+          status: item.monitoring.status ?? null,
+          followerCount: item.monitoring.followerCount,
+          monthlyPostCount: item.monitoring.monthlyPostCount,
+          highlightNote: item.monitoring.highlightNote,
+          noActivityEvidenceImageUrl: item.monitoring.noActivityEvidenceImageUrl,
+          posts: item.monitoring.posts
+            .slice()
+            .sort((left, right) => left.displayOrder - right.displayOrder)
+            .map((post, index) => ({
+              displayOrder: index + 1,
+              screenshotUrl: post.screenshotUrl,
+              postUrl: post.postUrl
+            }))
+        })
+      )
+    );
+  }
 
   await Promise.all(
     questionOverview.items.map(item =>

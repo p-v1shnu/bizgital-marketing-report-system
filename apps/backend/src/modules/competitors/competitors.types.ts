@@ -1,4 +1,5 @@
 import type {
+  CompetitorReportingMode,
   CompetitorMonitoringStatus,
   CompetitorStatus,
   ReportWorkflowState
@@ -16,6 +17,7 @@ export type CompetitorOverviewResponse = {
     year: number;
     month: number;
     label: string;
+    competitorMode: CompetitorReportingMode;
     currentDraftVersionId: string | null;
     latestVersionState: ReportWorkflowState | null;
   };
@@ -107,6 +109,11 @@ export type CompetitorYearSetupResponse = {
   summary: {
     totalAssigned: number;
     activeCatalogCount: number;
+    mode: CompetitorReportingMode;
+    modeEffectiveMonth: number;
+    nextModeChangeEffectiveMonth: number | null;
+    canChangeMode: boolean;
+    modeChangeBlockedReason: string | null;
   };
   assignments: Array<{
     id: string;
@@ -159,5 +166,10 @@ export type UpdateCompetitorMasterInput = Partial<SaveCompetitorMasterInput>;
 
 export type UpdateAssignmentStatusInput = {
   status: CompetitorStatus;
+  effectiveMonth?: number;
+};
+
+export type UpdateCompetitorYearModeInput = {
+  mode: CompetitorReportingMode;
   effectiveMonth?: number;
 };

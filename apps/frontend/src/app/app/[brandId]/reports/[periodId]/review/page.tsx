@@ -86,6 +86,7 @@ export default async function ReviewPage({ params }: ReviewPageProps) {
     ? `/app/${brandId}/reports/${periodId}/${checklistSectionHref[firstActionableCheck.key]}`
     : null;
   const isReadOnly = isReadOnlyMode(detail);
+  const requiresCompetitors = period.competitorMode === 'with_competitors';
   const isAwaitingDecision = period.reviewReadiness.overall === 'awaiting_decision';
   const isPublished = period.reviewReadiness.overall === 'published';
   const canReviewerDecide =
@@ -175,7 +176,11 @@ export default async function ReviewPage({ params }: ReviewPageProps) {
                       triggerVariant="default"
                     />
                     <p className="text-xs text-muted-foreground">
-                      Before submit, the system re-syncs Competitors, Questions, and Top Content one more time.
+                      Before submit, the system re-syncs{' '}
+                      {requiresCompetitors
+                        ? 'Competitors, Questions, and Top Content'
+                        : 'Questions and Top Content'}{' '}
+                      one more time.
                     </p>
                   </div>
                 ) : canReviewerDecide ? (

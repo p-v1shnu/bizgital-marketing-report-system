@@ -28,8 +28,7 @@ import {
   sectionStatusLabel,
   sectionTone,
   visibleWorkspaceSections,
-  workflowProgress,
-  workflowStepNumber
+  workflowProgress
 } from '@/lib/reporting-ui';
 
 type ReportWorkspaceShellProps = {
@@ -141,10 +140,13 @@ export async function ReportWorkspaceShell({
   const kpiPreview = buildKpiPreview(metricsPreview);
   const kpiHref = `/app/${brandId}/reports/${periodId}/metrics`;
   const progress = workflowProgress(detail);
+  const dynamicStepNumberBySlug = new Map(
+    progress.sections.map((section, index) => [section.slug, index + 1] as const)
+  );
   const recommendedAction = recommendedWorkflowAction(detail, brandId, periodId);
   const activeSectionMeta =
     detail.period.workspace.sections.find((section) => section.slug === activeSection) ?? null;
-  const activeStepNumber = workflowStepNumber(activeSection);
+  const activeStepNumber = dynamicStepNumberBySlug.get(activeSection) ?? null;
   const reviewHref = reportSectionHref(brandId, periodId, 'review');
   const isRecommendedSectionActive =
     recommendedAction.section?.slug === activeSection;
@@ -313,7 +315,7 @@ export async function ReportWorkspaceShell({
                     <div className="mb-2 flex items-center justify-between gap-3">
                       <span className="flex items-center gap-3 text-sm font-medium">
                         <span className="flex size-7 items-center justify-center rounded-full border border-border/60 bg-background/80 text-xs text-muted-foreground">
-                          {workflowStepNumber(section.slug) ?? '•'}
+                          {dynamicStepNumberBySlug.get(section.slug) ?? '•'}
                         </span>
                         {section.label}
                       </span>

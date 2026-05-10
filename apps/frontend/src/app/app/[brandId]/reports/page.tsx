@@ -349,7 +349,11 @@ export default async function ReportsPage({
     year: selectedYear,
     canCreateReport: true,
     summary: 'Year setup is ready.',
-    checks: []
+    checks: [],
+    competitorMode: {
+      mode: 'with_competitors',
+      label: 'With Competitors'
+    }
   };
   let recycleRetentionDays = 7;
   let detailsById = new Map<string, PeriodDetail>();

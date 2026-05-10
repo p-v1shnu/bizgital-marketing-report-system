@@ -9,6 +9,7 @@ import {
 import {
   BrandDropdownFieldKey,
   BrandDropdownOptionStatus,
+  CompetitorReportingMode,
   ImportJobStatus,
   Prisma,
   QuestionStatus,
@@ -98,6 +99,10 @@ type YearSetupStatus = {
   canCreateReport: boolean;
   summary: string;
   checks: YearSetupCheck[];
+  competitorMode: {
+    mode: CompetitorReportingMode;
+    label: string;
+  };
 };
 
 type YearSetupContext = {
@@ -106,6 +111,7 @@ type YearSetupContext = {
   kpiPlanWithItemsYears: Set<number>;
   kpiReadyYears: Set<number>;
   competitorReadyYears: Set<number>;
+  competitorModeByYear: Map<number, CompetitorReportingMode>;
   questionAssignmentsReady: boolean;
   relatedProductOptionsReady: boolean;
 };
@@ -427,6 +433,8 @@ export class ReportingService implements OnModuleInit {
     const topContentHasScreenshotGap =
       /screenshot evidence is still incomplete/i.test(topContentReadinessDetail) ||
       /screenshot evidence is incomplete/i.test(topContentReadinessDetail);
+    const requiresCompetitors =
+      period.competitorMode !== CompetitorReportingMode.without_competitors;
     const isLockedSubmittedOrApproved =
       !hasDraft &&
       (listItem.latestVersionState === ReportWorkflowState.submitted ||
@@ -504,14 +512,22 @@ export class ReportingService implements OnModuleInit {
               'Metrics are ready. Open Top Content to generate the required highlight cards.')
             : 'Complete metrics first so top content ranking has a canonical basis.'
       },
-      {
-        slug: 'competitors',
-        label: 'Competitors',
-        status: competitorMonitoringReady?.passed ? 'ready' : hasDraft ? 'pending' : 'blocked',
-        detail:
-          competitorMonitoringReady?.detail ??
-          'Competitor monitoring is required before submit.'
-      },
+      ...(requiresCompetitors
+        ? [
+            {
+              slug: 'competitors' as const,
+              label: 'Competitors',
+              status: competitorMonitoringReady?.passed
+                ? ('ready' as const)
+                : hasDraft
+                  ? ('pending' as const)
+                  : ('blocked' as const),
+              detail:
+                competitorMonitoringReady?.detail ??
+                'Competitor monitoring is required before submit.'
+            }
+          ]
+        : []),
       {
         slug: 'questions',
         label: 'Questions',
@@ -564,8 +580,17 @@ export class ReportingService implements OnModuleInit {
     this.assertYear(input.year);
     this.assertMonth(input.month);
     const brand = await this.brandsService.getBrandByCodeOrThrow(input.brandCode);
-    const yearSetupContext = await this.getYearSetupContext(brand.id);
-    const yearSetupStatus = this.toYearSetupStatus(input.year, yearSetupContext);
+    const [yearSetupContext, competitorMode] = await Promise.all([
+      this.getYearSetupContext(brand.id),
+      this.competitorsService.resolveCompetitorModeForPeriod(
+        brand.id,
+        input.year,
+        input.month
+      )
+    ]);
+    const yearSetupStatus = this.toYearSetupStatus(input.year, yearSetupContext, {
+      competitorMode
+    });
 
     if (!yearSetupStatus.canCreateReport) {
       throw new ConflictException(this.buildYearSetupBlockedMessage(yearSetupStatus));
@@ -579,6 +604,7 @@ export class ReportingService implements OnModuleInit {
             year: input.year,
             month: input.month,
             cadence: ReportCadence.monthly,
+            competitorMode,
             currentState: ReportingPeriodState.not_started
           },
           include: {
@@ -2454,6 +2480,7 @@ export class ReportingService implements OnModuleInit {
       cadence: 'monthly',
       year: period.year,
       month: period.month,
+      competitorMode: period.competitorMode,
       label: this.formatMonthLabel(period.year, period.month),
       currentState: period.currentState,
       currentDraftVersionId: currentDraft?.id ?? null,
@@ -2910,6 +2937,38 @@ export class ReportingService implements OnModuleInit {
   }
 
   private async getYearSetupContext(brandId: string): Promise<YearSetupContext> {
+    let competitorModeRows: Array<{
+      year: number;
+      effectiveMonth: number;
+      mode: CompetitorReportingMode;
+    }> = [];
+
+    try {
+      competitorModeRows = await this.prisma.brandCompetitorYearModeChange.findMany({
+        where: {
+          brandId
+        },
+        select: {
+          year: true,
+          effectiveMonth: true,
+          mode: true
+        },
+        orderBy: [{ year: 'asc' }, { effectiveMonth: 'asc' }, { createdAt: 'asc' }]
+      });
+    } catch (error) {
+      if (
+        !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+        error.code !== 'P2021'
+      ) {
+        throw error;
+      }
+    }
+
+    const competitorModeByYear = new Map<number, CompetitorReportingMode>();
+    for (const row of competitorModeRows) {
+      competitorModeByYear.set(row.year, row.mode);
+    }
+
     const [
       reportYearsRows,
       kpiPlans,
@@ -2988,19 +3047,31 @@ export class ReportingService implements OnModuleInit {
           .map((plan) => plan.year)
       ),
       competitorReadyYears: new Set(competitorAssignmentYears.map((row) => row.year)),
+      competitorModeByYear,
       questionAssignmentsReady: activeQuestionAssignmentCount > 0,
       relatedProductOptionsReady: activeRelatedProductOptionCount > 0
     };
   }
 
-  private toYearSetupStatus(year: number, context: YearSetupContext): YearSetupStatus {
+  private toYearSetupStatus(
+    year: number,
+    context: YearSetupContext,
+    options?: {
+      competitorMode?: CompetitorReportingMode;
+    }
+  ): YearSetupStatus {
     const hasKpiPlan = context.kpiConfiguredYears.has(year);
     const hasKpiItems = context.kpiPlanWithItemsYears.has(year);
     const hasReadyKpiPlan = context.kpiReadyYears.has(year);
     const hasCompetitorAssignments = context.competitorReadyYears.has(year);
 
     const kpiPassed = hasReadyKpiPlan;
-    const competitorPassed = hasCompetitorAssignments;
+    const competitorMode =
+      options?.competitorMode ??
+      context.competitorModeByYear.get(year) ??
+      CompetitorReportingMode.with_competitors;
+    const competitorRequired = competitorMode === CompetitorReportingMode.with_competitors;
+    const competitorPassed = !competitorRequired || hasCompetitorAssignments;
     const questionPassed = context.questionAssignmentsReady;
     const relatedProductPassed = context.relatedProductOptionsReady;
 
@@ -3021,11 +3092,13 @@ export class ReportingService implements OnModuleInit {
       {
         key: 'competitor_assignments',
         label: 'Competitor setup',
-        required: true,
+        required: competitorRequired,
         passed: competitorPassed,
-        detail: competitorPassed
-          ? 'Competitor assignments are configured for this year.'
-          : 'Assign competitors for this year before creating reports.'
+        detail: !competitorRequired
+          ? 'This year is configured as Without Competitors.'
+          : competitorPassed
+            ? 'Competitor assignments are configured for this year.'
+            : 'Assign competitors for this year before creating reports.'
       },
       {
         key: 'question_assignments',
@@ -3059,7 +3132,14 @@ export class ReportingService implements OnModuleInit {
       year,
       canCreateReport,
       summary,
-      checks
+      checks,
+      competitorMode: {
+        mode: competitorMode,
+        label:
+          competitorMode === CompetitorReportingMode.with_competitors
+            ? 'With Competitors'
+            : 'Without Competitors'
+      }
     };
   }
 
@@ -3082,6 +3162,9 @@ export class ReportingService implements OnModuleInit {
       years.add(year);
     }
     for (const year of input.context.competitorReadyYears) {
+      years.add(year);
+    }
+    for (const year of input.context.competitorModeByYear.keys()) {
       years.add(year);
     }
 

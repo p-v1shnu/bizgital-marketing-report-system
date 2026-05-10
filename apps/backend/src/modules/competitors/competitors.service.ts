@@ -8,6 +8,7 @@ import {
 import {
   BrandCompetitorStatus,
   CompetitorMonitoringStatus,
+  CompetitorReportingMode,
   CompetitorStatus,
   Prisma,
   ReportWorkflowState
@@ -24,6 +25,7 @@ import type {
   SaveCompetitorMasterInput,
   SaveCompetitorMonitoringInput,
   UpdateAssignmentStatusInput,
+  UpdateCompetitorYearModeInput,
   UpdateCompetitorMasterInput
 } from './competitors.types';
 
@@ -96,6 +98,19 @@ export class CompetitorsService {
         readiness: {
           state: 'blocked',
           detail: 'Create a reporting version before competitor monitoring can be captured.',
+          requiredCompetitorCount: 0,
+          completedCompetitorCount: 0
+        },
+        items: []
+      };
+    }
+
+    if (period.competitorMode === CompetitorReportingMode.without_competitors) {
+      return {
+        ...baseResponse,
+        readiness: {
+          state: 'ready',
+          detail: 'Competitor monitoring is not required for this month.',
           requiredCompetitorCount: 0,
           completedCompetitorCount: 0
         },
@@ -240,6 +255,10 @@ export class CompetitorsService {
 
     if (!currentDraft) {
       throw new ConflictException('Create or resume a draft before editing competitor monitoring.');
+    }
+
+    if (period.competitorMode === CompetitorReportingMode.without_competitors) {
+      throw new ConflictException('Competitor monitoring is not required for this month.');
     }
 
     const assignment = await this.getAssignmentForCompetitor({
@@ -453,6 +472,10 @@ export class CompetitorsService {
       throw new ConflictException('Create or resume a draft before editing competitor evidence.');
     }
 
+    if (period.competitorMode === CompetitorReportingMode.without_competitors) {
+      throw new ConflictException('Competitor evidence is not required for this month.');
+    }
+
     const assignment = await this.getAssignmentForCompetitor({
       brandId: brand.id,
       year: period.year,
@@ -583,12 +606,13 @@ export class CompetitorsService {
 
     const brand = await this.brandsService.getBrandByCodeOrThrow(brandCode);
     const displayMonth = this.getDefaultDisplayMonthForSetupYear(year);
-    const [assignments, catalog] = await Promise.all([
+    const [assignments, catalog, modeState] = await Promise.all([
       this.getAssignmentsForYear(brand.id, year, displayMonth, {
         includeRemoveMetadata: true,
         legacyFallback: false
       }),
-      this.getCatalog(brandCode)
+      this.getCatalog(brandCode),
+      this.getYearModeState(brand.id, year, displayMonth)
     ]);
 
     return {
@@ -602,7 +626,12 @@ export class CompetitorsService {
       summary: {
         totalAssigned: assignments.length,
         activeCatalogCount: catalog.items.filter((item) => item.status === CompetitorStatus.active)
-          .length
+          .length,
+        mode: modeState.mode,
+        modeEffectiveMonth: modeState.modeEffectiveMonth,
+        nextModeChangeEffectiveMonth: modeState.nextModeChangeEffectiveMonth,
+        canChangeMode: modeState.canChangeMode,
+        modeChangeBlockedReason: modeState.modeChangeBlockedReason
       },
       assignments: assignments.map((assignment) => ({
         id: assignment.id,
@@ -624,6 +653,150 @@ export class CompetitorsService {
       })),
       availableCompetitors: catalog.items
     };
+  }
+
+  async updateYearMode(
+    brandCode: string,
+    year: number,
+    input: UpdateCompetitorYearModeInput
+  ): Promise<CompetitorYearSetupResponse> {
+    this.assertYear(year, 'Year');
+    const mode = this.normalizeCompetitorReportingMode(input.mode);
+    const brand = await this.brandsService.getBrandByCodeOrThrow(brandCode);
+    const latestPeriod = await this.prisma.reportingPeriod.findFirst({
+      where: {
+        brandId: brand.id,
+        year,
+        cadence: 'monthly',
+        deletedAt: null
+      },
+      select: {
+        month: true
+      },
+      orderBy: {
+        month: 'desc'
+      }
+    });
+    const effectiveMonth = latestPeriod ? latestPeriod.month + 1 : 1;
+
+    if (effectiveMonth > 12) {
+      throw new ConflictException(
+        'Cannot change competitor mode because every month in this year already has a report.'
+      );
+    }
+
+    if (
+      input.effectiveMonth !== undefined &&
+      input.effectiveMonth !== effectiveMonth
+    ) {
+      throw new ConflictException(
+        `Competitor mode changes for ${year} can only take effect from month ${effectiveMonth}.`
+      );
+    }
+
+    if (mode === CompetitorReportingMode.with_competitors) {
+      const assignments = await this.getAssignmentsForYear(
+        brand.id,
+        year,
+        effectiveMonth,
+        { legacyFallback: false }
+      );
+      const activeAssignmentCount = assignments.filter(
+        (assignment) => assignment.status === CompetitorStatus.active
+      ).length;
+
+      if (activeAssignmentCount === 0) {
+        throw new ConflictException(
+          'Assign at least one active competitor before switching this year to With Competitors.'
+        );
+      }
+    }
+
+    try {
+      await this.prisma.brandCompetitorYearModeChange.upsert({
+        where: {
+          brand_competitor_year_mode_unique: {
+            brandId: brand.id,
+            year,
+            effectiveMonth
+          }
+        },
+        create: {
+          brandId: brand.id,
+          year,
+          effectiveMonth,
+          mode
+        },
+        update: {
+          mode
+        }
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2021'
+      ) {
+        throw new ConflictException(
+          'Competitor reporting mode table is missing. Apply latest competitor migration first.'
+        );
+      }
+      throw error;
+    }
+
+    await this.auditLogService.append({
+      actionKey: 'CONTENT_COMPETITOR_EVIDENCE_UPDATED',
+      entityType: 'CONTENT',
+      entityId: brand.id,
+      entityLabel: brand.name,
+      summary: `Changed competitor reporting mode for ${year} to ${
+        mode === CompetitorReportingMode.with_competitors
+          ? 'With Competitors'
+          : 'Without Competitors'
+      } from month ${effectiveMonth}.`,
+      metadata: {
+        brandId: brand.id,
+        year,
+        effectiveMonth,
+        mode
+      }
+    });
+
+    return this.getYearSetup(brandCode, year);
+  }
+
+  async resolveCompetitorModeForPeriod(
+    brandId: string,
+    year: number,
+    month: number
+  ): Promise<CompetitorReportingMode> {
+    this.assertYear(year, 'Year');
+    this.assertMonth(month, 'Month');
+
+    try {
+      const row = await this.prisma.brandCompetitorYearModeChange.findFirst({
+        where: {
+          brandId,
+          year,
+          effectiveMonth: {
+            lte: month
+          }
+        },
+        orderBy: [{ effectiveMonth: 'desc' }, { createdAt: 'desc' }],
+        select: {
+          mode: true
+        }
+      });
+
+      return row?.mode ?? CompetitorReportingMode.with_competitors;
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2021'
+      ) {
+        return CompetitorReportingMode.with_competitors;
+      }
+      throw error;
+    }
   }
 
   async createMaster(brandCode: string, input: SaveCompetitorMasterInput) {
@@ -1177,6 +1350,15 @@ export class CompetitorsService {
       throw new NotFoundException('Report version not found.');
     }
 
+    if (version.reportingPeriod.competitorMode === CompetitorReportingMode.without_competitors) {
+      return {
+        isComplete: true,
+        detail: 'Competitor monitoring is not required for this month.',
+        requiredCompetitorCount: 0,
+        completedCompetitorCount: 0
+      };
+    }
+
     const assignments = await this.getAssignmentsForYear(
       version.reportingPeriod.brandId,
       version.reportingPeriod.year,
@@ -1273,6 +1455,7 @@ export class CompetitorsService {
       id: string;
       year: number;
       month: number;
+      competitorMode: CompetitorReportingMode;
     };
     currentDraftVersionId: string | null;
     latestVersionState: ReportWorkflowState | null;
@@ -1287,6 +1470,7 @@ export class CompetitorsService {
           month: 'long',
           year: 'numeric'
         }).format(new Date(Date.UTC(input.period.year, input.period.month - 1, 1))),
+        competitorMode: input.period.competitorMode,
         currentDraftVersionId: input.currentDraftVersionId,
         latestVersionState: input.latestVersionState
       }
@@ -1593,6 +1777,69 @@ export class CompetitorsService {
     return now.getUTCMonth() + 1;
   }
 
+  private async getYearModeState(brandId: string, year: number, displayMonth: number) {
+    const latestPeriod = await this.prisma.reportingPeriod.findFirst({
+      where: {
+        brandId,
+        year,
+        cadence: 'monthly',
+        deletedAt: null
+      },
+      select: {
+        month: true
+      },
+      orderBy: {
+        month: 'desc'
+      }
+    });
+    const nextModeChangeEffectiveMonth = latestPeriod ? latestPeriod.month + 1 : 1;
+    const changeBlockedReason =
+      nextModeChangeEffectiveMonth > 12
+        ? 'Every month in this year already has a report.'
+        : null;
+
+    try {
+      const currentModeChange = await this.prisma.brandCompetitorYearModeChange.findFirst({
+        where: {
+          brandId,
+          year,
+          effectiveMonth: {
+            lte: displayMonth
+          }
+        },
+        orderBy: [{ effectiveMonth: 'desc' }, { createdAt: 'desc' }],
+        select: {
+          effectiveMonth: true,
+          mode: true
+        }
+      });
+
+      return {
+        mode: currentModeChange?.mode ?? CompetitorReportingMode.with_competitors,
+        modeEffectiveMonth: currentModeChange?.effectiveMonth ?? 1,
+        nextModeChangeEffectiveMonth:
+          nextModeChangeEffectiveMonth > 12 ? null : nextModeChangeEffectiveMonth,
+        canChangeMode: nextModeChangeEffectiveMonth <= 12,
+        modeChangeBlockedReason: changeBlockedReason
+      };
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2021'
+      ) {
+        return {
+          mode: CompetitorReportingMode.with_competitors,
+          modeEffectiveMonth: 1,
+          nextModeChangeEffectiveMonth:
+            nextModeChangeEffectiveMonth > 12 ? null : nextModeChangeEffectiveMonth,
+          canChangeMode: nextModeChangeEffectiveMonth <= 12,
+          modeChangeBlockedReason: changeBlockedReason
+        };
+      }
+      throw error;
+    }
+  }
+
   private getDefaultEffectiveMonthForStatusUpdate(year: number) {
     const now = new Date();
     const currentYear = now.getUTCFullYear();
@@ -1859,6 +2106,17 @@ export class CompetitorsService {
     }
 
     return data;
+  }
+
+  private normalizeCompetitorReportingMode(input: CompetitorReportingMode) {
+    if (
+      input !== CompetitorReportingMode.with_competitors &&
+      input !== CompetitorReportingMode.without_competitors
+    ) {
+      throw new BadRequestException('Invalid competitor reporting mode.');
+    }
+
+    return input;
   }
 
   private normalizeOptionalText(input: string | null | undefined) {

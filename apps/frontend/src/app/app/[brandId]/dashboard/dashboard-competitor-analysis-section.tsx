@@ -395,6 +395,14 @@ export function DashboardCompetitorAnalysisSection({
     );
   }
 
+  if (overview.period.competitorMode === 'without_competitors') {
+    return (
+      <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-4 text-sm text-slate-600">
+        This month does not use competitor tracking.
+      </div>
+    );
+  }
+
   if (overview.items.length === 0 && !ownBrandSummary) {
     return (
       <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-4 text-sm text-slate-600">

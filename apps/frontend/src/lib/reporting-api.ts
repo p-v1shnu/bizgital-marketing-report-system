@@ -31,6 +31,7 @@ export type ReportingPeriodState =
 
 export type CompetitorStatus = 'active' | 'inactive';
 export type CompetitorMonitoringStatus = 'has_posts' | 'no_activity';
+export type CompetitorReportingMode = 'with_competitors' | 'without_competitors';
 
 export type MediaPresignUploadResponse = {
   method: 'PUT';
@@ -68,6 +69,7 @@ export type ReportingListItem = {
   cadence: 'monthly';
   year: number;
   month: number;
+  competitorMode: CompetitorReportingMode;
   label: string;
   currentState: ReportingPeriodState;
   currentDraftVersionId: string | null;
@@ -132,6 +134,10 @@ export type ReportingYearSetupStatus = {
   canCreateReport: boolean;
   summary: string;
   checks: ReportingYearSetupCheck[];
+  competitorMode: {
+    mode: CompetitorReportingMode;
+    label: string;
+  };
 };
 
 export type ReportingListResponse = {
@@ -1004,6 +1010,7 @@ export type CompetitorOverviewResponse = {
     year: number;
     month: number;
     label: string;
+    competitorMode: CompetitorReportingMode;
     currentDraftVersionId: string | null;
     latestVersionState: ReportWorkflowState | null;
   };
@@ -1095,6 +1102,11 @@ export type CompetitorYearSetupResponse = {
   summary: {
     totalAssigned: number;
     activeCatalogCount: number;
+    mode: CompetitorReportingMode;
+    modeEffectiveMonth: number;
+    nextModeChangeEffectiveMonth: number | null;
+    canChangeMode: boolean;
+    modeChangeBlockedReason: string | null;
   };
   assignments: Array<{
     id: string;

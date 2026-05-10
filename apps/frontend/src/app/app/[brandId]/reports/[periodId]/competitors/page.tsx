@@ -5,6 +5,8 @@ import {
   type ReportingDetailResponse
 } from '@/lib/reporting-api';
 import { getAuthContext, getMembershipReportAccess } from '@/lib/auth';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 import { ReportWorkspaceShell } from '../workspace-shell';
 import { WorkspaceUnavailableCard } from '../workspace-unavailable-card';
@@ -66,6 +68,32 @@ export default async function CompetitorsPage({ params }: CompetitorsPageProps) 
           message={loadError ?? 'Unknown error.'}
           title="Competitors workspace unavailable"
         />
+      </ReportWorkspaceShell>
+    );
+  }
+
+  if (competitors.period.competitorMode === 'without_competitors') {
+    return (
+      <ReportWorkspaceShell
+        activeSection="competitors"
+        brandId={brandId}
+        detail={detail}
+        periodId={periodId}
+      >
+        <Card>
+          <CardHeader>
+            <CardTitle>Competitor monitoring is not required for this month</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 text-sm leading-6 text-muted-foreground">
+            <p>
+              This reporting period is configured as Without Competitors, so competitor
+              monitoring does not block review submission.
+            </p>
+            <Button asChild size="sm" variant="outline">
+              <a href={`/app/${brandId}/reports/${periodId}/questions`}>Return to workflow</a>
+            </Button>
+          </CardContent>
+        </Card>
       </ReportWorkspaceShell>
     );
   }

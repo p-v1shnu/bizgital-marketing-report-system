@@ -25,7 +25,7 @@ import {
   type MappingOverviewResponse,
   type ReportingDetailResponse
 } from '@/lib/reporting-api';
-import { sectionStatusLabel, sectionTone, workflowProgress, workflowStepNumber } from '@/lib/reporting-ui';
+import { sectionStatusLabel, sectionTone, workflowProgress } from '@/lib/reporting-ui';
 
 import { createOrResumeDraftAction } from '../../actions';
 import { ReopenReportButton } from '../../reopen-report-button';
@@ -301,6 +301,9 @@ export default async function ImportPage({ params, searchParams }: ImportPagePro
       section.slug !== 'history'
   );
   const progress = workflowProgress(detail);
+  const workflowStepBySlug = new Map(
+    progress.sections.map((section, index) => [section.slug, index + 1] as const)
+  );
   const mappedTargetFieldSet = new Set(
     (mappingOverviewResult?.latestImportJob?.columnProfiles ?? [])
       .map((profile) => profile.mappedTargetField)
@@ -383,7 +386,7 @@ export default async function ImportPage({ params, searchParams }: ImportPagePro
                   >
                     <div className="flex items-center gap-2 text-foreground">
                       <span className="inline-flex size-6 items-center justify-center rounded-full border border-border/60 bg-background text-xs text-muted-foreground">
-                        {workflowStepNumber(section.slug) ?? '•'}
+                        {workflowStepBySlug.get(section.slug) ?? '•'}
                       </span>
                       {section.label}
                     </div>

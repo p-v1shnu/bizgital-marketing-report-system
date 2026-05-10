@@ -3,6 +3,12 @@ import { createHmac } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 
 type CompetitorSetupResponse = {
+  summary: {
+    mode: 'with_competitors' | 'without_competitors';
+    modeEffectiveMonth: number;
+    nextModeChangeEffectiveMonth: number | null;
+    canChangeMode: boolean;
+  };
   assignments: Array<{
     competitor: {
       id: string;
@@ -503,6 +509,50 @@ test('admin setup can assign competitor and save assignments', async ({ page }) 
       );
     }
   }
+});
+
+test('year setup can switch to Without Competitors and block switching back without assignments', async () => {
+  const { year } = await findIsolatedSetupYear(680);
+
+  const withoutSetup = await requestJson<CompetitorSetupResponse>(
+    `/brands/${brandCode}/competitor-setup/${year}/mode`,
+    {
+      method: 'PATCH',
+      body: {
+        mode: 'without_competitors',
+        effectiveMonth: 1
+      }
+    }
+  );
+  expect(withoutSetup.summary.mode).toBe('without_competitors');
+  expect(withoutSetup.summary.modeEffectiveMonth).toBe(1);
+
+  const reporting = await requestJson<ReportingListResponse>(
+    `/brands/${brandCode}/reporting-periods?year=${year}`
+  );
+  const competitorCheck = reporting.selectedYearSetup.checks.find(
+    (check) => check.key === 'competitor_assignments'
+  );
+  expect(reporting.selectedYearSetup.canCreateReport).toBe(
+    reporting.selectedYearSetup.checks
+      .filter((check) => check.required)
+      .every((check) => check.passed)
+  );
+  expect(competitorCheck?.required).toBe(false);
+  expect(competitorCheck?.passed).toBe(true);
+
+  await expect(
+    requestJson<CompetitorSetupResponse>(
+      `/brands/${brandCode}/competitor-setup/${year}/mode`,
+      {
+        method: 'PATCH',
+        body: {
+          mode: 'with_competitors',
+          effectiveMonth: 1
+        }
+      }
+    )
+  ).rejects.toThrow(/Assign at least one active competitor/);
 });
 
 test('monthly monitoring checklist auto-saves and marks competitor complete', async ({

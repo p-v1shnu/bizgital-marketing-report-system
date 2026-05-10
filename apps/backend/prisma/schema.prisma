@@ -131,6 +131,11 @@ enum CompetitorMonitoringStatus {
   no_activity
 }
 
+enum CompetitorReportingMode {
+  with_competitors
+  without_competitors
+}
+
 enum QuestionStatus {
   active
   inactive
@@ -169,6 +174,7 @@ model Brand {
   reportingPeriods ReportingPeriod[]
   brandCompetitors BrandCompetitor[]
   brandCompetitorAssignments BrandCompetitorAssignment[]
+  competitorYearModeChanges BrandCompetitorYearModeChange[]
   questionActivations BrandQuestionActivation[]
   dropdownOptions  BrandDropdownOption[]
   kpiPlans         BrandKpiPlan[]
@@ -326,6 +332,7 @@ model ReportingPeriod {
   year         Int
   month        Int
   currentState ReportingPeriodState @default(not_started) @map("current_state")
+  competitorMode CompetitorReportingMode @default(with_competitors) @map("competitor_mode")
   questionSnapshotCapturedAt DateTime? @map("question_snapshot_captured_at")
   deletedAt    DateTime?            @map("deleted_at")
   deletedByName String?             @map("deleted_by_name")
@@ -640,6 +647,22 @@ model BrandCompetitorAssignmentStatusChange {
   @@unique([assignmentId, effectiveYear, effectiveMonth], name: "brand_competitor_assignment_status_change_unique")
   @@index([assignmentId, effectiveYear, effectiveMonth], map: "bcasc_assignment_effective_idx")
   @@map("brand_competitor_assignment_status_changes")
+}
+
+model BrandCompetitorYearModeChange {
+  id             String                  @id @default(cuid())
+  brandId        String                  @map("brand_id")
+  year           Int
+  effectiveMonth Int                     @map("effective_month")
+  mode           CompetitorReportingMode
+  createdAt      DateTime                @default(now()) @map("created_at")
+  updatedAt      DateTime                @updatedAt @map("updated_at")
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@unique([brandId, year, effectiveMonth], name: "brand_competitor_year_mode_unique")
+  @@index([brandId, year, effectiveMonth], map: "bcy_mode_brand_year_month_idx")
+  @@map("brand_competitor_year_mode_changes")
 }
 
 model BrandCompetitor {

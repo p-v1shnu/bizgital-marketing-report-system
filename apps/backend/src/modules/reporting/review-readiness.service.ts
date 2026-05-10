@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { ReportWorkflowState } from '@prisma/client';
+import { CompetitorReportingMode, ReportWorkflowState } from '@prisma/client';
 
 import { PrismaService } from '../../prisma/prisma.service';
 import { CompetitorsService } from '../competitors/competitors.service';
@@ -36,52 +36,59 @@ export class ReviewReadinessService {
       ) ?? null;
     const latestVersion = period.reportVersions[0] ?? null;
     const targetVersion = currentDraft ?? latestVersion;
+    const requiresCompetitors =
+      period.competitorMode !== CompetitorReportingMode.without_competitors;
 
     if (!targetVersion) {
+      const checks: ReviewReadiness['checks'] = [
+        {
+          key: 'dataset_materialized',
+          label: 'Dataset materialized',
+          passed: false,
+          detail: 'Import and mapping must produce a persisted dataset first.'
+        },
+        {
+          key: 'metric_snapshot_current',
+          label: 'Metric snapshot exists and is current',
+          passed: false,
+          detail: 'Generate a metric snapshot for the current draft before submit.'
+        },
+        {
+          key: 'metric_commentary_complete',
+          label: 'Metric commentary complete',
+          passed: false,
+          detail: 'Complete graph remarks for all required metrics before submit.'
+        },
+        {
+          key: 'question_evidence_complete',
+          label: 'Question monitoring complete',
+          passed: false,
+          detail: 'Complete question monitoring for every active question category before submit.'
+        },
+        {
+          key: 'required_top_content_cards_exist',
+          label: 'Required top content cards exist',
+          passed: false,
+          detail: 'Generate the required current top content highlight cards before submit.'
+        }
+      ];
+
+      if (requiresCompetitors) {
+        checks.splice(3, 0, {
+          key: 'competitor_evidence_complete',
+          label: 'Competitor monitoring complete',
+          passed: false,
+          detail: 'Complete competitor monitoring for every assigned competitor before submit.'
+        });
+      }
+
       return {
         targetVersionId: null,
         overall: 'not_ready',
         canSubmit: false,
-        blockingCount: 6,
+        blockingCount: checks.length,
         summary: 'Create the first draft before review readiness can be evaluated.',
-        checks: [
-          {
-            key: 'dataset_materialized',
-            label: 'Dataset materialized',
-            passed: false,
-            detail: 'Import and mapping must produce a persisted dataset first.'
-          },
-          {
-            key: 'metric_snapshot_current',
-            label: 'Metric snapshot exists and is current',
-            passed: false,
-            detail: 'Generate a metric snapshot for the current draft before submit.'
-          },
-          {
-            key: 'metric_commentary_complete',
-            label: 'Metric commentary complete',
-            passed: false,
-            detail: 'Complete graph remarks for all required metrics before submit.'
-          },
-          {
-            key: 'competitor_evidence_complete',
-            label: 'Competitor monitoring complete',
-            passed: false,
-            detail: 'Complete competitor monitoring for every assigned competitor before submit.'
-          },
-          {
-            key: 'question_evidence_complete',
-            label: 'Question monitoring complete',
-            passed: false,
-            detail: 'Complete question monitoring for every active question category before submit.'
-          },
-          {
-            key: 'required_top_content_cards_exist',
-            label: 'Required top content cards exist',
-            passed: false,
-            detail: 'Generate the required current top content highlight cards before submit.'
-          }
-        ],
+        checks,
         deferred: this.getDeferredModules()
       };
     }
@@ -188,12 +195,6 @@ export class ReviewReadinessService {
               }`
       },
       {
-        key: 'competitor_evidence_complete',
-        label: 'Competitor monitoring complete',
-        passed: competitorReadiness.isComplete,
-        detail: competitorReadiness.detail
-      },
-      {
         key: 'question_evidence_complete',
         label: 'Question monitoring complete',
         passed: questionReadiness.isComplete,
@@ -208,6 +209,15 @@ export class ReviewReadinessService {
           : topContentStatus.detail
       }
     ];
+
+    if (requiresCompetitors) {
+      checks.splice(3, 0, {
+        key: 'competitor_evidence_complete',
+        label: 'Competitor monitoring complete',
+        passed: competitorReadiness.isComplete,
+        detail: competitorReadiness.detail
+      });
+    }
 
     const blockingCount = checks.filter((check) => !check.passed).length;
     const canSubmit =
