@@ -481,7 +481,7 @@ export function DashboardCompetitorAnalysisSection({
                       Brand
                     </th>
                     <th
-                      className="border-b border-slate-200 font-semibold"
+                      className="whitespace-nowrap border-b border-slate-200 font-semibold"
                       style={{
                         fontSize: `${boardMetrics.headerFontPx}px`,
                         lineHeight: `${Math.round(boardMetrics.headerFontPx * 1.2)}px`,
@@ -489,10 +489,10 @@ export function DashboardCompetitorAnalysisSection({
                         width: '24%'
                       }}
                     >
-                      Page followers
+                      Followers
                     </th>
                     <th
-                      className="border-b border-slate-200 font-semibold"
+                      className="whitespace-nowrap border-b border-slate-200 font-semibold"
                       style={{
                         fontSize: `${boardMetrics.headerFontPx}px`,
                         lineHeight: `${Math.round(boardMetrics.headerFontPx * 1.2)}px`,
@@ -500,7 +500,7 @@ export function DashboardCompetitorAnalysisSection({
                         width: '20%'
                       }}
                     >
-                      Monthly posts
+                      Posts
                     </th>
                   </tr>
                 </thead>
