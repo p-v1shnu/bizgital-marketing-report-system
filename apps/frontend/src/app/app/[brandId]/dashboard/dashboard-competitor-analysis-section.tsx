@@ -534,7 +534,7 @@ export function DashboardCompetitorAnalysisSection({
                           padding: `0 ${boardMetrics.cellPaddingX}px`
                         }}
                       >
-                        <div className="flex min-w-0 flex-col items-start gap-1">
+                        <div className="flex min-w-0 flex-col items-start gap-2">
                           <span
                             className="truncate font-semibold text-slate-900"
                             style={{
