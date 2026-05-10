@@ -508,9 +508,18 @@ async function createMidYearModeScenario(baseOffset: number): Promise<MidYearMod
     }
   });
   const setupResult = await prepareYearSetup(year);
+  await requestJson(`/brands/${brandCode}/competitor-setup/${year}/assignments`, {
+    method: 'POST',
+    body: {
+      competitorIds: [createdCompetitor.id]
+    }
+  });
 
   const month1Period = await createMonthlyPeriod(year, 1);
   const month2Period = await createMonthlyPeriod(year, 2);
+  await requestJson(`/reporting-periods/${month2Period.id}/drafts`, {
+    method: 'POST'
+  });
   const withoutSetup = await requestJson<CompetitorSetupResponse>(
     `/brands/${brandCode}/competitor-setup/${year}/mode`,
     {
@@ -739,11 +748,9 @@ test('competitors page shows not-required placeholder', async ({ page }) => {
     await page.goto(`/app/${brandCode}/reports/${scenario.month2Period.id}/competitors`);
     await page.waitForLoadState('networkidle');
     await expect(page.getByTestId('competitor-monitoring-workspace')).toBeVisible();
-    await expect(async () => {
-      expect(
-        await page.locator('[data-testid^="competitor-checklist-"]').count()
-      ).toBeGreaterThan(0);
-    }).toPass();
+    await expect(
+      page.getByTestId(`competitor-checklist-${scenario.competitorId}`)
+    ).toBeVisible();
   } finally {
     await cleanupMidYearModeScenario(scenario);
   }
