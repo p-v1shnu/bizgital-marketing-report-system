@@ -152,17 +152,8 @@ export function DashboardQuestionCategoryDistributionChart({
   const chartTitleFontSize = Math.round((presentationMode ? 24 : 18) * effectiveTextScaleMultiplier);
   const chartSubTitleFontSize = Math.round((presentationMode ? 16 : 13) * effectiveTextScaleMultiplier);
   const axisTickColor = presentationMode ? 'rgb(71 85 105)' : 'rgb(100 116 139)';
-  const longestCategoryLabelLength = points.reduce(
-    (max, point) => Math.max(max, point.label.length),
-    0
-  );
-  const yAxisWidth = Math.min(
-    presentationMode ? 320 : 260,
-    Math.max(
-      presentationMode ? 220 : 180,
-      Math.round(longestCategoryLabelLength * axisTickSize * 0.56)
-    )
-  );
+  const labelTextSize = Math.max(11, Math.round(axisTickSize * 0.92));
+  const labelMaxCharsPerLine = presentationMode ? 52 : 42;
   const chartBottomMargin = Math.max(presentationMode ? 18 : 14, Math.round(axisTickSize * 1.15));
   const chartRightMargin = Math.max(
     presentationMode ? 56 : 40,
@@ -180,10 +171,6 @@ export function DashboardQuestionCategoryDistributionChart({
       presentationMode ? 50 : 42,
       Math.floor((isCaptureCanvas ? 300 : 240) / Math.max(points.length, 1))
     )
-  );
-  const labelMaxCharsPerLine = Math.max(
-    10,
-    Math.floor((yAxisWidth - Math.max(12, Math.round(axisTickSize * 0.8))) / Math.max(1, Math.round(axisTickSize * 0.56)))
   );
 
   return (
@@ -209,9 +196,9 @@ export function DashboardQuestionCategoryDistributionChart({
             data={points}
             layout="vertical"
             margin={{
-              top: presentationMode ? 12 : 10,
+              top: presentationMode ? 18 : 14,
               right: chartRightMargin,
-              left: presentationMode ? 34 : 24,
+              left: presentationMode ? 12 : 8,
               bottom: chartBottomMargin
             }}
             responsive
@@ -237,38 +224,11 @@ export function DashboardQuestionCategoryDistributionChart({
             />
             <YAxis
               axisLine={false}
-              dataKey="label"
-              tick={(tickProps) => {
-                const value = String(tickProps.payload?.value ?? '');
-                const { lines } = wrapLabelToTwoLines(value, labelMaxCharsPerLine);
-                const hasSecondLine = !!lines[1];
-                const lineOffset = Math.max(7, Math.round(axisTickSize * 0.5));
-                const firstLineDy = hasSecondLine ? -lineOffset : 0;
-                const secondLineDy = Math.max(13, Math.round(axisTickSize * 0.95));
-                return (
-                  <g transform={`translate(${tickProps.x},${tickProps.y})`}>
-                    <title>{value}</title>
-                    <text
-                      fill={axisTickColor}
-                      fontSize={axisTickSize}
-                      fontWeight={700}
-                      textAnchor="end"
-                    >
-                      <tspan dy={firstLineDy} x={0}>
-                        {lines[0]}
-                      </tspan>
-                      {hasSecondLine ? (
-                        <tspan dy={secondLineDy} x={0}>
-                          {lines[1]}
-                        </tspan>
-                      ) : null}
-                    </text>
-                  </g>
-                );
-              }}
+              dataKey="id"
+              hide
               tickLine={false}
               type="category"
-              width={yAxisWidth}
+              width={0}
             />
             <Tooltip
               content={({ active, payload }) => {
@@ -301,14 +261,90 @@ export function DashboardQuestionCategoryDistributionChart({
               fill="#10b981"
               radius={[0, 12, 12, 0]}
             >
+              <LabelList
+                content={(labelProps: any) => {
+                  const rawX = Number(labelProps?.x);
+                  const rawY = Number(labelProps?.y);
+                  const rawHeight = Number(labelProps?.height);
+                  if (!Number.isFinite(rawX) || !Number.isFinite(rawY) || !Number.isFinite(rawHeight)) {
+                    return null;
+                  }
+
+                  const point = labelProps?.payload as
+                    | DashboardQuestionCategoryDistributionPoint
+                    | undefined;
+                  const categoryLabel = String(point?.label ?? '');
+                  if (!categoryLabel) {
+                    return null;
+                  }
+
+                  const { lines } = wrapLabelToTwoLines(categoryLabel, labelMaxCharsPerLine);
+                  const hasSecondLine = !!lines[1];
+                  const lineOffset = Math.max(6, Math.round(labelTextSize * 0.5));
+                  const firstLineDy = hasSecondLine ? -lineOffset : 0;
+                  const secondLineDy = Math.max(11, Math.round(labelTextSize * 0.95));
+                  const labelX = rawX + 4;
+                  const labelY = rawY - Math.max(4, Math.round(labelTextSize * 0.3));
+
+                  return (
+                    <g transform={`translate(${labelX},${labelY})`}>
+                      <title>{categoryLabel}</title>
+                      <text
+                        fill={axisTickColor}
+                        fontSize={labelTextSize}
+                        fontWeight={700}
+                        textAnchor="start"
+                      >
+                        <tspan dy={firstLineDy} x={0}>
+                          {lines[0]}
+                        </tspan>
+                        {hasSecondLine ? (
+                          <tspan dy={secondLineDy} x={0}>
+                            {lines[1]}
+                          </tspan>
+                        ) : null}
+                      </text>
+                    </g>
+                  );
+                }}
+                dataKey="label"
+              />
               {showValueLabels ? (
                 <LabelList
+                  content={(valueProps: any) => {
+                    const rawX = Number(valueProps?.x);
+                    const rawY = Number(valueProps?.y);
+                    const rawWidth = Number(valueProps?.width);
+                    const rawHeight = Number(valueProps?.height);
+                    if (
+                      !Number.isFinite(rawX) ||
+                      !Number.isFinite(rawY) ||
+                      !Number.isFinite(rawWidth) ||
+                      !Number.isFinite(rawHeight)
+                    ) {
+                      return null;
+                    }
+
+                    const numericValue = Number(valueProps.value ?? 0) || 0;
+                    const safeWidth = Number.isFinite(rawWidth) ? rawWidth : 0;
+                    const labelX = rawX + Math.max(safeWidth, 0) + Math.max(8, Math.round(valueLabelFontSize * 0.38));
+                    const labelY = rawY + rawHeight / 2;
+
+                    return (
+                      <text
+                        fill="#334155"
+                        fontSize={valueLabelFontSize}
+                        fontWeight={700}
+                        textAnchor="start"
+                        x={labelX}
+                        y={labelY}
+                        dominantBaseline="middle"
+                      >
+                        {formatCount(numericValue)}
+                      </text>
+                    );
+                  }}
                   dataKey="count"
-                  fill="#334155"
-                  fontSize={valueLabelFontSize}
-                  fontWeight={700}
-                  formatter={(value) => formatCount(Number(value ?? 0))}
-                  position="right"
                 />
               ) : null}
             </Bar>
