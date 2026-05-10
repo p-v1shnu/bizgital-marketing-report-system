@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   Building2,
   ChevronLeft,
@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 const sidebarStorageKey = 'bizgital-marketing-report.global-sidebar-collapsed';
+const sidebarCookieKey = 'bizgital_marketing_report_global_sidebar_collapsed';
 
 const navigation: Array<{
   href: string;
@@ -50,6 +51,7 @@ type GlobalAppShellProps = {
     email: string;
   };
   canAccessAdmin: boolean;
+  initialSidebarCollapsed?: boolean;
   showSuperAdminSetupModeWarning?: boolean;
 };
 
@@ -57,23 +59,20 @@ export function GlobalAppShell({
   children,
   currentUser,
   canAccessAdmin,
+  initialSidebarCollapsed = false,
   showSuperAdminSetupModeWarning = false
 }: GlobalAppShellProps) {
   const pathname = usePathname();
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(initialSidebarCollapsed);
   const visibleNavigation = navigation.filter(
     (item) => !item.adminOnly || canAccessAdmin
   );
-
-  useEffect(() => {
-    const saved = window.localStorage.getItem(sidebarStorageKey);
-    setCollapsed(saved === 'true');
-  }, []);
 
   function toggleSidebar() {
     setCollapsed((current) => {
       const next = !current;
       window.localStorage.setItem(sidebarStorageKey, String(next));
+      document.cookie = `${sidebarCookieKey}=${next ? 'true' : 'false'}; path=/; max-age=31536000; samesite=lax`;
       return next;
     });
   }
