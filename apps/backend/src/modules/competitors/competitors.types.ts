@@ -171,5 +171,4 @@ export type UpdateAssignmentStatusInput = {
 
 export type UpdateCompetitorYearModeInput = {
   mode: CompetitorReportingMode;
-  effectiveMonth?: number;
 };

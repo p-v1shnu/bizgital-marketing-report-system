@@ -20,6 +20,7 @@ type ReportingPeriodResponse = {
   id: string;
   year: number;
   month: number;
+  competitorMode: 'with_competitors' | 'without_competitors';
 };
 
 type ReportingListResponse = {
@@ -44,6 +45,7 @@ type ReportingListResponse = {
     id: string;
     year: number;
     month: number;
+    competitorMode: 'with_competitors' | 'without_competitors';
     latestVersionId: string | null;
     currentDraftVersionId: string | null;
   }>;
@@ -57,6 +59,10 @@ type ResolvedPeriodResult = {
 
 type ReportingDetailResponse = {
   period: {
+    id: string;
+    year: number;
+    month: number;
+    competitorMode: 'with_competitors' | 'without_competitors';
     reviewReadiness: {
       checks: Array<{
         key: string;
@@ -227,7 +233,8 @@ async function createUniquePeriod(
       period: {
         id: reusable.id,
         year: reusable.year,
-        month: reusable.month
+        month: reusable.month,
+        competitorMode: reusable.competitorMode
       },
       created: false,
       hadDraft: reusable.currentDraftVersionId !== null
@@ -236,6 +243,20 @@ async function createUniquePeriod(
 
   throw new Error(
     `Unable to create unique period in year ${year}, and no reusable empty period was found.`
+  );
+}
+
+async function createMonthlyPeriod(year: number, month: number) {
+  return requestJson<ReportingPeriodResponse>(
+    `/brands/${brandCode}/reporting-periods`,
+    {
+      method: 'POST',
+      body: {
+        year,
+        month,
+        replaceDeleted: true
+      }
+    }
   );
 }
 
@@ -444,6 +465,113 @@ async function restoreKpiPlanIfChanged(
   });
 }
 
+type MidYearModeScenario = {
+  competitorId: string;
+  kpiPlanChanged: boolean;
+  month1Period: ReportingPeriodResponse;
+  month2Period: ReportingPeriodResponse;
+  month3Period: ReportingPeriodResponse;
+  originalAssignments: string[];
+  originalKpiPlanItems: KpiPlanUpdateItem[] | null;
+  year: number;
+};
+
+async function createMidYearModeScenario(baseOffset: number): Promise<MidYearModeScenario> {
+  const isolated = await findIsolatedSetupYear(baseOffset);
+  const year = isolated.year;
+  const competitorName = `UI E2E Mode ${randomSuffix()}`;
+  const originalAssignments = isolated.setup.assignments.map(
+    (item) => item.competitor.id
+  );
+  const createdCompetitor = await requestJson<{ id: string }>(
+    `/brands/${brandCode}/competitor-setup/catalog`,
+    {
+      method: 'POST',
+      body: {
+        name: competitorName,
+        primaryPlatform: 'Facebook',
+        status: 'active'
+      }
+    }
+  );
+
+  await requestJson(`/brands/${brandCode}/competitor-setup/${year}/mode`, {
+    method: 'PATCH',
+    body: {
+      mode: 'with_competitors'
+    }
+  });
+  await requestJson(`/brands/${brandCode}/competitor-setup/${year}/assignments`, {
+    method: 'POST',
+    body: {
+      competitorIds: [createdCompetitor.id]
+    }
+  });
+  const setupResult = await prepareYearSetup(year);
+
+  const month1Period = await createMonthlyPeriod(year, 1);
+  const month2Period = await createMonthlyPeriod(year, 2);
+  const withoutSetup = await requestJson<CompetitorSetupResponse>(
+    `/brands/${brandCode}/competitor-setup/${year}/mode`,
+    {
+      method: 'PATCH',
+      body: {
+        mode: 'without_competitors'
+      }
+    }
+  );
+  expect(withoutSetup.summary.mode).toBe('without_competitors');
+  expect(withoutSetup.summary.modeEffectiveMonth).toBe(3);
+  const month3Period = await createMonthlyPeriod(year, 3);
+
+  return {
+    competitorId: createdCompetitor.id,
+    kpiPlanChanged: setupResult.kpiPlanChanged,
+    month1Period,
+    month2Period,
+    month3Period,
+    originalAssignments,
+    originalKpiPlanItems: setupResult.originalKpiPlanItems,
+    year
+  };
+}
+
+async function cleanupMidYearModeScenario(scenario: MidYearModeScenario | null) {
+  if (!scenario) {
+    return;
+  }
+
+  await cleanupRequest(`/reporting-periods/${scenario.month3Period.id}`, {
+    method: 'DELETE'
+  });
+  await cleanupRequest(`/reporting-periods/${scenario.month2Period.id}`, {
+    method: 'DELETE'
+  });
+  await cleanupRequest(`/reporting-periods/${scenario.month1Period.id}`, {
+    method: 'DELETE'
+  });
+  await restoreKpiPlanIfChanged(
+    scenario.year,
+    scenario.originalKpiPlanItems,
+    scenario.kpiPlanChanged
+  );
+  await cleanupRequest(`/brands/${brandCode}/competitor-setup/${scenario.year}/assignments`, {
+    method: 'POST',
+    body: {
+      competitorIds: scenario.originalAssignments
+    }
+  });
+  await cleanupRequest(
+    `/brands/${brandCode}/competitor-setup/catalog/${scenario.competitorId}`,
+    {
+      method: 'PATCH',
+      body: {
+        status: 'inactive'
+      }
+    }
+  );
+}
+
 test('admin setup can assign competitor and save assignments', async ({ page }) => {
   const isolated = await findIsolatedSetupYear(70);
   const testYear = isolated.year;
@@ -519,8 +647,7 @@ test('year setup can switch back to With Competitors before assignments are read
     {
       method: 'PATCH',
       body: {
-        mode: 'without_competitors',
-        effectiveMonth: 1
+        mode: 'without_competitors'
       }
     }
   );
@@ -546,8 +673,7 @@ test('year setup can switch back to With Competitors before assignments are read
     {
       method: 'PATCH',
       body: {
-        mode: 'with_competitors',
-        effectiveMonth: 1
+        mode: 'with_competitors'
       }
     }
   );
@@ -562,6 +688,63 @@ test('year setup can switch back to With Competitors before assignments are read
   expect(withCompetitorCheck?.required).toBe(true);
   expect(withCompetitorCheck?.passed).toBe(false);
   expect(withReporting.selectedYearSetup.canCreateReport).toBe(false);
+});
+
+test('mid-year switch freezes per-period competitor mode', async () => {
+  let scenario: MidYearModeScenario | null = null;
+
+  try {
+    scenario = await createMidYearModeScenario(690);
+
+    expect(scenario.month1Period.competitorMode).toBe('with_competitors');
+    expect(scenario.month2Period.competitorMode).toBe('with_competitors');
+    expect(scenario.month3Period.competitorMode).toBe('without_competitors');
+
+    const month2Detail = await requestJson<ReportingDetailResponse>(
+      `/brands/${brandCode}/reporting-periods/${scenario.month2Period.id}`
+    );
+    const month3Detail = await requestJson<ReportingDetailResponse>(
+      `/brands/${brandCode}/reporting-periods/${scenario.month3Period.id}`
+    );
+    expect(month2Detail.period.competitorMode).toBe('with_competitors');
+    expect(month3Detail.period.competitorMode).toBe('without_competitors');
+    expect(
+      month2Detail.period.reviewReadiness.checks.some(
+        (check) => check.key === 'competitor_evidence_complete'
+      )
+    ).toBe(true);
+    expect(
+      month3Detail.period.reviewReadiness.checks.some(
+        (check) => check.key === 'competitor_evidence_complete'
+      )
+    ).toBe(false);
+  } finally {
+    await cleanupMidYearModeScenario(scenario);
+  }
+});
+
+test('competitors page shows not-required placeholder', async ({ page }) => {
+  let scenario: MidYearModeScenario | null = null;
+
+  try {
+    scenario = await createMidYearModeScenario(700);
+    await setAdminCookie(page);
+
+    await page.goto(`/app/${brandCode}/reports/${scenario.month3Period.id}/competitors`);
+    await page.waitForLoadState('networkidle');
+    await expect(
+      page.getByText('Competitor monitoring is not required for this month')
+    ).toBeVisible();
+
+    await page.goto(`/app/${brandCode}/reports/${scenario.month2Period.id}/competitors`);
+    await page.waitForLoadState('networkidle');
+    await expect(page.getByTestId('competitor-monitoring-workspace')).toBeVisible();
+    await expect(
+      page.getByTestId(`competitor-checklist-${scenario.competitorId}`)
+    ).toBeVisible();
+  } finally {
+    await cleanupMidYearModeScenario(scenario);
+  }
 });
 
 test('monthly monitoring checklist auto-saves and marks competitor complete', async ({

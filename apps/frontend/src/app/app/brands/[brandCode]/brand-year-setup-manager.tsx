@@ -387,10 +387,7 @@ export function BrandYearSetupManager({
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({
-            mode,
-            effectiveMonth: competitorSetup.summary.nextModeChangeEffectiveMonth ?? undefined
-          })
+          body: JSON.stringify({ mode })
         }
       );
       const payload = (await response

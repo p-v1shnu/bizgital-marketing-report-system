@@ -30,7 +30,8 @@ rebuild || exit 1
 start_app
 
 while true; do
-  if find src prisma/schema.prisma -type f -newer "$stamp_file" | grep -q .; then
+  if find src -type f -name '*.ts' -newer "$stamp_file" | grep -q . || \
+     [ prisma/schema.prisma -nt "$stamp_file" ]; then
     echo "[dev:docker] Source change detected. Rebuilding backend..."
     if rebuild; then
       echo "[dev:docker] Rebuild succeeded. Restarting backend..."

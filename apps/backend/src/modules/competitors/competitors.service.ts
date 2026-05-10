@@ -32,6 +32,8 @@ import type {
 const MAX_MONITORED_POSTS = 5;
 const MAX_MONITORING_NOTE_LENGTH = 280;
 
+type PrismaCompetitorClient = PrismaService | Prisma.TransactionClient;
+
 type AssignmentWithCompetitor = {
   id: string;
   competitorId: string;
@@ -600,12 +602,16 @@ export class CompetitorsService {
 
   async getYearSetup(
     brandCode: string,
-    year: number
+    year: number,
+    displayMonthOverride?: number
   ): Promise<CompetitorYearSetupResponse> {
     this.assertYear(year, 'Year');
+    if (displayMonthOverride !== undefined) {
+      this.assertMonth(displayMonthOverride, 'Display month');
+    }
 
     const brand = await this.brandsService.getBrandByCodeOrThrow(brandCode);
-    const displayMonth = this.getDefaultDisplayMonthForSetupYear(year);
+    const displayMonth = displayMonthOverride ?? this.getDefaultDisplayMonthForSetupYear(year);
     const [assignments, catalog, modeState] = await Promise.all([
       this.getAssignmentsForYear(brand.id, year, displayMonth, {
         includeRemoveMetadata: true,
@@ -663,55 +669,54 @@ export class CompetitorsService {
     this.assertYear(year, 'Year');
     const mode = this.normalizeCompetitorReportingMode(input.mode);
     const brand = await this.brandsService.getBrandByCodeOrThrow(brandCode);
-    const latestPeriod = await this.prisma.reportingPeriod.findFirst({
-      where: {
-        brandId: brand.id,
-        year,
-        cadence: 'monthly',
-        deletedAt: null
-      },
-      select: {
-        month: true
-      },
-      orderBy: {
-        month: 'desc'
-      }
-    });
-    const effectiveMonth = latestPeriod ? latestPeriod.month + 1 : 1;
-
-    if (effectiveMonth > 12) {
-      throw new ConflictException(
-        'Cannot change competitor mode because every month in this year already has a report.'
-      );
-    }
-
-    if (
-      input.effectiveMonth !== undefined &&
-      input.effectiveMonth !== effectiveMonth
-    ) {
-      throw new ConflictException(
-        `Competitor mode changes for ${year} can only take effect from month ${effectiveMonth}.`
-      );
-    }
+    let effectiveMonth: number;
 
     try {
-      await this.prisma.brandCompetitorYearModeChange.upsert({
-        where: {
-          brand_competitor_year_mode_unique: {
+      effectiveMonth = await this.prisma.$transaction(async (tx) => {
+        const latestPeriod = await tx.reportingPeriod.findFirst({
+          where: {
             brandId: brand.id,
             year,
-            effectiveMonth
+            cadence: 'monthly',
+            deletedAt: null
+          },
+          select: {
+            month: true
+          },
+          orderBy: {
+            month: 'desc'
           }
-        },
-        create: {
-          brandId: brand.id,
-          year,
-          effectiveMonth,
-          mode
-        },
-        update: {
-          mode
+        });
+        const nextEffectiveMonth = latestPeriod ? latestPeriod.month + 1 : 1;
+
+        if (nextEffectiveMonth > 12) {
+          throw new ConflictException(
+            'Cannot change competitor mode because every month in this year already has a report.'
+          );
         }
+
+        await tx.brandCompetitorYearModeChange.upsert({
+          where: {
+            brand_competitor_year_mode_unique: {
+              brandId: brand.id,
+              year,
+              effectiveMonth: nextEffectiveMonth
+            }
+          },
+          create: {
+            brandId: brand.id,
+            year,
+            effectiveMonth: nextEffectiveMonth,
+            mode
+          },
+          update: {
+            mode
+          }
+        });
+
+        return nextEffectiveMonth;
+      }, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable
       });
     } catch (error) {
       if (
@@ -722,11 +727,19 @@ export class CompetitorsService {
           'Competitor reporting mode table is missing. Apply latest competitor migration first.'
         );
       }
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2034'
+      ) {
+        throw new ConflictException(
+          'Competitor mode update conflicted with report creation. Please retry.'
+        );
+      }
       throw error;
     }
 
     await this.auditLogService.append({
-      actionKey: 'CONTENT_COMPETITOR_EVIDENCE_UPDATED',
+      actionKey: 'CONTENT_COMPETITOR_MODE_UPDATED',
       entityType: 'CONTENT',
       entityId: brand.id,
       entityLabel: brand.name,
@@ -743,19 +756,20 @@ export class CompetitorsService {
       }
     });
 
-    return this.getYearSetup(brandCode, year);
+    return this.getYearSetup(brandCode, year, effectiveMonth);
   }
 
   async resolveCompetitorModeForPeriod(
     brandId: string,
     year: number,
-    month: number
+    month: number,
+    client: PrismaCompetitorClient = this.prisma
   ): Promise<CompetitorReportingMode> {
     this.assertYear(year, 'Year');
     this.assertMonth(month, 'Month');
 
     try {
-      const row = await this.prisma.brandCompetitorYearModeChange.findFirst({
+      const row = await client.brandCompetitorYearModeChange.findFirst({
         where: {
           brandId,
           year,
@@ -1209,6 +1223,18 @@ export class CompetitorsService {
 
     if (sourceAssignments.length === 0) {
       throw new BadRequestException('No competitor assignments exist in source year.');
+    }
+
+    const targetModeState = await this.getYearModeState(
+      brand.id,
+      targetYear,
+      this.getDefaultDisplayMonthForSetupYear(targetYear)
+    );
+    if (targetModeState.mode === CompetitorReportingMode.without_competitors) {
+      throw new ConflictException(
+        `Cannot copy competitors to ${targetYear} because it is set as Without ` +
+          'Competitors. Switch the target year to With Competitors first.'
+      );
     }
 
     await this.saveYearAssignments(
@@ -1773,8 +1799,13 @@ export class CompetitorsService {
     return now.getUTCMonth() + 1;
   }
 
-  private async getYearModeState(brandId: string, year: number, displayMonth: number) {
-    const latestPeriod = await this.prisma.reportingPeriod.findFirst({
+  private async getYearModeState(
+    brandId: string,
+    year: number,
+    displayMonth: number,
+    client: PrismaCompetitorClient = this.prisma
+  ) {
+    const latestPeriod = await client.reportingPeriod.findFirst({
       where: {
         brandId,
         year,
@@ -1795,7 +1826,7 @@ export class CompetitorsService {
         : null;
 
     try {
-      const currentModeChange = await this.prisma.brandCompetitorYearModeChange.findFirst({
+      const currentModeChange = await client.brandCompetitorYearModeChange.findFirst({
         where: {
           brandId,
           year,

@@ -581,24 +581,24 @@ export class ReportingService implements OnModuleInit {
     this.assertYear(input.year);
     this.assertMonth(input.month);
     const brand = await this.brandsService.getBrandByCodeOrThrow(input.brandCode);
-    const [yearSetupContext, competitorMode] = await Promise.all([
-      this.getYearSetupContext(brand.id),
-      this.competitorsService.resolveCompetitorModeForPeriod(
-        brand.id,
-        input.year,
-        input.month
-      )
-    ]);
-    const yearSetupStatus = this.toYearSetupStatus(input.year, yearSetupContext, {
-      competitorMode
-    });
-
-    if (!yearSetupStatus.canCreateReport) {
-      throw new ConflictException(this.buildYearSetupBlockedMessage(yearSetupStatus));
-    }
+    const yearSetupContext = await this.getYearSetupContext(brand.id);
 
     const createMonthlyPeriod = async () =>
       this.prisma.$transaction(async tx => {
+        const competitorMode = await this.competitorsService.resolveCompetitorModeForPeriod(
+          brand.id,
+          input.year,
+          input.month,
+          tx
+        );
+        const yearSetupStatus = this.toYearSetupStatus(input.year, yearSetupContext, {
+          competitorMode
+        });
+
+        if (!yearSetupStatus.canCreateReport) {
+          throw new ConflictException(this.buildYearSetupBlockedMessage(yearSetupStatus));
+        }
+
         const period = await tx.reportingPeriod.create({
           data: {
             brandId: brand.id,
@@ -631,6 +631,8 @@ export class ReportingService implements OnModuleInit {
         });
 
         return period;
+      }, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable
       });
 
     try {
@@ -638,6 +640,15 @@ export class ReportingService implements OnModuleInit {
 
       return this.toListItem(created);
     } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2034'
+      ) {
+        throw new ConflictException(
+          'Report period creation conflicted with a competitor mode change. Please retry.'
+        );
+      }
+
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'
