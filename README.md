@@ -279,6 +279,7 @@ With this shape, local MinIO and production Spaces share one upload flow and one
 - dashboard reads must use the latest approved version only
 - top content highlights are monthly evidence, not KPI targets
 - confirmed metric alias intent includes `Impressions -> Views` and `Reach -> Viewers`
+- competitor reporting mode is per-year and frozen at period creation
 
 ## Caddy reverse-proxy assumptions
 

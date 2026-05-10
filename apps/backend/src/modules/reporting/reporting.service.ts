@@ -116,6 +116,8 @@ type YearSetupContext = {
   relatedProductOptionsReady: boolean;
 };
 
+type PrismaReportingClient = PrismaService | Prisma.TransactionClient;
+
 type ReportMediaDeleteTargets = {
   objectKeys: string[];
   publicUrls: string[];
@@ -581,10 +583,10 @@ export class ReportingService implements OnModuleInit {
     this.assertYear(input.year);
     this.assertMonth(input.month);
     const brand = await this.brandsService.getBrandByCodeOrThrow(input.brandCode);
-    const yearSetupContext = await this.getYearSetupContext(brand.id);
 
     const createMonthlyPeriod = async () =>
       this.prisma.$transaction(async tx => {
+        const yearSetupContext = await this.getYearSetupContext(brand.id, tx);
         const competitorMode = await this.competitorsService.resolveCompetitorModeForPeriod(
           brand.id,
           input.year,
@@ -2990,7 +2992,10 @@ export class ReportingService implements OnModuleInit {
     };
   }
 
-  private async getYearSetupContext(brandId: string): Promise<YearSetupContext> {
+  private async getYearSetupContext(
+    brandId: string,
+    client: PrismaReportingClient = this.prisma
+  ): Promise<YearSetupContext> {
     let competitorModeRows: Array<{
       year: number;
       effectiveMonth: number;
@@ -2998,7 +3003,7 @@ export class ReportingService implements OnModuleInit {
     }> = [];
 
     try {
-      competitorModeRows = await this.prisma.brandCompetitorYearModeChange.findMany({
+      competitorModeRows = await client.brandCompetitorYearModeChange.findMany({
         where: {
           brandId
         },
@@ -3030,7 +3035,7 @@ export class ReportingService implements OnModuleInit {
       activeQuestionAssignmentCount,
       activeRelatedProductOptionCount
     ] = await Promise.all([
-        this.prisma.reportingPeriod.findMany({
+        client.reportingPeriod.findMany({
           where: {
             brandId,
             cadence: ReportCadence.monthly,
@@ -3041,7 +3046,7 @@ export class ReportingService implements OnModuleInit {
           },
           distinct: ['year']
         }),
-        this.prisma.brandKpiPlan.findMany({
+        client.brandKpiPlan.findMany({
           where: {
             brandId
           },
@@ -3054,7 +3059,7 @@ export class ReportingService implements OnModuleInit {
             }
           }
         }),
-        this.prisma.brandCompetitorAssignment.findMany({
+        client.brandCompetitorAssignment.findMany({
           where: {
             brandId
           },
@@ -3063,7 +3068,7 @@ export class ReportingService implements OnModuleInit {
           },
           distinct: ['year']
         }),
-        this.prisma.brandQuestionActivation.count({
+        client.brandQuestionActivation.count({
           where: {
             brandId,
             status: QuestionStatus.active,
@@ -3072,7 +3077,7 @@ export class ReportingService implements OnModuleInit {
             }
           }
         }),
-        this.prisma.brandDropdownOption.count({
+        client.brandDropdownOption.count({
           where: {
             brandId,
             fieldKey: BrandDropdownFieldKey.related_product,

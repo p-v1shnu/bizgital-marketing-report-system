@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { BarChart3, CheckCircle2, Circle, Copy, UsersRound } from 'lucide-react';
+import { BarChart3, CheckCircle2, Circle, Copy, Loader2, UsersRound } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -619,6 +619,9 @@ export function BrandYearSetupManager({
               initialYear={selectedYear}
               key={`year-setup-competitor-${selectedYear}`}
               modeChangePending={pendingKey === 'competitor-mode'}
+              modeChangePendingTarget={
+                pendingKey === 'competitor-mode' ? pendingModeChange : null
+              }
               onModeChangeRequest={setPendingModeChange}
               onSetupChanged={handleCompetitorSetupChanged}
               showYearPicker={false}
@@ -745,6 +748,9 @@ export function BrandYearSetupManager({
                 onClick={() => void updateCompetitorMode(pendingModeChange)}
                 type="button"
               >
+                {pendingKey === 'competitor-mode' ? (
+                  <Loader2 className="animate-spin" />
+                ) : null}
                 Confirm change
               </Button>
             </div>

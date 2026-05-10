@@ -152,6 +152,16 @@ Responsibilities:
 - question evidence
 - media metadata
 
+### `CompetitorsModule`
+
+Responsibilities:
+
+- competitor catalog and yearly brand assignments
+- yearly competitor assignment status history
+- monthly competitor monitoring and evidence capture
+- year-level competitor reporting mode (with/without) management
+- mode change history with per-effective-month resolution
+
 ### `TopContentModule`
 
 Responsibilities:

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { Loader2, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -29,6 +29,7 @@ type Props = {
   onSetupChanged?: (setup: CompetitorYearSetupResponse) => void;
   onModeChangeRequest?: (mode: CompetitorReportingMode) => void;
   modeChangePending?: boolean;
+  modeChangePendingTarget?: CompetitorReportingMode | null;
 };
 
 type CatalogDraft = {
@@ -239,7 +240,8 @@ export function CompetitorSetupManager({
   showYearPicker = true,
   onSetupChanged,
   onModeChangeRequest,
-  modeChangePending = false
+  modeChangePending = false,
+  modeChangePendingTarget = null
 }: Props) {
   const router = useRouter();
   const currentYear = new Date().getUTCFullYear();
@@ -711,6 +713,7 @@ export function CompetitorSetupManager({
           <div className="grid max-w-4xl gap-3 md:grid-cols-2">
             {(['with_competitors', 'without_competitors'] as const).map((mode) => {
               const isSelected = setup.summary.mode === mode;
+              const isPendingTarget = modeChangePending && modeChangePendingTarget === mode;
               const description =
                 mode === 'with_competitors'
                   ? 'Require assigned competitors and monthly competitor monitoring.'
@@ -736,10 +739,16 @@ export function CompetitorSetupManager({
                 >
                   <span
                     className={`mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border ${
-                      isSelected ? 'border-primary bg-primary' : 'border-border'
+                      isPendingTarget
+                        ? 'border-primary/40 bg-primary/10 text-primary'
+                        : isSelected
+                          ? 'border-primary bg-primary'
+                          : 'border-border'
                     }`}
                   >
-                    {isSelected ? (
+                    {isPendingTarget ? (
+                      <Loader2 className="size-3 animate-spin" />
+                    ) : isSelected ? (
                       <span className="size-1.5 rounded-full bg-primary-foreground" />
                     ) : null}
                   </span>

@@ -487,3 +487,16 @@ Using this vocabulary consistently across API, UI, schema, and documentation wil
 - Some metrics (for example `Viewers`) are entered manually by team members in the dataset grid
 - CSV-derived metrics come from Meta CSV uploads through the mapping and rename pipeline
 - The system reads manual values via `globalUiSetting -> manualSourceRowsSetting`
+
+## 14. Competitor Reporting Mode
+
+- Each reporting year has a competitor reporting mode: `with_competitors` or `without_competitors`
+- The mode is decided at the year level via the `brand_competitor_year_mode_changes` table, which records mode changes by effective month
+- When a reporting period is created, the resolved mode (latest mode change with `effective_month <= period.month`) is frozen into `reporting_periods.competitor_mode`
+- Existing periods keep their frozen mode forever; switching the year mode only affects future periods
+- Year mode can only change starting from the month after the latest existing period for that year, so historical reports cannot be changed retroactively
+- When a period is set to `without_competitors`:
+- Competitor monitoring and evidence APIs reject edits with `ConflictException`
+- Review readiness checks omit `competitor_evidence_complete`
+- The `/competitors` page shows a "not required" placeholder
+- The dashboard competitor section shows "This month does not use competitor tracking"
