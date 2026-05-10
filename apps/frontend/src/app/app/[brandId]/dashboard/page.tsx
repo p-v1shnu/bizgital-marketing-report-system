@@ -42,6 +42,7 @@ import {
   formatValue
 } from '@/lib/format-metrics';
 import { badgeToneForState, labelForState, monthLabel } from '@/lib/reporting-ui';
+import { cn } from '@/lib/utils';
 
 import {
   DashboardFollowersComparisonChart,
@@ -1870,19 +1871,66 @@ export default async function DashboardPage({
                       className="border-slate-200 bg-white text-slate-900 shadow-sm dark:border-slate-200 dark:bg-white dark:text-slate-900"
                       id="dashboard-content-monthly-summary"
                     >
-                      <CardHeader>
-                        <CardTitle className="flex flex-wrap items-center justify-between gap-3">
-                      <span>Monthly summary</span>
-                          {selectedContentPeriodLabel ? (
-                            <Badge className={contentWhiteBadgeClassName} variant="outline">
-                              {selectedContentPeriodLabel}
-                            </Badge>
-                          ) : null}
+                      <CardHeader className="px-6 pb-3 pt-5">
+                        <CardTitle className="flex flex-wrap items-center justify-between gap-3 text-xl font-semibold">
+                          <span>Monthly summary</span>
+                          <div className="flex items-center gap-2">
+                            {selectedContentPeriodLabel ? (
+                              <Badge className={contentWhiteBadgeClassName} variant="outline">
+                                {selectedContentPeriodLabel}
+                              </Badge>
+                            ) : null}
+                            <DashboardChartCopyButton targetId="dashboard-content-monthly-summary-kpi-canvas" />
+                          </div>
                         </CardTitle>
                       </CardHeader>
-                      <CardContent className="space-y-3">
-                        <div className="grid gap-3 md:grid-cols-3">
-                          <article className={contentSurfaceCardClassName}>
+                      <CardContent className="space-y-4 px-6 pb-6 pt-1">
+                        <div
+                          className="grid w-full grid-cols-2 gap-4 aspect-[204/25] min-h-[235px]"
+                          id="dashboard-content-monthly-summary-kpi-canvas"
+                        >
+                          <article className={cn(contentSurfaceCardClassName, 'flex h-full min-h-0 min-w-0 flex-col justify-between overflow-hidden rounded-md px-6 py-5')}>
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0 truncate pr-2 text-[clamp(1.05rem,1.3vw,3.45rem)] font-semibold uppercase tracking-[0.1em] text-slate-500">
+                                Page Visits
+                              </div>
+                              <span className="shrink-0 rounded-full bg-sky-100 p-3 text-sky-700">
+                                <Eye className="h-14 w-14" />
+                              </span>
+                            </div>
+                            <div className="mt-2 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-[4.45rem] font-semibold leading-none text-slate-900">
+                              {formatValue(currentPageVisit)}
+                            </div>
+                            <div
+                              className={`mt-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap rounded-md text-[2.5rem] font-semibold leading-tight ${getChangeToneClassName(pageVisitChangePercent)}`}
+                            >
+                              Change: {formatChangePercent(pageVisitChangePercent)} (
+                              {formatSignedDelta(currentPageVisit, previousPageVisit)})
+                            </div>
+                          </article>
+
+                          <article className={cn(contentSurfaceCardClassName, 'flex h-full min-h-0 min-w-0 flex-col justify-between overflow-hidden rounded-md px-6 py-5')}>
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0 truncate pr-2 text-[clamp(1.05rem,1.3vw,3.45rem)] font-semibold uppercase tracking-[0.1em] text-slate-500">
+                                Page Followers
+                              </div>
+                              <span className="shrink-0 rounded-full bg-indigo-100 p-3 text-indigo-700">
+                                <Users className="h-14 w-14" />
+                              </span>
+                            </div>
+                            <div className="mt-2 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-[4.45rem] font-semibold leading-none text-slate-900">
+                              {formatValue(ownBrandFollowerCount)}
+                            </div>
+                            <div
+                              className={`mt-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap rounded-md text-[2.5rem] font-semibold leading-tight ${getChangeToneClassName(pageFollowersChangePercent)}`}
+                            >
+                              Change: {formatChangePercent(pageFollowersChangePercent)} (
+                              {formatSignedDelta(ownBrandFollowerCount, previousPageFollowers)})
+                            </div>
+                          </article>
+                        </div>
+
+                        <article className={contentSurfaceCardClassName}>
                             <div className="flex items-start justify-between gap-3">
                               <div className="text-xs uppercase tracking-[0.12em] text-slate-500">
                                 Amount of contents
@@ -1933,48 +1981,7 @@ export default async function DashboardPage({
                                 </div>
                               </div>
                             ) : null}
-                          </article>
-
-                          <article className={contentSurfaceCardClassName}>
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="text-xs uppercase tracking-[0.12em] text-slate-500">
-                                Page Visits
-                              </div>
-                              <span className="rounded-full bg-sky-100 p-2 text-sky-700">
-                                <Eye className="h-4 w-4" />
-                              </span>
-                            </div>
-                            <div className="mt-2 text-3xl font-semibold leading-none text-slate-900">
-                              {formatValue(currentPageVisit)}
-                            </div>
-                            <div
-                              className={`mt-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium ${getChangeToneClassName(pageVisitChangePercent)}`}
-                            >
-                              Change: {formatChangePercent(pageVisitChangePercent)} (
-                              {formatSignedDelta(currentPageVisit, previousPageVisit)})
-                            </div>
-                          </article>
-
-                          <article className={contentSurfaceCardClassName}>
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="text-xs uppercase tracking-[0.12em] text-slate-500">
-                                Page Followers
-                              </div>
-                              <span className="rounded-full bg-indigo-100 p-2 text-indigo-700">
-                                <Users className="h-4 w-4" />
-                              </span>
-                            </div>
-                            <div className="mt-2 text-3xl font-semibold leading-none text-slate-900">
-                              {formatValue(ownBrandFollowerCount)}
-                            </div>
-                            <div
-                              className={`mt-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium ${getChangeToneClassName(pageFollowersChangePercent)}`}
-                            >
-                              Change: {formatChangePercent(pageFollowersChangePercent)} (
-                              {formatSignedDelta(ownBrandFollowerCount, previousPageFollowers)})
-                            </div>
-                          </article>
-                        </div>
+                        </article>
 
                         <div className="mt-3 grid gap-3 md:grid-cols-3">
                           <article className={contentSurfaceCardClassName}>
