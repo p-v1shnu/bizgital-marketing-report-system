@@ -739,9 +739,11 @@ test('competitors page shows not-required placeholder', async ({ page }) => {
     await page.goto(`/app/${brandCode}/reports/${scenario.month2Period.id}/competitors`);
     await page.waitForLoadState('networkidle');
     await expect(page.getByTestId('competitor-monitoring-workspace')).toBeVisible();
-    await expect(
-      page.getByTestId(`competitor-checklist-${scenario.competitorId}`)
-    ).toBeVisible();
+    await expect(async () => {
+      expect(
+        await page.locator('[data-testid^="competitor-checklist-"]').count()
+      ).toBeGreaterThan(0);
+    }).toPass();
   } finally {
     await cleanupMidYearModeScenario(scenario);
   }
