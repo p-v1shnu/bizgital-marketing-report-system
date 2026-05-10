@@ -534,13 +534,14 @@ export function DashboardCompetitorAnalysisSection({
                           padding: `0 ${boardMetrics.cellPaddingX}px`
                         }}
                       >
-                        <div className="flex min-w-0 items-center gap-2">
+                        <div className="flex min-w-0 flex-col items-start gap-1">
                           <span
                             className="truncate font-semibold text-slate-900"
                             style={{
                               fontSize: `${boardMetrics.cellFontPx}px`,
                               lineHeight: `${Math.round(boardMetrics.cellFontPx * 1.2)}px`
                             }}
+                            title={row.brandName}
                           >
                             {row.brandName}
                           </span>
@@ -548,8 +549,10 @@ export function DashboardCompetitorAnalysisSection({
                             <Badge
                               className={contentWhiteBadgeClassName}
                               style={{
-                                fontSize: `${boardMetrics.brandBadgeFontPx}px`,
-                                lineHeight: `${Math.max(14, Math.round(boardMetrics.brandBadgeFontPx * 1.3))}px`
+                                fontSize: `${Math.max(10, Math.round(boardMetrics.brandBadgeFontPx * 0.82))}px`,
+                                lineHeight: `${Math.max(12, Math.round(boardMetrics.brandBadgeFontPx * 1.1))}px`,
+                                paddingInline: `${Math.max(6, Math.round(boardMetrics.cellPaddingX * 0.45))}px`,
+                                paddingBlock: '1px'
                               }}
                               variant="outline"
                             >
