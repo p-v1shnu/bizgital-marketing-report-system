@@ -426,17 +426,12 @@ export class MetricsService {
       ).value;
     }
 
+    const engagementDatasetActual = await this.getCanonicalMetricActualFromDataset(
+      reportVersionId,
+      MappingTargetField.engagement
+    );
     if (values.engagement === null) {
-      values.engagement = (
-        await this.getCanonicalMetricActualFromDataset(
-          reportVersionId,
-          MappingTargetField.engagement
-        )
-      ).value;
-    }
-
-    if (values.engagement !== null) {
-      return values;
+      values.engagement = engagementDatasetActual.value;
     }
 
     const systemEngagementFormulaIds = await this.getSystemEngagementFormulaIds();
@@ -467,45 +462,64 @@ export class MetricsService {
       manualFormulaRowsByRowNumber
     });
 
+    let resolvedFormulaEngagementValue: number | null = null;
     for (const formula of formulas) {
       const actual = datasetFormulaActuals.actualsByFormulaId.get(formula.id);
       if (actual?.value !== null && actual?.value !== undefined) {
-        values.engagement = actual.value;
-        return values;
+        resolvedFormulaEngagementValue = actual.value;
+        break;
       }
     }
 
-    if (!latestImportJob || datasetFormulaActuals.unsupportedFormulaIds.size === 0) {
-      return values;
-    }
-
-    const fallbackFormulas = formulas.filter((formula) =>
-      datasetFormulaActuals.unsupportedFormulaIds.has(formula.id)
-    );
-    if (fallbackFormulas.length === 0) {
-      return values;
-    }
-
-    const csvFormulaActuals = await this.getFormulaActualsFromCsvRows({
-      formulas: fallbackFormulas,
-      reportVersionId,
-      brandCode: reportVersion.reportingPeriod.brand.code,
-      periodId: reportVersion.reportingPeriodId,
-      latestImportJob: {
-        id: latestImportJob.id,
-        originalFilename: latestImportJob.originalFilename,
-        storedFilename: latestImportJob.storedFilename,
-        storagePath: latestImportJob.storagePath
-      },
-      manualFormulaRowsByRowNumber
-    });
-
-    for (const formula of fallbackFormulas) {
-      const actual = csvFormulaActuals.get(formula.id);
-      if (actual?.value !== null && actual?.value !== undefined) {
-        values.engagement = actual.value;
+    if (resolvedFormulaEngagementValue === null) {
+      if (!latestImportJob || datasetFormulaActuals.unsupportedFormulaIds.size === 0) {
         return values;
       }
+
+      const fallbackFormulas = formulas.filter((formula) =>
+        datasetFormulaActuals.unsupportedFormulaIds.has(formula.id)
+      );
+      if (fallbackFormulas.length === 0) {
+        return values;
+      }
+
+      const csvFormulaActuals = await this.getFormulaActualsFromCsvRows({
+        formulas: fallbackFormulas,
+        reportVersionId,
+        brandCode: reportVersion.reportingPeriod.brand.code,
+        periodId: reportVersion.reportingPeriodId,
+        latestImportJob: {
+          id: latestImportJob.id,
+          originalFilename: latestImportJob.originalFilename,
+          storedFilename: latestImportJob.storedFilename,
+          storagePath: latestImportJob.storagePath
+        },
+        manualFormulaRowsByRowNumber
+      });
+
+      for (const formula of fallbackFormulas) {
+        const actual = csvFormulaActuals.get(formula.id);
+        if (actual?.value !== null && actual?.value !== undefined) {
+          resolvedFormulaEngagementValue = actual.value;
+          break;
+        }
+      }
+    }
+
+    if (resolvedFormulaEngagementValue === null) {
+      return values;
+    }
+
+    // When canonical Engagement is not mapped from CSV, dataset Engagement values are usually
+    // manual-only overrides. Blend them with formula-derived CSV engagement.
+    if (engagementDatasetActual.sourceColumnName === null) {
+      values.engagement =
+        resolvedFormulaEngagementValue + (engagementDatasetActual.value ?? 0);
+      return values;
+    }
+
+    if (values.engagement === null) {
+      values.engagement = resolvedFormulaEngagementValue;
     }
 
     return values;
@@ -1259,18 +1273,31 @@ export class MetricsService {
         ? (() => {
             const resolvedFormulaActual = formulaActuals.get(item.kpi.formulaId) ?? null;
             const isSystemEngagementFormula = systemEngagementFormulaIds.has(item.kpi.formulaId);
+            const hasCanonicalEngagementMapping =
+              !!engagementDatasetActual && engagementDatasetActual.sourceColumnName !== null;
+            const manualOnlyEngagementValue =
+              !hasCanonicalEngagementMapping && engagementDatasetActual
+                ? engagementDatasetActual.value
+                : null;
             if (isSystemEngagementFormula && resolvedFormulaActual?.value !== null) {
+              if (manualOnlyEngagementValue !== null) {
+                return {
+                  value: resolvedFormulaActual.value + manualOnlyEngagementValue,
+                  rowCoverage:
+                    resolvedFormulaActual.rowCoverage +
+                    (engagementDatasetActual?.rowCoverage ?? 0)
+                };
+              }
               return resolvedFormulaActual;
             }
 
             if (
               isSystemEngagementFormula &&
-              engagementDatasetActual &&
-              engagementDatasetActual.value !== null
+              manualOnlyEngagementValue !== null
             ) {
               return {
-                value: engagementDatasetActual.value,
-                rowCoverage: engagementDatasetActual.rowCoverage
+                value: manualOnlyEngagementValue,
+                rowCoverage: engagementDatasetActual?.rowCoverage ?? 0
               };
             }
 
