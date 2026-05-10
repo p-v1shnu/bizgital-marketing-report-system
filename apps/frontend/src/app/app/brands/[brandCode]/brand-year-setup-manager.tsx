@@ -100,6 +100,22 @@ export function BrandYearSetupManager({
   const [statusError, setStatusError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
+  function replaceWorkbenchUrl(nextTab: EditorTab, year = selectedYear) {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    params.set('tab', nextTab);
+    params.set('year', String(year));
+    window.history.replaceState(null, '', `${window.location.pathname}?${params.toString()}`);
+  }
+
+  function selectEditorTab(nextTab: EditorTab) {
+    setEditorTab(nextTab);
+    replaceWorkbenchUrl(nextTab);
+  }
+
   const appliedDefaultYearRef = useRef(false);
   const displayYearOptions = useMemo(() => {
     const optionByYear = new Map(yearOptions.map((option) => [option.year, option]));
@@ -238,6 +254,7 @@ export function BrandYearSetupManager({
     setSetup(bundle.reportingYear.selectedYearSetup);
     setKpiPlan(bundle.loadedKpiPlan);
     setCompetitorSetup(bundle.loadedCompetitorSetup);
+    replaceWorkbenchUrl(editorTab, bundle.reportingYear.year);
   }
 
   async function loadYear(year: number) {
@@ -561,7 +578,7 @@ export function BrandYearSetupManager({
                 : 'border-border/70 bg-transparent text-muted-foreground hover:border-primary/30 hover:bg-primary/5 hover:text-foreground'
             }`}
             disabled={pendingKey !== null}
-            onClick={() => setEditorTab('kpi')}
+            onClick={() => selectEditorTab('kpi')}
             size="sm"
             type="button"
             variant="outline"
@@ -577,7 +594,7 @@ export function BrandYearSetupManager({
                 : 'border-border/70 bg-transparent text-muted-foreground hover:border-primary/30 hover:bg-primary/5 hover:text-foreground'
             }`}
             disabled={pendingKey !== null}
-            onClick={() => setEditorTab('competitors')}
+            onClick={() => selectEditorTab('competitors')}
             size="sm"
             type="button"
             variant="outline"

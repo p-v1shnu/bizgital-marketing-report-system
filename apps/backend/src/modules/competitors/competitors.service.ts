@@ -694,24 +694,6 @@ export class CompetitorsService {
       );
     }
 
-    if (mode === CompetitorReportingMode.with_competitors) {
-      const assignments = await this.getAssignmentsForYear(
-        brand.id,
-        year,
-        effectiveMonth,
-        { legacyFallback: false }
-      );
-      const activeAssignmentCount = assignments.filter(
-        (assignment) => assignment.status === CompetitorStatus.active
-      ).length;
-
-      if (activeAssignmentCount === 0) {
-        throw new ConflictException(
-          'Assign at least one active competitor before switching this year to With Competitors.'
-        );
-      }
-    }
-
     try {
       await this.prisma.brandCompetitorYearModeChange.upsert({
         where: {

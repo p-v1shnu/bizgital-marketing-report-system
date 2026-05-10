@@ -511,7 +511,7 @@ test('admin setup can assign competitor and save assignments', async ({ page }) 
   }
 });
 
-test('year setup can switch to Without Competitors and block switching back without assignments', async () => {
+test('year setup can switch back to With Competitors before assignments are ready', async () => {
   const { year } = await findIsolatedSetupYear(680);
 
   const withoutSetup = await requestJson<CompetitorSetupResponse>(
@@ -541,18 +541,27 @@ test('year setup can switch to Without Competitors and block switching back with
   expect(competitorCheck?.required).toBe(false);
   expect(competitorCheck?.passed).toBe(true);
 
-  await expect(
-    requestJson<CompetitorSetupResponse>(
-      `/brands/${brandCode}/competitor-setup/${year}/mode`,
-      {
-        method: 'PATCH',
-        body: {
-          mode: 'with_competitors',
-          effectiveMonth: 1
-        }
+  const withSetup = await requestJson<CompetitorSetupResponse>(
+    `/brands/${brandCode}/competitor-setup/${year}/mode`,
+    {
+      method: 'PATCH',
+      body: {
+        mode: 'with_competitors',
+        effectiveMonth: 1
       }
-    )
-  ).rejects.toThrow(/Assign at least one active competitor/);
+    }
+  );
+  expect(withSetup.summary.mode).toBe('with_competitors');
+
+  const withReporting = await requestJson<ReportingListResponse>(
+    `/brands/${brandCode}/reporting-periods?year=${year}`
+  );
+  const withCompetitorCheck = withReporting.selectedYearSetup.checks.find(
+    (check) => check.key === 'competitor_assignments'
+  );
+  expect(withCompetitorCheck?.required).toBe(true);
+  expect(withCompetitorCheck?.passed).toBe(false);
+  expect(withReporting.selectedYearSetup.canCreateReport).toBe(false);
 });
 
 test('monthly monitoring checklist auto-saves and marks competitor complete', async ({
