@@ -1,14 +1,12 @@
 import Link from 'next/link';
-import { AlertCircle, ArrowRight, FolderKanban, Settings2 } from 'lucide-react';
+import { AlertCircle, FolderKanban, Settings2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import { requireAuth } from '@/lib/auth';
-import { toProtectedMediaUrl } from '@/lib/media-url';
 import type { BrandSummary, ReportingListItem } from '@/lib/reporting-api';
 import { getBrands, getReportingPeriods } from '@/lib/reporting-api';
-import { labelForState, monthLabel } from '@/lib/reporting-ui';
+import { BrandWorkspacesListClient } from './brand-workspaces-list-client';
 
 type WorkspaceRow = {
   brand: BrandSummary;
@@ -39,7 +37,7 @@ export default async function BrandWorkspacesPage({
 }: BrandWorkspacesPageProps) {
   const auth = await requireAuth('/app');
   const resolvedSearchParams = searchParams ? await searchParams : {};
-  const searchKeyword = String(resolvedSearchParams.q ?? '').trim().toLowerCase();
+  const initialSearchQuery = String(resolvedSearchParams.q ?? '').trim();
   const currentYear = new Date().getUTCFullYear();
   const allowedBrandCodes = new Set(
     auth.user.memberships.map((membership) => membership.brandCode)
@@ -69,20 +67,36 @@ export default async function BrandWorkspacesPage({
     brands.map(async (brand) => {
       try {
         const reporting = await getReportingPeriods(brand.code, currentYear);
-        const latestPeriod =
-          [...reporting.items].sort(sortPeriodsDescending).map((item) => ({
-            year: item.year,
-            month: item.month,
-            currentState: item.currentState,
-            latestVersionState: item.latestVersionState
-          }))[0] ?? null;
+        let latestPeriod: WorkspaceRow['latestPeriod'] = null;
+        let draftCount = 0;
+        let submittedCount = 0;
+
+        for (const item of reporting.items) {
+          if (item.currentDraftVersionId) {
+            draftCount += 1;
+          }
+
+          if (item.latestVersionState === 'submitted') {
+            submittedCount += 1;
+          }
+
+          if (
+            !latestPeriod ||
+            sortPeriodsDescending(item, latestPeriod) < 0
+          ) {
+            latestPeriod = {
+              year: item.year,
+              month: item.month,
+              currentState: item.currentState,
+              latestVersionState: item.latestVersionState
+            };
+          }
+        }
 
         return {
           brand,
-          draftCount: reporting.items.filter((item) => item.currentDraftVersionId).length,
-          submittedCount: reporting.items.filter(
-            (item) => item.latestVersionState === 'submitted'
-          ).length,
+          draftCount,
+          submittedCount,
           latestPeriod
         };
       } catch {
@@ -95,9 +109,6 @@ export default async function BrandWorkspacesPage({
       }
     })
   );
-  const filteredRows = searchKeyword
-    ? rows.filter(({ brand }) => brand.name.toLowerCase().includes(searchKeyword))
-    : rows;
 
   return (
     <section className="space-y-6">
@@ -145,95 +156,12 @@ export default async function BrandWorkspacesPage({
             Assigned brands
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <form action="/app" className="pb-1" method="get">
-            <Input
-              defaultValue={resolvedSearchParams.q ?? ''}
-              name="q"
-              placeholder="Search assigned brand"
-            />
-          </form>
-          {filteredRows.length === 0 ? (
-            <div className="rounded-[24px] border border-border/60 bg-background/60 px-4 py-5 text-sm text-muted-foreground">
-              {rows.length === 0
-                ? 'No brands are available in this environment yet.'
-                : 'No assigned brand matches your search.'}
-            </div>
-          ) : (
-            filteredRows.map(({ brand, draftCount, submittedCount, latestPeriod }) => {
-              const protectedBrandLogoUrl = toProtectedMediaUrl(brand.logoUrl);
-
-              return (
-                <div
-                  className="grid gap-4 rounded-[28px] border border-border/60 bg-background/60 p-4 md:grid-cols-[minmax(0,1.4fr)_120px_140px_160px_auto]"
-                  key={brand.id}
-                >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-3">
-                      {protectedBrandLogoUrl ? (
-                        <div className="size-10 overflow-hidden rounded-xl border border-border/60 bg-background/70">
-                          <img
-                            alt={`${brand.name} logo`}
-                            className="h-full w-full object-cover"
-                            src={protectedBrandLogoUrl}
-                          />
-                        </div>
-                      ) : (
-                        <div className="flex size-10 items-center justify-center rounded-xl border border-border/60 bg-background/70 text-sm font-semibold uppercase text-muted-foreground">
-                          {brand.name.slice(0, 2)}
-                        </div>
-                      )}
-                      <div className="text-lg font-semibold">{brand.name}</div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                      Drafts
-                    </div>
-                    <div className="mt-2 text-lg font-semibold">{draftCount}</div>
-                  </div>
-
-                  <div>
-                    <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                      Submitted
-                    </div>
-                    <div className="mt-2 text-lg font-semibold">{submittedCount}</div>
-                  </div>
-
-                  <div>
-                    <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                      Latest month
-                    </div>
-                    <div className="mt-2 text-sm font-medium">
-                      {latestPeriod
-                        ? monthLabel(latestPeriod.year, latestPeriod.month)
-                        : 'No reports yet'}
-                    </div>
-                    <div className="mt-1 text-xs text-muted-foreground">
-                      {labelForState(
-                        latestPeriod?.latestVersionState ?? latestPeriod?.currentState ?? null
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2 md:justify-end">
-                    {adminBrandCodes.has(brand.code) ? (
-                      <Button asChild size="sm" variant="outline">
-                        <Link href={`/app/brands/${brand.code}`}>Manage</Link>
-                      </Button>
-                    ) : null}
-                    <Button asChild size="sm">
-                      <Link href={`/app/${brand.code}/reports`}>
-                        Open workspace
-                        <ArrowRight />
-                      </Link>
-                    </Button>
-                  </div>
-                </div>
-              );
-            })
-          )}
+        <CardContent>
+          <BrandWorkspacesListClient
+            adminBrandCodes={Array.from(adminBrandCodes)}
+            initialQuery={initialSearchQuery}
+            rows={rows}
+          />
         </CardContent>
       </Card>
     </section>

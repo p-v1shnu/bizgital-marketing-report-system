@@ -14,6 +14,7 @@ type MediaPresignReadResponse = {
 };
 
 export const runtime = 'nodejs';
+const PRIVATE_MEDIA_CACHE_CONTROL = 'private, max-age=600, stale-while-revalidate=86400';
 
 function normalizeSourceParam(value: string | null) {
   const normalized = String(value ?? '').trim();
@@ -202,7 +203,7 @@ export async function GET(request: Request) {
     const fileBuffer = await readFile(targetFilePath);
     const responseHeaders = new Headers();
     responseHeaders.set('Content-Type', resolveContentTypeFromPath(targetFilePath));
-    responseHeaders.set('Cache-Control', 'private, no-store');
+    responseHeaders.set('Cache-Control', PRIVATE_MEDIA_CACHE_CONTROL);
 
     return new NextResponse(fileBuffer, {
       status: 200,
@@ -253,7 +254,7 @@ export async function GET(request: Request) {
     responseHeaders.set('Content-Type', contentType);
   }
 
-  responseHeaders.set('Cache-Control', 'private, no-store');
+  responseHeaders.set('Cache-Control', PRIVATE_MEDIA_CACHE_CONTROL);
 
   return new NextResponse(storageResponse.body, {
     status: 200,
