@@ -259,9 +259,7 @@ export function CompetitorSetupManager({
   const [catalogDraft, setCatalogDraft] = useState<CatalogDraft>(emptyCatalogDraft);
   const [deleteTargetCatalogItem, setDeleteTargetCatalogItem] =
     useState<CompetitorCatalogResponse['items'][number] | null>(null);
-  const assignmentsLocked = setup.summary.mode === 'without_competitors';
-  const assignmentLockMessage =
-    'This year is set to Without Competitors, so yearly competitor assignments are paused.';
+  const assignmentsOptional = setup.summary.mode === 'without_competitors';
 
   const assignmentIds = useMemo(
     () => setup.assignments.map((item) => item.competitor.id),
@@ -364,11 +362,6 @@ export function CompetitorSetupManager({
   }
 
   async function saveAssignments(competitorIds: string[], successMessage: string) {
-    if (assignmentsLocked) {
-      setStatus({ error: assignmentLockMessage });
-      return;
-    }
-
     setPendingKey('save-assignments');
     setStatus({ message: null, error: null });
 
@@ -409,11 +402,6 @@ export function CompetitorSetupManager({
   }
 
   async function assignCompetitor(item: CompetitorCatalogResponse['items'][number]) {
-    if (assignmentsLocked) {
-      setStatus({ error: assignmentLockMessage });
-      return;
-    }
-
     if (assignmentIds.includes(item.id)) {
       return;
     }
@@ -425,11 +413,6 @@ export function CompetitorSetupManager({
   }
 
   async function unassignCompetitor(item: CompetitorCatalogResponse['items'][number]) {
-    if (assignmentsLocked) {
-      setStatus({ error: assignmentLockMessage });
-      return;
-    }
-
     if (!assignmentIds.includes(item.id)) {
       return;
     }
@@ -444,11 +427,6 @@ export function CompetitorSetupManager({
     competitorId: string,
     status: CompetitorStatus
   ) {
-    if (assignmentsLocked) {
-      setStatus({ error: assignmentLockMessage });
-      return;
-    }
-
     setPendingKey('assignment-status');
     setStatus({ message: null, error: null });
 
@@ -745,10 +723,10 @@ export function CompetitorSetupManager({
             </div>
           ) : null}
 
-          {assignmentsLocked ? (
+          {assignmentsOptional ? (
             <div className="rounded-2xl border border-border/60 bg-background/70 px-3 py-2 text-sm text-muted-foreground">
-              Competitor assignments are locked for this year. You can still add or edit
-              competitors in the catalog for future use.
+              Competitor assignments are optional while this year is Without Competitors. You can
+              still prepare active assignments here before switching back to With Competitors.
             </div>
           ) : null}
         </CardHeader>
@@ -762,8 +740,8 @@ export function CompetitorSetupManager({
           <CardContent className="space-y-3">
             {setup.assignments.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-border/60 px-4 py-4 text-sm text-muted-foreground">
-                {assignmentsLocked
-                  ? 'No competitor assignment is required while this year is Without Competitors.'
+                {assignmentsOptional
+                  ? 'No competitor assignment is required, but you can assign competitors below to prepare for switching back to With Competitors.'
                   : 'No assigned competitor in this year.'}
               </div>
             ) : (
@@ -808,7 +786,7 @@ export function CompetitorSetupManager({
                     </Badge>
 
                     <Button
-                      disabled={pendingKey !== null || assignmentsLocked}
+                      disabled={pendingKey !== null}
                       onClick={() =>
                         void updateAssignmentStatus(
                           assignment.competitor.id,
@@ -816,7 +794,6 @@ export function CompetitorSetupManager({
                         )
                       }
                       size="sm"
-                      title={assignmentsLocked ? assignmentLockMessage : undefined}
                       type="button"
                       variant="outline"
                     >
@@ -824,16 +801,12 @@ export function CompetitorSetupManager({
                     </Button>
 
                     <Button
-                      disabled={pendingKey !== null || assignmentsLocked || !assignment.canRemove}
+                      disabled={pendingKey !== null || !assignment.canRemove}
                       onClick={() => void unassignCompetitor(catalogItem)}
                       size="sm"
                       type="button"
                       variant="outline"
-                      title={
-                        assignmentsLocked
-                          ? assignmentLockMessage
-                          : assignment.removeBlockedReason ?? undefined
-                      }
+                      title={assignment.removeBlockedReason ?? undefined}
                     >
                       <Trash2 />
                       Remove
@@ -915,11 +888,7 @@ export function CompetitorSetupManager({
                   isAssigned={assignmentIds.includes(item.id)}
                   item={item}
                   key={item.id}
-                  assignDisabledReason={
-                    assignmentsLocked && !assignmentIds.includes(item.id)
-                      ? assignmentLockMessage
-                      : null
-                  }
+                  assignDisabledReason={null}
                   onAssign={(nextItem) => void assignCompetitor(nextItem)}
                   onDelete={(nextItem) => requestDeleteCatalogItem(nextItem)}
                   onEdit={openEditModal}

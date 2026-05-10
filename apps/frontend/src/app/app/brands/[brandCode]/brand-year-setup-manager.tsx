@@ -708,6 +708,7 @@ export function BrandYearSetupManager({
           } of ${selectedYear}. Existing reports keep their current mode.`}
           error={statusError}
           onClose={() => setPendingModeChange(null)}
+          showCloseButton={false}
           title={`Switch to ${competitorModeLabel(pendingModeChange)}?`}
         >
           <div className="space-y-4">
