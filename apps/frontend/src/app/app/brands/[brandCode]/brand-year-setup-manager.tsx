@@ -477,8 +477,7 @@ export function BrandYearSetupManager({
           <div className="space-y-1">
             <div className="text-base font-semibold text-foreground">Year setup</div>
             <p className="max-w-2xl text-sm text-muted-foreground">
-              Choose the reporting year, set whether competitor tracking is required, then copy
-              setup data when you need a faster start.
+              Choose the reporting year and copy setup data when you need a faster start.
             </p>
           </div>
           <div className="flex flex-wrap justify-end gap-2">
@@ -489,10 +488,10 @@ export function BrandYearSetupManager({
           </div>
         </div>
 
-        <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(220px,0.8fr)_minmax(300px,1fr)] 2xl:grid-cols-[minmax(220px,0.72fr)_minmax(300px,0.95fr)_minmax(0,1.35fr)]">
-          <div className="rounded-[20px] border border-border/60 bg-background/70 p-3">
+        <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,260px)_auto] xl:items-end">
+          <div className="space-y-2">
             <label
-              className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground"
+              className="text-sm font-medium"
               htmlFor="year-setup-selected-year"
             >
               Selected year
@@ -512,77 +511,37 @@ export function BrandYearSetupManager({
             </Select>
           </div>
 
-          <div className="rounded-[20px] border border-border/60 bg-background/70 p-3">
-            <div className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Competitor mode
-            </div>
-            <div className="grid grid-cols-2 gap-1 rounded-2xl border border-border/60 bg-muted/20 p-1">
-              {(['with_competitors', 'without_competitors'] as const).map((mode) => (
-                <button
-                  className={`min-h-10 rounded-xl px-3 py-2 text-center text-sm font-semibold leading-tight transition ${
-                    competitorSetup.summary.mode === mode
-                      ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/20'
-                      : 'text-muted-foreground hover:bg-background/80 hover:text-foreground'
-                  }`}
-                  disabled={pendingKey !== null || !competitorSetup.summary.canChangeMode}
-                  key={mode}
-                  onClick={() => {
-                    if (competitorSetup.summary.mode !== mode) {
-                      setPendingModeChange(mode);
-                    }
-                  }}
-                  type="button"
-                >
-                  {competitorModeLabel(mode)}
-                </button>
-              ))}
-            </div>
-            {!competitorSetup.summary.canChangeMode &&
-            competitorSetup.summary.modeChangeBlockedReason ? (
-              <div className="mt-2 text-xs text-muted-foreground">
-                {competitorSetup.summary.modeChangeBlockedReason}
-              </div>
-            ) : null}
-          </div>
-
-          <div className="rounded-[20px] border border-border/60 bg-background/70 p-3 lg:col-span-2 2xl:col-span-1">
-            <div className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Copy setup from another year
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                className="justify-center"
-                disabled={pendingKey !== null}
-                onClick={() => openCopyModal('kpi')}
-                size="sm"
-                type="button"
-                variant="outline"
-              >
-                <Copy />
-                Copy KPI
-              </Button>
-              <Button
-                className="justify-center"
-                disabled={pendingKey !== null}
-                onClick={() => openCopyModal('competitors')}
-                size="sm"
-                type="button"
-                variant="outline"
-              >
-                <Copy />
-                Copy competitors
-              </Button>
-              <Button
-                className="justify-center"
-                disabled={pendingKey !== null}
-                onClick={() => openCopyModal('both')}
-                size="sm"
-                type="button"
-              >
-                <Copy />
-                Copy KPI + competitors
-              </Button>
-            </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              disabled={pendingKey !== null}
+              onClick={() => openCopyModal('kpi')}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              <Copy />
+              Copy KPI
+            </Button>
+            <Button
+              disabled={pendingKey !== null}
+              onClick={() => openCopyModal('competitors')}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              <Copy />
+              Copy competitors
+            </Button>
+            <Button
+              disabled={pendingKey !== null}
+              onClick={() => openCopyModal('both')}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              <Copy />
+              Copy KPI + competitors
+            </Button>
           </div>
         </div>
       </div>
@@ -599,7 +558,12 @@ export function BrandYearSetupManager({
             onClick={() => setEditorTab('kpi')}
             size="sm"
             type="button"
-            variant={editorTab === 'kpi' ? 'default' : 'outline'}
+            variant="outline"
+            className={
+              editorTab === 'kpi'
+                ? 'bg-background text-foreground shadow-sm shadow-black/5'
+                : undefined
+            }
           >
             KPI
           </Button>
@@ -608,7 +572,12 @@ export function BrandYearSetupManager({
             onClick={() => setEditorTab('competitors')}
             size="sm"
             type="button"
-            variant={editorTab === 'competitors' ? 'default' : 'outline'}
+            variant="outline"
+            className={
+              editorTab === 'competitors'
+                ? 'bg-background text-foreground shadow-sm shadow-black/5'
+                : undefined
+            }
           >
             Competitors
           </Button>
@@ -631,6 +600,8 @@ export function BrandYearSetupManager({
               initialSetup={competitorSetup}
               initialYear={selectedYear}
               key={`year-setup-competitor-${selectedYear}`}
+              modeChangePending={pendingKey === 'competitor-mode'}
+              onModeChangeRequest={setPendingModeChange}
               onSetupChanged={handleCompetitorSetupChanged}
               showYearPicker={false}
             />

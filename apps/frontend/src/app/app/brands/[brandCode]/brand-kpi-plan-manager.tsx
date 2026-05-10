@@ -361,7 +361,13 @@ export function BrandKpiPlanManager({
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button disabled={pendingKey !== null} onClick={openCreateModal} size="sm" type="button">
+            <Button
+              disabled={pendingKey !== null}
+              onClick={openCreateModal}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
               Add KPI
             </Button>
           </div>

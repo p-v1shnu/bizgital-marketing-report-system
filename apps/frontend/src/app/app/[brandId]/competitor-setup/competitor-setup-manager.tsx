@@ -15,6 +15,7 @@ import { Select } from '@/components/ui/select';
 import { toProtectedMediaUrl } from '@/lib/media-url';
 import type {
   CompetitorCatalogResponse,
+  CompetitorReportingMode,
   CompetitorStatus,
   CompetitorYearSetupResponse
 } from '@/lib/reporting-api';
@@ -26,6 +27,8 @@ type Props = {
   initialSetup: CompetitorYearSetupResponse;
   showYearPicker?: boolean;
   onSetupChanged?: (setup: CompetitorYearSetupResponse) => void;
+  onModeChangeRequest?: (mode: CompetitorReportingMode) => void;
+  modeChangePending?: boolean;
 };
 
 type CatalogDraft = {
@@ -118,6 +121,10 @@ function normalizeOptionalText(value: string) {
   return normalized.length > 0 ? normalized : null;
 }
 
+function competitorModeLabel(mode: CompetitorReportingMode) {
+  return mode === 'with_competitors' ? 'With Competitors' : 'Without Competitors';
+}
+
 function LogoAvatar({ name, logoUrl }: { name: string; logoUrl: string | null }) {
   const [imageLoadFailed, setImageLoadFailed] = useState(false);
   const protectedLogoUrl = toProtectedMediaUrl(logoUrl);
@@ -149,7 +156,8 @@ function CompetitorRow({
   onAssign,
   onEdit,
   onDelete,
-  hideAssign
+  hideAssign,
+  assignDisabledReason
 }: {
   item: CompetitorCatalogResponse['items'][number];
   isAssigned: boolean;
@@ -158,10 +166,12 @@ function CompetitorRow({
   onEdit: (item: CompetitorCatalogResponse['items'][number]) => void;
   onDelete: (item: CompetitorCatalogResponse['items'][number]) => void;
   hideAssign?: boolean;
+  assignDisabledReason?: string | null;
 }) {
   const isUsedByAnyBrand =
     item.usage.assignedBrandCount > 0 || item.usage.assignedYearCount > 0;
   const isDeleteDisabled = pending || isUsedByAnyBrand;
+  const isAssignDisabled = pending || isAssigned || !!assignDisabledReason;
 
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-border/60 bg-background/55 px-4 py-3">
@@ -185,13 +195,14 @@ function CompetitorRow({
         {!hideAssign ? (
           <Button
             data-testid={`add-assignment-${item.id}`}
-            disabled={pending || isAssigned}
+            disabled={isAssignDisabled}
             onClick={() => onAssign?.(item)}
             size="sm"
+            title={assignDisabledReason ?? undefined}
             type="button"
             variant="outline"
           >
-            {isAssigned ? 'Assigned' : 'Assign'}
+            {isAssigned ? 'Assigned' : assignDisabledReason ? 'Not required' : 'Assign'}
           </Button>
         ) : null}
 
@@ -226,7 +237,9 @@ export function CompetitorSetupManager({
   initialYear,
   initialSetup,
   showYearPicker = true,
-  onSetupChanged
+  onSetupChanged,
+  onModeChangeRequest,
+  modeChangePending = false
 }: Props) {
   const router = useRouter();
   const currentYear = new Date().getUTCFullYear();
@@ -246,6 +259,9 @@ export function CompetitorSetupManager({
   const [catalogDraft, setCatalogDraft] = useState<CatalogDraft>(emptyCatalogDraft);
   const [deleteTargetCatalogItem, setDeleteTargetCatalogItem] =
     useState<CompetitorCatalogResponse['items'][number] | null>(null);
+  const assignmentsLocked = setup.summary.mode === 'without_competitors';
+  const assignmentLockMessage =
+    'This year is set to Without Competitors, so yearly competitor assignments are paused.';
 
   const assignmentIds = useMemo(
     () => setup.assignments.map((item) => item.competitor.id),
@@ -340,6 +356,11 @@ export function CompetitorSetupManager({
   }
 
   async function saveAssignments(competitorIds: string[], successMessage: string) {
+    if (assignmentsLocked) {
+      setStatus({ error: assignmentLockMessage });
+      return;
+    }
+
     setPendingKey('save-assignments');
     setStatus({ message: null, error: null });
 
@@ -380,6 +401,11 @@ export function CompetitorSetupManager({
   }
 
   async function assignCompetitor(item: CompetitorCatalogResponse['items'][number]) {
+    if (assignmentsLocked) {
+      setStatus({ error: assignmentLockMessage });
+      return;
+    }
+
     if (assignmentIds.includes(item.id)) {
       return;
     }
@@ -391,6 +417,11 @@ export function CompetitorSetupManager({
   }
 
   async function unassignCompetitor(item: CompetitorCatalogResponse['items'][number]) {
+    if (assignmentsLocked) {
+      setStatus({ error: assignmentLockMessage });
+      return;
+    }
+
     if (!assignmentIds.includes(item.id)) {
       return;
     }
@@ -405,6 +436,11 @@ export function CompetitorSetupManager({
     competitorId: string,
     status: CompetitorStatus
   ) {
+    if (assignmentsLocked) {
+      setStatus({ error: assignmentLockMessage });
+      return;
+    }
+
     setPendingKey('assignment-status');
     setStatus({ message: null, error: null });
 
@@ -654,6 +690,62 @@ export function CompetitorSetupManager({
         </Card>
       ) : null}
 
+      <Card className="border-border/60 bg-background/60">
+        <CardHeader className="gap-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="space-y-1">
+              <CardTitle>Competitor reporting mode</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Choose whether this reporting year requires competitor monitoring. Catalog
+                management stays available in both modes.
+              </p>
+            </div>
+            <Badge variant="outline">{competitorModeLabel(setup.summary.mode)}</Badge>
+          </div>
+
+          <div className="grid gap-2 rounded-[20px] border border-border/60 bg-muted/20 p-1 sm:grid-cols-2">
+            {(['with_competitors', 'without_competitors'] as const).map((mode) => {
+              const isSelected = setup.summary.mode === mode;
+
+              return (
+                <button
+                  className={`rounded-2xl px-4 py-3 text-sm font-semibold transition ${
+                    isSelected
+                      ? 'border border-border bg-background/85 text-foreground shadow-sm shadow-black/5'
+                      : 'border border-transparent text-muted-foreground hover:bg-background/70 hover:text-foreground'
+                  }`}
+                  disabled={
+                    pendingKey !== null ||
+                    modeChangePending ||
+                    !setup.summary.canChangeMode ||
+                    isSelected ||
+                    !onModeChangeRequest
+                  }
+                  key={mode}
+                  onClick={() => onModeChangeRequest?.(mode)}
+                  type="button"
+                >
+                  {competitorModeLabel(mode)}
+                </button>
+              );
+            })}
+          </div>
+
+          {!setup.summary.canChangeMode && setup.summary.modeChangeBlockedReason ? (
+            <div className="rounded-2xl border border-amber-500/25 bg-amber-500/8 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
+              {setup.summary.modeChangeBlockedReason}
+            </div>
+          ) : null}
+
+          {assignmentsLocked ? (
+            <div className="rounded-2xl border border-border/60 bg-background/70 px-3 py-2 text-sm text-muted-foreground">
+              Competitor assignments are locked for this year. You can still add or edit
+              competitors in the catalog for future use.
+            </div>
+          ) : null}
+        </CardHeader>
+      </Card>
+
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <Card>
           <CardHeader>
@@ -662,7 +754,9 @@ export function CompetitorSetupManager({
           <CardContent className="space-y-3">
             {setup.assignments.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-border/60 px-4 py-4 text-sm text-muted-foreground">
-                No assigned competitor in this year.
+                {assignmentsLocked
+                  ? 'No competitor assignment is required while this year is Without Competitors.'
+                  : 'No assigned competitor in this year.'}
               </div>
             ) : (
               setup.assignments.map((assignment) => {
@@ -706,7 +800,7 @@ export function CompetitorSetupManager({
                     </Badge>
 
                     <Button
-                      disabled={pendingKey !== null}
+                      disabled={pendingKey !== null || assignmentsLocked}
                       onClick={() =>
                         void updateAssignmentStatus(
                           assignment.competitor.id,
@@ -714,6 +808,7 @@ export function CompetitorSetupManager({
                         )
                       }
                       size="sm"
+                      title={assignmentsLocked ? assignmentLockMessage : undefined}
                       type="button"
                       variant="outline"
                     >
@@ -721,12 +816,16 @@ export function CompetitorSetupManager({
                     </Button>
 
                     <Button
-                      disabled={pendingKey !== null || !assignment.canRemove}
+                      disabled={pendingKey !== null || assignmentsLocked || !assignment.canRemove}
                       onClick={() => void unassignCompetitor(catalogItem)}
                       size="sm"
                       type="button"
                       variant="outline"
-                      title={assignment.removeBlockedReason ?? undefined}
+                      title={
+                        assignmentsLocked
+                          ? assignmentLockMessage
+                          : assignment.removeBlockedReason ?? undefined
+                      }
                     >
                       <Trash2 />
                       Remove
@@ -747,6 +846,7 @@ export function CompetitorSetupManager({
                 onClick={openCreateModal}
                 size="sm"
                 type="button"
+                variant="outline"
               >
                 <Plus />
                 Add competitor
@@ -775,7 +875,12 @@ export function CompetitorSetupManager({
                 disabled={pendingKey !== null}
                 onClick={() => setCatalogTab('active')}
                 type="button"
-                variant={catalogTab === 'active' ? 'default' : 'outline'}
+                variant="outline"
+                className={
+                  catalogTab === 'active'
+                    ? 'bg-background text-foreground shadow-sm shadow-black/5'
+                    : undefined
+                }
               >
                 Active
               </Button>
@@ -783,7 +888,12 @@ export function CompetitorSetupManager({
                 disabled={pendingKey !== null}
                 onClick={() => setCatalogTab('inactive')}
                 type="button"
-                variant={catalogTab === 'inactive' ? 'default' : 'outline'}
+                variant="outline"
+                className={
+                  catalogTab === 'inactive'
+                    ? 'bg-background text-foreground shadow-sm shadow-black/5'
+                    : undefined
+                }
               >
                 Inactive
               </Button>
@@ -802,6 +912,11 @@ export function CompetitorSetupManager({
                   isAssigned={assignmentIds.includes(item.id)}
                   item={item}
                   key={item.id}
+                  assignDisabledReason={
+                    assignmentsLocked && !assignmentIds.includes(item.id)
+                      ? assignmentLockMessage
+                      : null
+                  }
                   onAssign={(nextItem) => void assignCompetitor(nextItem)}
                   onDelete={(nextItem) => requestDeleteCatalogItem(nextItem)}
                   onEdit={openEditModal}
