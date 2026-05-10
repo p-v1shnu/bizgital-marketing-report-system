@@ -1003,6 +1003,20 @@ export class CompetitorsService {
     );
 
     if (newCompetitorIds.length > 0) {
+      const modeState = await this.getYearModeState(
+        brand.id,
+        year,
+        this.getDefaultDisplayMonthForSetupYear(year)
+      );
+
+      if (modeState.mode === CompetitorReportingMode.without_competitors) {
+        throw new ConflictException(
+          'Switch this year to With Competitors before assigning competitors.'
+        );
+      }
+    }
+
+    if (newCompetitorIds.length > 0) {
       const competitors = await this.prisma.competitor.findMany({
         where: {
           id: {

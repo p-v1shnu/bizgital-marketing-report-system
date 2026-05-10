@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Pencil, Plus, Search, Trash2 } from 'lucide-react';
 
@@ -202,7 +202,7 @@ function CompetitorRow({
             type="button"
             variant="outline"
           >
-            {isAssigned ? 'Assigned' : assignDisabledReason ? 'Not required' : 'Assign'}
+            {isAssigned ? 'Assigned' : assignDisabledReason ? 'Not available' : 'Assign'}
           </Button>
         ) : null}
 
@@ -260,6 +260,15 @@ export function CompetitorSetupManager({
   const [deleteTargetCatalogItem, setDeleteTargetCatalogItem] =
     useState<CompetitorCatalogResponse['items'][number] | null>(null);
   const assignmentsOptional = setup.summary.mode === 'without_competitors';
+  const assignDisabledReason = assignmentsOptional
+    ? 'Switch this year to With Competitors before assigning competitors.'
+    : null;
+
+  useEffect(() => {
+    setSelectedYear(initialYear);
+    setMaxVisitedYear((currentMax) => Math.max(currentMax, initialYear));
+    setSetup(initialSetup);
+  }, [initialSetup, initialYear]);
 
   const assignmentIds = useMemo(
     () => setup.assignments.map((item) => item.competitor.id),
@@ -366,6 +375,16 @@ export function CompetitorSetupManager({
     setStatus({ message: null, error: null });
 
     try {
+      if (
+        assignmentsOptional &&
+        competitorIds.some((competitorId) => !assignmentIds.includes(competitorId))
+      ) {
+        setStatus({
+          error: 'Switch this year to With Competitors before assigning competitors.'
+        });
+        return;
+      }
+
       const response = await fetchWithApiBaseFallback(
         `/brands/${brandId}/competitor-setup/${selectedYear}/assignments`,
         {
@@ -689,16 +708,20 @@ export function CompetitorSetupManager({
             <Badge variant="outline">{competitorModeLabel(setup.summary.mode)}</Badge>
           </div>
 
-          <div className="grid gap-2 rounded-[20px] border border-border/60 bg-muted/20 p-1 sm:grid-cols-2">
+          <div className="grid max-w-4xl gap-3 md:grid-cols-2">
             {(['with_competitors', 'without_competitors'] as const).map((mode) => {
               const isSelected = setup.summary.mode === mode;
+              const description =
+                mode === 'with_competitors'
+                  ? 'Require assigned competitors and monthly competitor monitoring.'
+                  : 'Skip competitor monitoring for this reporting year.';
 
               return (
                 <button
-                  className={`rounded-2xl px-4 py-3 text-sm font-semibold transition ${
+                  className={`flex items-start gap-3 rounded-2xl border px-4 py-4 text-left transition ${
                     isSelected
-                      ? 'border border-border bg-background/85 text-foreground shadow-sm shadow-black/5'
-                      : 'border border-transparent text-muted-foreground hover:bg-background/70 hover:text-foreground'
+                      ? 'border-primary/45 bg-primary/10 text-foreground shadow-sm shadow-primary/10'
+                      : 'border-border/60 bg-background/55 text-muted-foreground hover:border-primary/30 hover:bg-primary/5 hover:text-foreground'
                   }`}
                   disabled={
                     pendingKey !== null ||
@@ -711,7 +734,23 @@ export function CompetitorSetupManager({
                   onClick={() => onModeChangeRequest?.(mode)}
                   type="button"
                 >
-                  {competitorModeLabel(mode)}
+                  <span
+                    className={`mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border ${
+                      isSelected ? 'border-primary bg-primary' : 'border-border'
+                    }`}
+                  >
+                    {isSelected ? (
+                      <span className="size-1.5 rounded-full bg-primary-foreground" />
+                    ) : null}
+                  </span>
+                  <span className="space-y-1">
+                    <span className="block text-sm font-semibold">
+                      {competitorModeLabel(mode)}
+                    </span>
+                    <span className="block text-xs leading-5 text-muted-foreground">
+                      {description}
+                    </span>
+                  </span>
                 </button>
               );
             })}
@@ -725,8 +764,8 @@ export function CompetitorSetupManager({
 
           {assignmentsOptional ? (
             <div className="rounded-2xl border border-border/60 bg-background/70 px-3 py-2 text-sm text-muted-foreground">
-              Competitor assignments are optional while this year is Without Competitors. You can
-              still prepare active assignments here before switching back to With Competitors.
+              Competitor assignments are paused while this year is Without Competitors. You can
+              still manage the catalog, but assignment starts after switching to With Competitors.
             </div>
           ) : null}
         </CardHeader>
@@ -741,7 +780,7 @@ export function CompetitorSetupManager({
             {setup.assignments.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-border/60 px-4 py-4 text-sm text-muted-foreground">
                 {assignmentsOptional
-                  ? 'No competitor assignment is required, but you can assign competitors below to prepare for switching back to With Competitors.'
+                  ? 'No competitor assignment is required. Switch to With Competitors when this year needs competitor tracking again.'
                   : 'No assigned competitor in this year.'}
               </div>
             ) : (
@@ -888,7 +927,7 @@ export function CompetitorSetupManager({
                   isAssigned={assignmentIds.includes(item.id)}
                   item={item}
                   key={item.id}
-                  assignDisabledReason={null}
+                  assignDisabledReason={assignDisabledReason}
                   onAssign={(nextItem) => void assignCompetitor(nextItem)}
                   onDelete={(nextItem) => requestDeleteCatalogItem(nextItem)}
                   onEdit={openEditModal}
