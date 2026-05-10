@@ -17,6 +17,9 @@ start_app() {
 }
 
 rebuild() {
+  if [ -f prisma/schema.prisma ]; then
+    npx prisma generate --schema prisma/schema.prisma
+  fi
   tsc -p tsconfig.build.json
   touch "$stamp_file"
 }
@@ -27,7 +30,7 @@ rebuild || exit 1
 start_app
 
 while true; do
-  if find src -type f -name '*.ts' -newer "$stamp_file" | grep -q .; then
+  if find src prisma/schema.prisma -type f -newer "$stamp_file" | grep -q .; then
     echo "[dev:docker] Source change detected. Rebuilding backend..."
     if rebuild; then
       echo "[dev:docker] Rebuild succeeded. Restarting backend..."
