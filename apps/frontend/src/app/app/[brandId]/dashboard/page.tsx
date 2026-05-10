@@ -20,6 +20,7 @@ import { getAuthContext, getMembershipReportAccess } from '@/lib/auth';
 import type {
   CompetitorOverviewResponse,
   QuestionOverviewResponse,
+  QuestionSetupResponse,
   ReportingListItem,
   TopContentOverviewResponse
 } from '@/lib/reporting-api';
@@ -29,6 +30,7 @@ import {
   getCompetitorOverview,
   getDatasetOverview,
   getMetricsOverview,
+  getQuestionSetup,
   getQuestionOverview,
   getReportingPeriods,
   getTopContentOverview
@@ -321,6 +323,55 @@ function getChangeToneClassName(changePercent: number | null) {
   }
 
   return 'text-rose-700';
+}
+
+function buildQuestionDistributionPoints(
+  overview: QuestionOverviewResponse,
+  questionSetup: QuestionSetupResponse | null
+): DashboardQuestionCategoryDistributionPoint[] {
+  const merged = new Map<
+    string,
+    DashboardQuestionCategoryDistributionPoint & { displayOrder: number }
+  >();
+
+  overview.items.forEach((item) => {
+    merged.set(item.question.id, {
+      id: item.activation.id,
+      label: item.question.text,
+      count: item.entry.mode === 'no_questions' ? 0 : item.entry.questionCount,
+      displayOrder: item.activation.displayOrder
+    });
+  });
+
+  questionSetup?.assignments
+    .filter(
+      (assignment) =>
+        assignment.status === 'active' && assignment.question.status === 'active'
+    )
+    .forEach((assignment) => {
+      if (merged.has(assignment.question.id)) {
+        return;
+      }
+
+      merged.set(assignment.question.id, {
+        id: assignment.id,
+        label: assignment.question.text,
+        count: 0,
+        displayOrder: assignment.displayOrder
+      });
+    });
+
+  return Array.from(merged.values())
+    .sort((left, right) => {
+      if (right.count !== left.count) {
+        return right.count - left.count;
+      }
+      if (left.displayOrder !== right.displayOrder) {
+        return left.displayOrder - right.displayOrder;
+      }
+      return left.label.localeCompare(right.label);
+    })
+    .map(({ displayOrder: _displayOrder, ...point }) => point);
 }
 
 function buildDashboardHref(
@@ -924,6 +975,7 @@ export default async function DashboardPage({
   }));
   let selectedTopContentOverview: TopContentOverviewResponse | null = null;
   let selectedQuestionOverview: QuestionOverviewResponse | null = null;
+  let selectedQuestionSetup: QuestionSetupResponse | null = null;
   let selectedCompetitorOverview: CompetitorOverviewResponse | null = null;
   let selectedRemarkItems: DashboardRemarkMetricItem[] | null = null;
   let selectedIsFirstReportingMonth = false;
@@ -963,12 +1015,13 @@ export default async function DashboardPage({
         ? selectedContentPeriod.latestVersionId
         : selectedContentPeriod.currentApprovedVersionId;
 
-    const [topResult, questionResult, competitorResult, previousCompetitorResult] =
+    const [topResult, questionResult, questionSetupResult, competitorResult, previousCompetitorResult] =
       await Promise.allSettled([
         getTopContentOverview(brandId, selectedContentPeriod.id, {
           reportVersionId: selectedContentReportVersionId
         }),
         getQuestionOverview(brandId, selectedContentPeriod.id),
+        getQuestionSetup(brandId),
         getCompetitorOverview(brandId, selectedContentPeriod.id),
         previousVisiblePeriod
           ? getCompetitorOverview(brandId, previousVisiblePeriod.id)
@@ -985,6 +1038,10 @@ export default async function DashboardPage({
       selectedQuestionOverview = questionResult.value;
     } else {
       selectedContentLoadErrors.push('Customer questions');
+    }
+
+    if (questionSetupResult.status === 'fulfilled') {
+      selectedQuestionSetup = questionSetupResult.value;
     }
 
     if (competitorResult.status === 'fulfilled') {
@@ -2151,53 +2208,40 @@ export default async function DashboardPage({
                         </CardTitle>
                       </CardHeader>
                       <CardContent>
-                        {selectedQuestionOverview ? (
-                          selectedQuestionOverview.items.length === 0 ? (
-                            <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-4 text-sm text-slate-600">
-                              No question assignment for this month.
-                            </div>
-                          ) : (
-                            <div className="space-y-4">
-                              {(() => {
-                                const questionDistributionPoints: DashboardQuestionCategoryDistributionPoint[] =
-                                  selectedQuestionOverview.items
-                                    .map((item) => ({
-                                      id: item.activation.id,
-                                      label: item.question.text,
-                                      count:
-                                        item.entry.mode === 'no_questions'
-                                          ? 0
-                                          : item.entry.questionCount
-                                    }))
-                                    .sort((left, right) => right.count - left.count);
+                        {selectedQuestionOverview ? (() => {
+                          const questionDistributionPoints = buildQuestionDistributionPoints(
+                            selectedQuestionOverview,
+                            selectedQuestionSetup
+                          );
 
-                                return (
-                                  <article className="space-y-3 rounded-2xl border border-slate-200 bg-white p-3">
-                                    <div className="flex flex-wrap items-center justify-between gap-2">
-                                      <h3 className="text-base font-semibold">
-                                        Question category chart ({selectedContentPeriodLabel ?? 'This month'})
-                                      </h3>
-                                      <div className="flex items-center gap-2">
-                                        <Badge className={contentWhiteBadgeClassName} variant="outline">
-                                          {questionDistributionPoints.length} category(s)
-                                        </Badge>
-                                        <DashboardChartCopyButton targetId="dashboard-content-customer-questions-category-chart-canvas" />
-                                      </div>
-                                    </div>
-                                    {questionDistributionPoints.length === 0 ? (
-                                      <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-4 text-sm text-slate-600">
-                                        No category data for this month.
-                                      </div>
-                                    ) : (
-                                      <DashboardQuestionCategoryDistributionChart
-                                        captureTargetId="dashboard-content-customer-questions-category-chart-canvas"
-                                        periodLabel={selectedContentPeriodLabel}
-                                        points={questionDistributionPoints}
-                                      />
-                                    )}
-                                  </article>
-                                );
-                              })()}
+                          if (questionDistributionPoints.length === 0) {
+                            return (
+                              <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-4 text-sm text-slate-600">
+                                No question assignment for this month.
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div className="space-y-4">
+                              <article className="space-y-3 rounded-2xl border border-slate-200 bg-white p-3">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <h3 className="text-base font-semibold">
+                                    Question category chart ({selectedContentPeriodLabel ?? 'This month'})
+                                  </h3>
+                                  <div className="flex items-center gap-2">
+                                    <Badge className={contentWhiteBadgeClassName} variant="outline">
+                                      {questionDistributionPoints.length} category(s)
+                                    </Badge>
+                                    <DashboardChartCopyButton targetId="dashboard-content-customer-questions-category-chart-canvas" />
+                                  </div>
+                                </div>
+                                <DashboardQuestionCategoryDistributionChart
+                                  captureTargetId="dashboard-content-customer-questions-category-chart-canvas"
+                                  periodLabel={selectedContentPeriodLabel}
+                                  points={questionDistributionPoints}
+                                />
+                              </article>
 
                               <article className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/40 p-2.5">
                                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2205,33 +2249,23 @@ export default async function DashboardPage({
                                     Category count summary
                                   </h3>
                                   <Badge className={contentWhiteBadgeClassName} variant="outline">
-                                    {selectedQuestionOverview.items.length} category(s)
+                                    {questionDistributionPoints.length} category(s)
                                   </Badge>
                                 </div>
                                 <div className="flex flex-wrap items-center gap-2">
-                                  {selectedQuestionOverview.items
-                                    .map((item) => ({
-                                      id: item.activation.id,
-                                      label: item.question.text,
-                                      count:
-                                        item.entry.mode === 'no_questions'
-                                          ? 0
-                                          : item.entry.questionCount
-                                    }))
-                                    .sort((left, right) => right.count - left.count)
-                                    .map((item) => (
-                                      <div
-                                        className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5"
-                                        key={`question-count-${item.id}`}
-                                      >
-                                        <div className="max-w-[220px] truncate text-xs font-medium text-slate-700">
-                                          {item.label}
-                                        </div>
-                                        <div className="text-sm font-semibold text-slate-900">
-                                          {formatValue(item.count)}
-                                        </div>
+                                  {questionDistributionPoints.map((item) => (
+                                    <div
+                                      className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5"
+                                      key={`question-count-${item.id}`}
+                                    >
+                                      <div className="max-w-[220px] truncate text-xs font-medium text-slate-700">
+                                        {item.label}
                                       </div>
-                                    ))}
+                                      <div className="text-sm font-semibold text-slate-900">
+                                        {formatValue(item.count)}
+                                      </div>
+                                    </div>
+                                  ))}
                                 </div>
                               </article>
 
@@ -2241,8 +2275,8 @@ export default async function DashboardPage({
                                 screenshots={selectedQuestionOverview.highlights.screenshots}
                               />
                             </div>
-                          )
-                        ) : (
+                          );
+                        })() : (
                           <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-4 text-sm text-slate-600">
                             Customer question overview is unavailable for this month.
                           </div>
