@@ -280,11 +280,12 @@ export function DashboardQuestionCategoryDistributionChart({
 
                   const { lines } = wrapLabelToTwoLines(categoryLabel, labelMaxCharsPerLine);
                   const hasSecondLine = !!lines[1];
-                  const lineOffset = Math.max(6, Math.round(labelTextSize * 0.5));
-                  const firstLineDy = hasSecondLine ? -lineOffset : 0;
-                  const secondLineDy = Math.max(11, Math.round(labelTextSize * 0.95));
+                  const lineHeight = Math.max(11, Math.round(labelTextSize * 0.95));
+                  const gapAboveBar = Math.max(8, Math.round(labelTextSize * 0.55));
                   const labelX = rawX + 4;
-                  const labelY = rawY - Math.max(4, Math.round(labelTextSize * 0.3));
+                  const labelY = hasSecondLine
+                    ? rawY - gapAboveBar - lineHeight
+                    : rawY - gapAboveBar;
 
                   return (
                     <g transform={`translate(${labelX},${labelY})`}>
@@ -295,11 +296,11 @@ export function DashboardQuestionCategoryDistributionChart({
                         fontWeight={700}
                         textAnchor="start"
                       >
-                        <tspan dy={firstLineDy} x={0}>
+                        <tspan x={0}>
                           {lines[0]}
                         </tspan>
                         {hasSecondLine ? (
-                          <tspan dy={secondLineDy} x={0}>
+                          <tspan dy={lineHeight} x={0}>
                             {lines[1]}
                           </tspan>
                         ) : null}
