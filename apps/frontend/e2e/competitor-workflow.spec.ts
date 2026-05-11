@@ -363,7 +363,9 @@ async function prepareYearSetup(targetYear: number): Promise<{
       const relatedProductField =
         options.fields.find((field) => field.key === 'related_product') ?? null;
       const hasActiveRelatedProduct =
-        relatedProductField?.options.some((option) => option.status === 'active') ??
+        relatedProductField?.options.some(
+          (option) => option.status === 'active' && option.valueKey !== 'all'
+        ) ??
         false;
 
       if (!hasActiveRelatedProduct) {
