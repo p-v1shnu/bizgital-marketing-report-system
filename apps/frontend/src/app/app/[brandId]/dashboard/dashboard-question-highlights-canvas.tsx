@@ -19,6 +19,7 @@ type Props = {
   screenshots: ScreenshotItem[];
   highlightNote?: string | null;
   captureTargetId?: string;
+  noQuestionsThisMonth?: boolean;
 };
 
 function slotClassName(index: number, count: number) {
@@ -52,7 +53,8 @@ function slotClassName(index: number, count: number) {
 export function DashboardQuestionHighlightsCanvas({
   screenshots,
   highlightNote,
-  captureTargetId
+  captureTargetId,
+  noQuestionsThisMonth = false
 }: Props) {
   const { contentCanvasRatio, contentNoteScale } = useDashboardGlobalKpiControls();
   const orderedScreenshots = useMemo(
@@ -85,8 +87,11 @@ export function DashboardQuestionHighlightsCanvas({
     return normalizedHighlightNote;
   }, [normalizedHighlightNote]);
   const hasHighlightNote = normalizedHighlightNote.length > 0;
-  const shouldShowCanvas = orderedScreenshots.length > 0 || hasHighlightNote;
+  const shouldShowCanvas = orderedScreenshots.length > 0 || hasHighlightNote || noQuestionsThisMonth;
   const noteTypography = getDashboardContentNoteTypography(contentNoteScale);
+  const emptyStateText = noQuestionsThisMonth
+    ? 'No questions this month'
+    : 'No highlight screenshot';
 
   return (
     <article className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
@@ -94,7 +99,9 @@ export function DashboardQuestionHighlightsCanvas({
         <h3 className="text-base font-semibold">Highlight screenshots</h3>
         <div className="flex items-center gap-2">
           <span className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700">
-            {orderedScreenshots.length} screenshot(s)
+            {noQuestionsThisMonth && orderedScreenshots.length === 0
+              ? 'Not required'
+              : `${orderedScreenshots.length} screenshot(s)`}
           </span>
           {captureTargetId ? <DashboardChartCopyButton targetId={captureTargetId} /> : null}
         </div>
@@ -102,7 +109,7 @@ export function DashboardQuestionHighlightsCanvas({
 
       {!shouldShowCanvas ? (
         <div className="flex h-48 items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white text-sm text-slate-500">
-          No highlight screenshot
+          {emptyStateText}
         </div>
       ) : (
         <div className="rounded-2xl border border-slate-200 bg-white p-3">
@@ -171,8 +178,8 @@ export function DashboardQuestionHighlightsCanvas({
                     </div>
                   )
                 ) : (
-                  <div className="flex h-full items-center justify-center text-sm text-slate-500">
-                    No highlight screenshot
+                  <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 text-center text-sm text-slate-500">
+                    {emptyStateText}
                   </div>
                 )}
               </div>

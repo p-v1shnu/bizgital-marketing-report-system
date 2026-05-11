@@ -2220,6 +2220,11 @@ export default async function DashboardPage({
                             selectedQuestionOverview,
                             selectedQuestionSetup
                           );
+                          const noQuestionsThisMonth =
+                            selectedQuestionOverview.items.length > 0 &&
+                            selectedQuestionOverview.items.every(
+                              (item) => item.entry.mode === 'no_questions'
+                            );
 
                           if (questionDistributionPoints.length === 0) {
                             return (
@@ -2279,6 +2284,7 @@ export default async function DashboardPage({
                               <DashboardQuestionHighlightsCanvas
                                 captureTargetId="dashboard-content-customer-questions-canvas"
                                 highlightNote={selectedQuestionOverview.highlights.note}
+                                noQuestionsThisMonth={noQuestionsThisMonth}
                                 screenshots={selectedQuestionOverview.highlights.screenshots}
                               />
                             </div>
