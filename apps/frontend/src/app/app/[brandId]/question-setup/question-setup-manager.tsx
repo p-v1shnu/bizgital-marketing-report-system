@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { ArrowDown, ArrowUp, Plus, Search, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, CircleHelp, Plus, Search, Trash2, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,6 +14,86 @@ type Props = {
 };
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? '/api';
+const DESCRIPTION_PREVIEW_LENGTH = 90;
+
+function getDescriptionPreview(description: string) {
+  const normalized = description.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= DESCRIPTION_PREVIEW_LENGTH) {
+    return {
+      isTruncated: false,
+      text: normalized
+    };
+  }
+
+  return {
+    isTruncated: true,
+    text: `${normalized.slice(0, DESCRIPTION_PREVIEW_LENGTH).trimEnd()}...`
+  };
+}
+
+function QuestionDescriptionPreview({
+  description,
+  isOpen,
+  onClose,
+  onToggle,
+  title
+}: {
+  description: string | null;
+  isOpen: boolean;
+  onClose: () => void;
+  onToggle: () => void;
+  title: string;
+}) {
+  if (!description?.trim()) {
+    return null;
+  }
+
+  const preview = getDescriptionPreview(description);
+
+  return (
+    <div className="relative mt-1 max-w-xl text-sm text-muted-foreground">
+      <span>{preview.text}</span>
+      {preview.isTruncated ? (
+        <>
+          <button
+            aria-label={`Show full description for ${title}`}
+            className="ml-2 inline-flex size-6 align-middle items-center justify-center rounded-full border border-border/60 bg-background/70 text-muted-foreground transition hover:border-primary/40 hover:text-foreground"
+            onClick={onToggle}
+            type="button"
+          >
+            <CircleHelp className="size-3.5" />
+          </button>
+          {isOpen ? (
+            <div
+              className="absolute left-0 top-full z-40 mt-2 w-[min(380px,calc(100vw-48px))] rounded-2xl border border-border/70 bg-popover p-4 text-popover-foreground shadow-xl"
+              role="dialog"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    Description
+                  </div>
+                  <div className="mt-1 text-sm font-semibold text-foreground">{title}</div>
+                </div>
+                <button
+                  aria-label="Close description"
+                  className="inline-flex size-7 shrink-0 items-center justify-center rounded-full border border-border/60 text-muted-foreground transition hover:text-foreground"
+                  onClick={onClose}
+                  type="button"
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
+              <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
+                {description}
+              </p>
+            </div>
+          ) : null}
+        </>
+      ) : null}
+    </div>
+  );
+}
 
 function parseErrorMessage(payload: unknown, fallback: string) {
   if (
@@ -43,6 +123,7 @@ export function QuestionSetupManager({ brandId, initialSetup }: Props) {
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
+  const [openDescriptionId, setOpenDescriptionId] = useState<string | null>(null);
 
   const assignmentQuestionIds = useMemo(
     () => setup.assignments.map(item => item.question.id),
@@ -160,18 +241,26 @@ export function QuestionSetupManager({ brandId, initialSetup }: Props) {
             ) : (
               setup.assignments.map((item, index) => (
                 <div
-                  className="flex items-start gap-2 rounded-2xl border border-border/60 bg-background/55 px-3 py-3"
+                  className={`relative flex items-start gap-2 rounded-2xl border border-border/60 bg-background/55 px-3 py-3 ${
+                    openDescriptionId === item.question.id ? 'z-30' : 'z-0'
+                  }`}
                   key={item.id}
                 >
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium text-foreground">
                       {item.question.text}
                     </div>
-                    {item.question.description ? (
-                      <div className="mt-1 text-sm text-muted-foreground">
-                        {item.question.description}
-                      </div>
-                    ) : null}
+                    <QuestionDescriptionPreview
+                      description={item.question.description}
+                      isOpen={openDescriptionId === item.question.id}
+                      onClose={() => setOpenDescriptionId(null)}
+                      onToggle={() =>
+                        setOpenDescriptionId(current =>
+                          current === item.question.id ? null : item.question.id
+                        )
+                      }
+                      title={item.question.text}
+                    />
                     {!item.canRemove && item.removeBlockedReason ? (
                       <div className="mt-1 text-xs text-amber-600 dark:text-amber-300">
                         {item.removeBlockedReason}
@@ -244,16 +333,22 @@ export function QuestionSetupManager({ brandId, initialSetup }: Props) {
             ) : (
               filteredAvailable.map(item => (
                 <div
-                  className="flex items-center gap-2 rounded-2xl border border-border/60 bg-background/55 px-3 py-3"
+                  className={`relative flex items-center gap-2 rounded-2xl border border-border/60 bg-background/55 px-3 py-3 ${
+                    openDescriptionId === item.id ? 'z-30' : 'z-0'
+                  }`}
                   key={item.id}
                 >
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium text-foreground">{item.text}</div>
-                    {item.description ? (
-                      <div className="mt-1 text-sm text-muted-foreground">
-                        {item.description}
-                      </div>
-                    ) : null}
+                    <QuestionDescriptionPreview
+                      description={item.description}
+                      isOpen={openDescriptionId === item.id}
+                      onClose={() => setOpenDescriptionId(null)}
+                      onToggle={() =>
+                        setOpenDescriptionId(current => (current === item.id ? null : item.id))
+                      }
+                      title={item.text}
+                    />
                     <div className="text-xs text-muted-foreground">
                       {item.usage.assignedBrandCount} brand(s) using
                     </div>
