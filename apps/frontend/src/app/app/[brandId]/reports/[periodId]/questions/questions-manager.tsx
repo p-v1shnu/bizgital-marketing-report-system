@@ -1270,8 +1270,7 @@ export function QuestionsManager({
                       const nextOptional = event.currentTarget.checked;
                       updateHighlights((current) => ({
                         ...current,
-                        noteOptional: nextOptional,
-                        note: nextOptional ? '' : current.note
+                        noteOptional: nextOptional
                       }));
                     }}
                     type="checkbox"
@@ -1295,7 +1294,7 @@ export function QuestionsManager({
                 allCategoriesHaveNoQuestions
                   ? NO_QUESTIONS_HIGHLIGHT_NOTE
                   : highlightDraft.noteOptional
-                    ? 'Rich note is marked optional for this report.'
+                    ? 'Rich note is optional. Uncheck to edit preserved text.'
                   : 'Write bullet points, summary, translation, or leave blank.'
               }
               value={highlightDraft.note}

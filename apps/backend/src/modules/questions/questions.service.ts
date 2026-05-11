@@ -722,7 +722,6 @@ export class QuestionsService {
     }
 
     const normalized = this.normalizeEntryInput(input);
-    const relatedProductOptions = await this.listQuestionRelatedProductOptions(brand.id);
     await this.mediaService.assertManagedPublicUrlsExist(
       normalized.screenshots ?? [],
       'Question evidence screenshot'
@@ -788,6 +787,10 @@ export class QuestionsService {
           normalized.screenshots !== null
             ? await this.loadScreenshotUrlsForEvidence(evidence.id, tx)
             : [];
+        const relatedProductOptions = await this.listQuestionRelatedProductOptions(
+          brand.id,
+          tx
+        );
 
         await tx.$executeRawUnsafe(
           'UPDATE question_evidence SET mode = ?, question_count = ? WHERE id = ?',
@@ -1653,9 +1656,10 @@ export class QuestionsService {
   }
 
   private async listQuestionRelatedProductOptions(
-    brandId: string
+    brandId: string,
+    client: QuestionsPersistenceClient = this.prisma
   ): Promise<RelatedProductOption[]> {
-    const options = await this.prisma.brandDropdownOption.findMany({
+    const options = await client.brandDropdownOption.findMany({
       where: {
         brandId,
         fieldKey: BrandDropdownFieldKey.related_product,

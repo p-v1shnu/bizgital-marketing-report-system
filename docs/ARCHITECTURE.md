@@ -152,6 +152,15 @@ Responsibilities:
 - question evidence
 - media metadata
 
+### `QuestionsModule`
+
+Responsibilities:
+
+- question catalog and per-brand question assignment setup
+- monthly question monitoring entries and highlight screenshots
+- per-entry related product breakdown with deprecation guard
+- `noteOptional` toggle on highlight rich note as a per-version flag
+
 ### `CompetitorsModule`
 
 Responsibilities:

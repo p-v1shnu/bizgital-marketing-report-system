@@ -500,3 +500,24 @@ Using this vocabulary consistently across API, UI, schema, and documentation wil
   - Review readiness checks omit 'competitor_evidence_complete'
   - `/competitors` page shows a "not required" placeholder
   - Dashboard competitor section shows "This month does not use competitor tracking"
+
+## 15. Question Related Product Breakdown
+
+Each question monitoring entry tracks an optional per-product breakdown of the question count for that month.
+
+- A question entry has `questionCount`, for example "12 questions this month"
+- The breakdown table stores how many of those 12 belong to each related product, for example "Coffee: 5, Tea: 3, Other/Unspecified: 4"
+- "Other/Unspecified" is implicit: `questionCount - sum(breakdown.questionCount)` and is never stored as a row
+- Each brand has a system Related Product option "All" with `valueKey: 'all'`
+  - It cannot be renamed, disabled, or deleted
+  - It is excluded from breakdown choices and used only as a marker in CSV imports to indicate "this post mentions all products"
+  - Year setup readiness requires at least one non-"All" Related Product option
+- Breakdown rows in the dashboard "Product mentions by post" card count post mentions, not unique posts
+- One post tagged with multiple products increments each product's count separately, so the sum may exceed total post count
+
+Constraints:
+
+- Backend rejects `sum(breakdown.questionCount) > entry.questionCount`
+- Backend rejects adding a deprecated option as a new breakdown row, but allows re-saving existing breakdown rows that reference deprecated options
+- Deleting a Related Product option is blocked if it is used in any approved report's questions
+- Deleting a Related Product option is blocked if it is referenced in any current breakdown row

@@ -5,6 +5,7 @@ import {
   Eye,
   FileBarChart2,
   Filter,
+  Info,
   Layers3,
   Megaphone,
   Palette,
@@ -2034,8 +2035,15 @@ export default async function DashboardPage({
 
                           <article className={contentSurfaceCardClassName}>
                             <div className="flex items-center justify-between gap-3">
-                              <div className="text-xs uppercase tracking-[0.12em] text-slate-500">
-                                Product mentions by post
+                              <div className="flex items-center gap-1.5 text-xs uppercase tracking-[0.12em] text-slate-500">
+                                <span>Product mentions by post</span>
+                                <span
+                                  aria-label="Counts post mentions, not unique posts. One post tagged with multiple products increments each product's count."
+                                  className="inline-flex"
+                                  title="Counts post mentions, not unique posts. One post tagged with multiple products increments each product's count."
+                                >
+                                  <Info aria-hidden="true" className="h-3.5 w-3.5 text-slate-400" />
+                                </span>
                               </div>
                               <Package className="h-4 w-4 text-orange-700" />
                             </div>
