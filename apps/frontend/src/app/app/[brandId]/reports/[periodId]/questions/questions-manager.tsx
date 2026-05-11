@@ -703,7 +703,9 @@ export function QuestionsManager({
 
                   return (
                     <div
-                      className="grid gap-3 px-4 py-4 md:grid-cols-[minmax(240px,1fr)_minmax(360px,1.2fr)_140px_220px] md:items-center"
+                      className={`relative grid gap-3 px-4 py-4 md:grid-cols-[minmax(240px,1fr)_minmax(360px,1.2fr)_140px_220px] md:items-center ${
+                        openDescriptionActivationId === activationId ? 'z-40' : 'z-0'
+                      }`}
                       key={activationId}
                     >
                       <div className="space-y-1">
