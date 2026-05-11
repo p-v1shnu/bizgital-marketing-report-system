@@ -1168,6 +1168,7 @@ export type QuestionOverviewResponse = {
     valueKey: string;
     label: string;
     sortOrder: number;
+    status: CompanyFormatOptionStatus;
   }>;
   items: Array<{
     activation: {

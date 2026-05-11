@@ -38,6 +38,7 @@ export type QuestionOverviewResponse = {
     valueKey: string;
     label: string;
     sortOrder: number;
+    status: 'active' | 'deprecated';
   }>;
   items: Array<{
     activation: {

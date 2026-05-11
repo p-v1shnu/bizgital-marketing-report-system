@@ -271,7 +271,13 @@ export function QuestionsManager({
   const [openProductBreakdownActivationIds, setOpenProductBreakdownActivationIds] = useState<
     Record<string, boolean>
   >({});
-  const relatedProductOptions = initialOverview.relatedProductOptions;
+  const [relatedProductOptions, setRelatedProductOptions] = useState(
+    initialOverview.relatedProductOptions
+  );
+  const activeRelatedProductOptions = useMemo(
+    () => relatedProductOptions.filter(option => option.status === 'active'),
+    [relatedProductOptions]
+  );
 
   const entryTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -283,6 +289,10 @@ export function QuestionsManager({
   useEffect(() => {
     itemsRef.current = items;
   }, [items]);
+
+  useEffect(() => {
+    setRelatedProductOptions(initialOverview.relatedProductOptions);
+  }, [initialOverview.relatedProductOptions]);
 
   useEffect(() => {
     draftRef.current = draftByActivation;
@@ -1091,8 +1101,10 @@ export function QuestionsManager({
                                 </Button>
                                 <Button
                                   disabled={
-                                    relatedProductOptions.length === 0 ||
-                                    draft.relatedProductBreakdown.length >= relatedProductOptions.length
+                                    activeRelatedProductOptions.length === 0 ||
+                                    activeRelatedProductOptions.every(option =>
+                                      selectedProductIds.has(option.id)
+                                    )
                                   }
                                   onClick={() =>
                                     updateDraft(activationId, (current) => ({
@@ -1148,11 +1160,15 @@ export function QuestionsManager({
                                     <option value="">Choose product...</option>
                                     {relatedProductOptions.map(option => {
                                       const disabled =
-                                        selectedProductIds.has(option.id) &&
-                                        option.id !== entry.relatedProductOptionId;
+                                        option.status !== 'active'
+                                          ? option.id !== entry.relatedProductOptionId
+                                          : selectedProductIds.has(option.id) &&
+                                            option.id !== entry.relatedProductOptionId;
                                       return (
                                         <option disabled={disabled} key={option.id} value={option.id}>
-                                          {option.label}
+                                          {option.status === 'active'
+                                            ? option.label
+                                            : `${option.label} (deprecated)`}
                                         </option>
                                       );
                                     })}

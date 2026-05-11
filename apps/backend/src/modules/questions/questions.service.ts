@@ -38,7 +38,9 @@ type RelatedProductOption = {
   valueKey: string;
   label: string;
   sortOrder: number;
+  status: BrandDropdownOptionStatus;
 };
+type QuestionsPersistenceClient = PrismaService | Prisma.TransactionClient;
 type NormalizedRelatedProductBreakdownItem = {
   relatedProductOptionId: string;
   valueKey: string;
@@ -732,26 +734,6 @@ export class QuestionsService {
       'Question evidence screenshot'
     );
 
-    const existing = await this.prisma.questionEvidence.findUnique({
-      where: {
-        question_evidence_version_activation_unique: {
-          reportVersionId: currentDraft.id,
-          brandQuestionActivationId: activationId
-        }
-      },
-      select: {
-        id: true,
-        displayOrder: true
-      }
-    });
-
-    const nextDisplayOrder =
-      (await this.prisma.questionEvidence.count({
-        where: {
-          reportVersionId: currentDraft.id
-        }
-      })) + 1;
-
     const legacyTitle =
       normalized.mode === 'no_questions'
         ? 'No questions this month'
@@ -760,31 +742,94 @@ export class QuestionsService {
       normalized.note ??
       (normalized.mode === 'no_questions' ? 'No questions this month.' : '');
 
-    let evidence: { id: string };
+    let result!: { evidence: { id: string }; existingScreenshotUrls: string[] };
     try {
-      evidence = await this.prisma.questionEvidence.upsert({
-        where: {
-          question_evidence_version_activation_unique: {
-            reportVersionId: currentDraft.id,
-            brandQuestionActivationId: activationId
+      result = await this.prisma.$transaction(async (tx) => {
+        const existing = await tx.questionEvidence.findUnique({
+          where: {
+            question_evidence_version_activation_unique: {
+              reportVersionId: currentDraft.id,
+              brandQuestionActivationId: activationId
+            }
+          },
+          select: {
+            id: true,
+            displayOrder: true
           }
-        },
-        update: {
-          title: legacyTitle,
-          responseNote: legacyNote,
-          postUrl: null
-        },
-        create: {
-          reportVersionId: currentDraft.id,
-          brandQuestionActivationId: activationId,
-          title: legacyTitle,
-          responseNote: legacyNote,
-          postUrl: null,
-          displayOrder: existing?.displayOrder ?? nextDisplayOrder
-        },
-        select: {
-          id: true
+        });
+
+        const nextDisplayOrder =
+          (await tx.questionEvidence.count({
+            where: {
+              reportVersionId: currentDraft.id
+            }
+          })) + 1;
+
+        const evidence = await tx.questionEvidence.upsert({
+          where: {
+            question_evidence_version_activation_unique: {
+              reportVersionId: currentDraft.id,
+              brandQuestionActivationId: activationId
+            }
+          },
+          update: {
+            title: legacyTitle,
+            responseNote: legacyNote,
+            postUrl: null
+          },
+          create: {
+            reportVersionId: currentDraft.id,
+            brandQuestionActivationId: activationId,
+            title: legacyTitle,
+            responseNote: legacyNote,
+            postUrl: null,
+            displayOrder: existing?.displayOrder ?? nextDisplayOrder
+          },
+          select: {
+            id: true
+          }
+        });
+
+        const existingScreenshotUrls =
+          normalized.screenshots !== null
+            ? await this.loadScreenshotUrlsForEvidence(evidence.id, tx)
+            : [];
+
+        await tx.$executeRawUnsafe(
+          'UPDATE question_evidence SET mode = ?, question_count = ? WHERE id = ?',
+          normalized.mode,
+          normalized.questionCount,
+          evidence.id
+        );
+        if (normalized.screenshots !== null) {
+          await tx.$executeRawUnsafe(
+            'DELETE FROM question_evidence_screenshots WHERE question_evidence_id = ?',
+            evidence.id
+          );
+
+          for (const [index, screenshotUrl] of normalized.screenshots.entries()) {
+            await tx.$executeRawUnsafe(
+              `INSERT INTO question_evidence_screenshots (id, question_evidence_id, display_order, screenshot_url, created_at, updated_at)
+               VALUES (?, ?, ?, ?, NOW(3), NOW(3))`,
+              this.generateId(),
+              evidence.id,
+              index + 1,
+              screenshotUrl
+            );
+          }
         }
+        if (input.relatedProductBreakdown !== undefined || normalized.mode === 'no_questions') {
+          await this.replaceRelatedProductBreakdown(
+            tx,
+            evidence.id,
+            normalizedProductBreakdown
+          );
+        }
+
+        return {
+          evidence,
+          existingScreenshotUrls
+        };
       });
     } catch (error) {
       if (this.isQuestionSchemaOutdatedError(error)) {
@@ -795,66 +840,20 @@ export class QuestionsService {
 
       throw error;
     }
-    const existingScreenshotUrls =
-      normalized.screenshots !== null
-        ? await this.loadScreenshotUrlsForEvidence(evidence.id)
-        : [];
-
-    try {
-      await this.prisma.$executeRawUnsafe(
-        'UPDATE question_evidence SET mode = ?, question_count = ? WHERE id = ?',
-        normalized.mode,
-        normalized.questionCount,
-        evidence.id
-      );
-      if (normalized.screenshots !== null) {
-        await this.prisma.$executeRawUnsafe(
-          'DELETE FROM question_evidence_screenshots WHERE question_evidence_id = ?',
-          evidence.id
-        );
-
-        for (const [index, screenshotUrl] of normalized.screenshots.entries()) {
-          await this.prisma.$executeRawUnsafe(
-            `INSERT INTO question_evidence_screenshots (id, question_evidence_id, display_order, screenshot_url, created_at, updated_at)
-             VALUES (?, ?, ?, ?, NOW(3), NOW(3))`,
-            this.generateId(),
-            evidence.id,
-            index + 1,
-            screenshotUrl
-          );
-        }
-      }
-      if (input.relatedProductBreakdown !== undefined || normalized.mode === 'no_questions') {
-        await this.replaceRelatedProductBreakdown(
-          evidence.id,
-          normalizedProductBreakdown
-        );
-      }
-    } catch (error) {
-      if (this.isQuestionSchemaOutdatedError(error)) {
-        throw new BadRequestException(
-          'Question monitoring schema is outdated. Apply latest question migration first.'
-        );
-      }
-
-      throw new BadRequestException(
-        'Question screenshot table is missing. Apply latest question migration first.'
-      );
-    }
     if (normalized.screenshots !== null) {
       const nextScreenshotSet = new Set(
         normalized.screenshots
           .map((item) => this.normalizeMediaUrl(item))
           .filter((item): item is string => !!item)
       );
-      const removedScreenshotUrls = existingScreenshotUrls.filter(
+      const removedScreenshotUrls = result.existingScreenshotUrls.filter(
         (url) => !nextScreenshotSet.has(url)
       );
       await this.deleteRemovedScreenshotUrls(removedScreenshotUrls);
     }
 
     return {
-      id: evidence.id,
+      id: result.evidence.id,
       updated: true
     };
   }
@@ -909,7 +908,6 @@ export class QuestionsService {
           questionHighlightNote: normalized.note
         }
       });
-      await this.ensureQuestionHighlightNoteOptionalStorageWithClient(tx);
       await tx.$executeRawUnsafe(
         'UPDATE report_versions SET question_highlight_note_optional = ? WHERE id = ?',
         noteOptional ? 1 : 0,
@@ -1293,54 +1291,8 @@ export class QuestionsService {
     return map;
   }
 
-  private async ensureQuestionRelatedProductBreakdownStorage() {
-    await this.prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS question_evidence_related_product_breakdowns (
-        id VARCHAR(191) NOT NULL,
-        question_evidence_id VARCHAR(191) NOT NULL,
-        related_product_option_id VARCHAR(191) NOT NULL,
-        value_key VARCHAR(191) NOT NULL,
-        label VARCHAR(255) NOT NULL,
-        question_count INT NOT NULL,
-        display_order INT NOT NULL DEFAULT 1,
-        created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-        updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
-        PRIMARY KEY (id),
-        UNIQUE KEY question_evidence_product_evidence_option_unique (question_evidence_id, related_product_option_id),
-        KEY question_evidence_product_evidence_idx (question_evidence_id),
-        KEY question_evidence_product_option_idx (related_product_option_id),
-        CONSTRAINT question_evidence_product_evidence_fkey
-          FOREIGN KEY (question_evidence_id) REFERENCES question_evidence(id)
-          ON DELETE CASCADE ON UPDATE CASCADE,
-        CONSTRAINT question_evidence_product_option_fkey
-          FOREIGN KEY (related_product_option_id) REFERENCES brand_dropdown_options(id)
-          ON DELETE RESTRICT ON UPDATE CASCADE
-      ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-    `);
-  }
-
-  private async ensureQuestionHighlightNoteOptionalStorageWithClient(
-    client: Pick<Prisma.TransactionClient, '$executeRawUnsafe'>
-  ) {
-    try {
-      await client.$executeRawUnsafe(
-        'ALTER TABLE report_versions ADD COLUMN question_highlight_note_optional TINYINT(1) NOT NULL DEFAULT 0 AFTER question_highlight_note'
-      );
-    } catch (error) {
-      const message = error instanceof Error ? error.message.toLowerCase() : '';
-      if (!message.includes('duplicate column name')) {
-        throw error;
-      }
-    }
-  }
-
-  private async ensureQuestionHighlightNoteOptionalStorage() {
-    await this.ensureQuestionHighlightNoteOptionalStorageWithClient(this.prisma);
-  }
-
   private async getQuestionHighlightNoteOptional(reportVersionId: string) {
     try {
-      await this.ensureQuestionHighlightNoteOptionalStorage();
       const rows = await this.prisma.$queryRawUnsafe<Array<{ note_optional: number | boolean | null }>>(
         'SELECT question_highlight_note_optional AS note_optional FROM report_versions WHERE id = ? LIMIT 1',
         reportVersionId
@@ -1366,7 +1318,6 @@ export class QuestionsService {
     }
 
     try {
-      await this.ensureQuestionRelatedProductBreakdownStorage();
       const placeholders = evidenceIds.map(() => '?').join(', ');
       const rows = await this.prisma.$queryRawUnsafe<
         Array<{
@@ -1410,17 +1361,17 @@ export class QuestionsService {
   }
 
   private async replaceRelatedProductBreakdown(
+    client: Pick<Prisma.TransactionClient, '$executeRawUnsafe'>,
     questionEvidenceId: string,
     items: NormalizedRelatedProductBreakdownItem[]
   ) {
-    await this.ensureQuestionRelatedProductBreakdownStorage();
-    await this.prisma.$executeRawUnsafe(
+    await client.$executeRawUnsafe(
       'DELETE FROM question_evidence_related_product_breakdowns WHERE question_evidence_id = ?',
       questionEvidenceId
     );
 
     for (const item of items) {
-      await this.prisma.$executeRawUnsafe(
+      await client.$executeRawUnsafe(
         `INSERT INTO question_evidence_related_product_breakdowns
           (id, question_evidence_id, related_product_option_id, value_key, label, question_count, display_order, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, NOW(3), NOW(3))`,
@@ -1526,13 +1477,16 @@ export class QuestionsService {
     ]);
   }
 
-  private async loadScreenshotUrlsForEvidence(evidenceId: string) {
+  private async loadScreenshotUrlsForEvidence(
+    evidenceId: string,
+    client: QuestionsPersistenceClient = this.prisma
+  ) {
     if (!evidenceId) {
       return [];
     }
 
     try {
-      const rows = await this.prisma.$queryRawUnsafe<Array<{ screenshot_url: string }>>(
+      const rows = await client.$queryRawUnsafe<Array<{ screenshot_url: string }>>(
         `SELECT screenshot_url
          FROM question_evidence_screenshots
          WHERE question_evidence_id = ?`,
@@ -1678,7 +1632,6 @@ export class QuestionsService {
       where: {
         brandId,
         fieldKey: BrandDropdownFieldKey.related_product,
-        status: BrandDropdownOptionStatus.active,
         valueKey: {
           not: RELATED_PRODUCT_ALL_VALUE_KEY
         }
@@ -1688,7 +1641,8 @@ export class QuestionsService {
         id: true,
         valueKey: true,
         label: true,
-        sortOrder: true
+        sortOrder: true,
+        status: true
       }
     });
 
