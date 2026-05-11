@@ -173,6 +173,9 @@ const preferredColumnOrder = [
   'Total clicks',
   'Engagement'
 ];
+const definitionPopoverFieldKeys = new Set<
+  GlobalCompanyFormatOptionsResponse['fields'][number]['key']
+>(['content_objective', 'content_style', 'media_format']);
 
 type ManualRowsStoragePayload = {
   version: 3;
@@ -853,6 +856,9 @@ export function ImportWorkingTable({
   const [openRelatedProductDropdownKey, setOpenRelatedProductDropdownKey] = useState<string | null>(
     null
   );
+  const [openDefinitionFieldKey, setOpenDefinitionFieldKey] = useState<
+    GlobalCompanyFormatOptionsResponse['fields'][number]['key'] | null
+  >(null);
   const autosaveRequestSequence = useRef(0);
   const manualRowsAutosaveRequestSequence = useRef(0);
   const lastPersistedManualHeaderValuesRef = useRef(
@@ -900,6 +906,15 @@ export function ImportWorkingTable({
       }
 
       setOpenRelatedProductDropdownKey(null);
+
+      if (
+        target instanceof Element &&
+        target.closest('[data-option-definition-popover="true"]')
+      ) {
+        return;
+      }
+
+      setOpenDefinitionFieldKey(null);
     }
 
     window.addEventListener('mousedown', closeRelatedProductDropdownOnOutsideClick);
@@ -1260,6 +1275,26 @@ export function ImportWorkingTable({
         field.options.filter(option => option.status === 'active').map(option => option.label)
       );
     }
+    return map;
+  }, [dropdownFields]);
+  const optionDefinitionRowsByField = useMemo(() => {
+    const map = new Map<
+      GlobalCompanyFormatOptionsResponse['fields'][number]['key'],
+      Array<{ label: string; description: string | null }>
+    >();
+
+    for (const field of dropdownFields) {
+      map.set(
+        field.key,
+        field.options
+          .filter(option => option.status === 'active')
+          .map(option => ({
+            label: option.label,
+            description: option.description
+          }))
+      );
+    }
+
     return map;
   }, [dropdownFields]);
   const campaignOptionLabels = useMemo(
@@ -2459,6 +2494,57 @@ export function ImportWorkingTable({
                   className="sticky top-0 z-20 min-w-40 bg-background/95 px-4 py-3 font-medium text-foreground"
                   key={column.kind === 'formula' ? column.id : column.key}
                 >
+                  {column.kind === 'internal' &&
+                  column.type === 'select' &&
+                  definitionPopoverFieldKeys.has(column.dropdownFieldKey) ? (
+                    <div className="relative" data-option-definition-popover="true">
+                      <button
+                        className="absolute -right-2 -top-1 inline-flex size-6 items-center justify-center rounded-full border border-border/60 bg-background/90 text-muted-foreground hover:text-foreground"
+                        onClick={() =>
+                          setOpenDefinitionFieldKey(current =>
+                            current === column.dropdownFieldKey ? null : column.dropdownFieldKey
+                          )
+                        }
+                        title={`Show ${column.label} definitions`}
+                        type="button"
+                      >
+                        <CircleHelp className="size-3.5" />
+                      </button>
+                      {openDefinitionFieldKey === column.dropdownFieldKey ? (
+                        <div className="absolute right-0 top-7 z-40 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-border/70 bg-background/95 p-3 shadow-2xl backdrop-blur">
+                          <div className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                            {column.label} definitions
+                          </div>
+                          <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
+                            {(optionDefinitionRowsByField.get(column.dropdownFieldKey) ?? [])
+                              .length === 0 ? (
+                              <div className="rounded-lg border border-dashed border-border/60 bg-background/40 p-2 text-xs text-muted-foreground">
+                                No active options.
+                              </div>
+                            ) : (
+                              (optionDefinitionRowsByField.get(column.dropdownFieldKey) ?? []).map(
+                                item => (
+                                  <div
+                                    className="rounded-lg border border-border/60 bg-background/60 p-2"
+                                    key={item.label}
+                                  >
+                                    <div className="text-xs font-semibold text-foreground break-words">
+                                      {item.label}
+                                    </div>
+                                    <div className="mt-1 text-xs text-muted-foreground whitespace-pre-wrap break-words">
+                                      {item.description && item.description.trim().length > 0
+                                        ? item.description
+                                        : 'No description yet.'}
+                                    </div>
+                                  </div>
+                                )
+                              )
+                            )}
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <div className="flex min-h-[52px] flex-col justify-between">
                     <div className="leading-tight">{column.label}</div>
                     <div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">

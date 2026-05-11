@@ -8,6 +8,7 @@ import { ConfirmActionModal } from '@/components/ui/confirm-action-modal';
 import { Input } from '@/components/ui/input';
 import { ModalShell } from '@/components/ui/modal-shell';
 import { Select } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import type {
   CompanyFormatFieldKey,
   GlobalCompanyFormatOptionsResponse
@@ -25,6 +26,7 @@ type Props = {
 
 type Draft = {
   label: string;
+  description: string;
   status: 'active' | 'deprecated';
   desiredPosition: string;
 };
@@ -78,6 +80,7 @@ export function CompanyFormatOptionsManager({
   const [editingOptionId, setEditingOptionId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>({
     label: '',
+    description: '',
     status: 'active',
     desiredPosition: 'end'
   });
@@ -101,6 +104,7 @@ export function CompanyFormatOptionsManager({
     setEditingOptionId(null);
     setDraft({
       label: '',
+      description: '',
       status: 'active',
       desiredPosition: 'end'
     });
@@ -114,6 +118,7 @@ export function CompanyFormatOptionsManager({
     setEditingOptionId(option.id);
     setDraft({
       label: option.label,
+      description: option.description ?? '',
       status: option.status,
       desiredPosition:
         option.status === 'active' && activeIndex >= 0 ? String(activeIndex + 1) : 'end'
@@ -172,6 +177,7 @@ export function CompanyFormatOptionsManager({
     try {
       const commonPayload = {
         label: draft.label.trim(),
+        description: draft.description.trim() || null,
         status: draft.status
       };
       let optionId = editingOptionId;
@@ -189,7 +195,8 @@ export function CompanyFormatOptionsManager({
           },
           body: JSON.stringify({
             fieldKey,
-            label: commonPayload.label
+            label: commonPayload.label,
+            description: commonPayload.description
           })
         });
         const payload = await response.json().catch(() => null);
@@ -328,6 +335,9 @@ export function CompanyFormatOptionsManager({
                     </span>
                   ) : null}
                 </div>
+                {option.description ? (
+                  <div className="text-xs text-muted-foreground">{option.description}</div>
+                ) : null}
                 <div className="text-xs text-muted-foreground">
                   Position {index + 1}
                   {option.isSystemOption ? ' • Locked default for broad/overall product posts' : ''}
@@ -353,8 +363,15 @@ export function CompanyFormatOptionsManager({
                 key={option.id}
               >
                 <div className="min-w-0 flex-1 text-sm text-muted-foreground">
-                  {option.label}
-                  {option.isSystemOption ? ' • System' : ''}
+                  <div>{option.label}</div>
+                  {option.description ? (
+                    <div className="text-xs text-muted-foreground">{option.description}</div>
+                  ) : null}
+                  {option.isSystemOption ? (
+                    <div className="text-xs uppercase tracking-[0.12em] text-muted-foreground">
+                      System
+                    </div>
+                  ) : null}
                 </div>
                 <Button onClick={() => openEditModal(option)} size="sm" type="button" variant="outline">
                   Edit
@@ -387,6 +404,21 @@ export function CompanyFormatOptionsManager({
                 }}
                 placeholder={`${fieldLabel} label`}
                 value={draft.label}
+              />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <label className="text-sm font-medium" htmlFor="company-format-description-input">
+                Description (optional)
+              </label>
+              <Textarea
+                id="company-format-description-input"
+                onChange={event => {
+                  const value = event.currentTarget.value;
+                  setDraft(current => ({ ...current, description: value }));
+                }}
+                placeholder="Write a short definition for this option."
+                rows={3}
+                value={draft.description}
               />
             </div>
             <div className="space-y-2">
