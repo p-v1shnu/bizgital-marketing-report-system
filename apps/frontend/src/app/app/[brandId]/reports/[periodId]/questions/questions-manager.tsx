@@ -675,7 +675,7 @@ export function QuestionsManager({
         title={`Questions for ${monthLabel}`}
       />
 
-      <Card>
+      <Card className={`relative ${openDescriptionActivationId ? 'z-50' : 'z-0'}`}>
         <CardHeader>
           <CardTitle>Step 1: Category count input</CardTitle>
         </CardHeader>
