@@ -5,11 +5,13 @@ import {
   AlertCircle,
   CheckCircle2,
   Circle,
+  CircleHelp,
   ImagePlus,
   LoaderCircle,
   Save,
   ShieldAlert,
-  Trash2
+  Trash2,
+  X
 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
@@ -199,6 +201,9 @@ export function QuestionsManager({
     toHighlightDraft(initialOverview.highlights)
   );
   const [highlightMeta, setHighlightMeta] = useState<SaveMeta>(createDefaultSaveMeta());
+  const [openDescriptionActivationId, setOpenDescriptionActivationId] = useState<string | null>(
+    null
+  );
 
   const entryTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -231,6 +236,17 @@ export function QuestionsManager({
         highlightTimer.current = null;
       }
     };
+  }, []);
+
+  useEffect(() => {
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setOpenDescriptionActivationId(null);
+      }
+    }
+
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
   }, []);
 
   const completedCount = useMemo(
@@ -664,7 +680,7 @@ export function QuestionsManager({
           <CardTitle>Step 1: Category count input</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="overflow-hidden rounded-2xl border border-border/60 bg-background/60">
+          <div className="rounded-2xl border border-border/60 bg-background/60">
             <div className="hidden grid-cols-[minmax(240px,1fr)_minmax(360px,1.2fr)_140px_220px] gap-3 border-b border-border/60 bg-background/80 px-4 py-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground md:grid">
               <div>Category</div>
               <div>Monthly mode</div>
@@ -694,7 +710,55 @@ export function QuestionsManager({
                         <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground md:hidden">
                           Category
                         </div>
-                        <div className="text-sm font-medium text-foreground">{item.question.text}</div>
+                        <div className="relative flex min-w-0 items-center gap-2">
+                          <div className="min-w-0 text-sm font-medium text-foreground">
+                            {item.question.text}
+                          </div>
+                          {item.question.description ? (
+                            <div className="relative shrink-0">
+                              <button
+                                aria-label={`Show guidance for ${item.question.text}`}
+                                className="inline-flex size-7 items-center justify-center rounded-full border border-border/60 bg-background/70 text-muted-foreground transition hover:border-primary/40 hover:text-foreground"
+                                onClick={() =>
+                                  setOpenDescriptionActivationId((current) =>
+                                    current === activationId ? null : activationId
+                                  )
+                                }
+                                type="button"
+                              >
+                                <CircleHelp className="size-4" />
+                              </button>
+                              {openDescriptionActivationId === activationId ? (
+                                <div
+                                  className="absolute left-0 top-full z-30 mt-2 w-[min(360px,calc(100vw-48px))] rounded-2xl border border-border/70 bg-popover p-4 text-popover-foreground shadow-xl"
+                                  role="dialog"
+                                >
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                                        When to use
+                                      </div>
+                                      <div className="mt-1 text-sm font-semibold text-foreground">
+                                        {item.question.text}
+                                      </div>
+                                    </div>
+                                    <button
+                                      aria-label="Close guidance"
+                                      className="inline-flex size-7 shrink-0 items-center justify-center rounded-full border border-border/60 text-muted-foreground transition hover:text-foreground"
+                                      onClick={() => setOpenDescriptionActivationId(null)}
+                                      type="button"
+                                    >
+                                      <X className="size-4" />
+                                    </button>
+                                  </div>
+                                  <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
+                                    {item.question.description}
+                                  </p>
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
                       </div>
 
                       <div className="space-y-1">
