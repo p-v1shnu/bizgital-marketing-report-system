@@ -52,7 +52,7 @@ function QuestionDescriptionPreview({
 
   return (
     <div className="relative mt-1 max-w-xl text-sm text-muted-foreground">
-      <span>{preview.text}</span>
+      <span className="break-words [overflow-wrap:anywhere]">{preview.text}</span>
       {preview.isTruncated ? (
         <>
           <button
@@ -84,7 +84,7 @@ function QuestionDescriptionPreview({
                   <X className="size-4" />
                 </button>
               </div>
-              <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
+              <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]">
                 {description}
               </p>
             </div>

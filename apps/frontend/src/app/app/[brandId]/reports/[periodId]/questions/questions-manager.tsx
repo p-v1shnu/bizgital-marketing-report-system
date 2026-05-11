@@ -753,7 +753,7 @@ export function QuestionsManager({
                                       <X className="size-4" />
                                     </button>
                                   </div>
-                                  <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
+                                  <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]">
                                     {item.question.description}
                                   </p>
                                 </div>
