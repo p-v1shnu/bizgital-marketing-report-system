@@ -205,6 +205,15 @@ function normalizeLabel(value: string) {
   return value.replace(/\s+/g, ' ').trim();
 }
 
+function normalizeOptionDescription(value: string | null | undefined) {
+  if (value === undefined || value === null) {
+    return value ?? null;
+  }
+
+  const normalized = normalizeLabel(value);
+  return normalized || null;
+}
+
 function toValueKey(value: string) {
   const normalized = value
     .toLowerCase()
@@ -261,6 +270,15 @@ export class ColumnConfigService implements OnModuleInit {
 
     const options = await this.prisma.globalCompanyFormatOption.findMany({
       where: includeDeprecated ? undefined : { status: BrandDropdownOptionStatus.active },
+      select: {
+        id: true,
+        fieldKey: true,
+        valueKey: true,
+        label: true,
+        description: true,
+        status: true,
+        sortOrder: true
+      },
       orderBy: [{ fieldKey: 'asc' }, { sortOrder: 'asc' }, { createdAt: 'asc' }]
     });
 
@@ -275,6 +293,7 @@ export class ColumnConfigService implements OnModuleInit {
             fieldKey: option.fieldKey,
             valueKey: option.valueKey,
             label: option.label,
+            description: option.description,
             status: option.status,
             sortOrder: option.sortOrder
           }))
@@ -285,6 +304,7 @@ export class ColumnConfigService implements OnModuleInit {
   async createGlobalCompanyFormatOption(input: CreateGlobalCompanyFormatOptionInput) {
     const fieldKey = this.resolveFieldKey(input.fieldKey);
     const label = normalizeLabel(input.label);
+    const description = normalizeOptionDescription(input.description);
 
     if (!label) {
       throw new BadRequestException('Option label is required.');
@@ -311,8 +331,18 @@ export class ColumnConfigService implements OnModuleInit {
         fieldKey,
         valueKey,
         label,
+        description,
         sortOrder: (existing[0]?.sortOrder ?? 0) + 1,
         status: BrandDropdownOptionStatus.active
+      },
+      select: {
+        id: true,
+        fieldKey: true,
+        valueKey: true,
+        label: true,
+        description: true,
+        status: true,
+        sortOrder: true
       }
     });
 
@@ -322,6 +352,7 @@ export class ColumnConfigService implements OnModuleInit {
         fieldKey: created.fieldKey,
         valueKey: created.valueKey,
         label: created.label,
+        description: created.description,
         status: created.status,
         sortOrder: created.sortOrder
       }
@@ -344,20 +375,40 @@ export class ColumnConfigService implements OnModuleInit {
       input.label !== undefined ? normalizeLabel(input.label) : undefined;
     const nextStatus =
       input.status !== undefined ? this.resolveStatus(input.status) : undefined;
+    const nextDescription =
+      input.description !== undefined
+        ? normalizeOptionDescription(input.description)
+        : undefined;
 
     if (nextLabel !== undefined && !nextLabel) {
       throw new BadRequestException('Option label cannot be empty.');
     }
 
-    if (nextLabel === undefined && nextStatus === undefined) {
-      throw new BadRequestException('Provide label or status to update this option.');
+    if (
+      nextLabel === undefined &&
+      nextStatus === undefined &&
+      nextDescription === undefined
+    ) {
+      throw new BadRequestException(
+        'Provide label, description, or status to update this option.'
+      );
     }
 
     const updated = await this.prisma.globalCompanyFormatOption.update({
       where: { id: option.id },
       data: {
         ...(nextLabel !== undefined ? { label: nextLabel } : {}),
+        ...(nextDescription !== undefined ? { description: nextDescription } : {}),
         ...(nextStatus !== undefined ? { status: nextStatus } : {})
+      },
+      select: {
+        id: true,
+        fieldKey: true,
+        valueKey: true,
+        label: true,
+        description: true,
+        status: true,
+        sortOrder: true
       }
     });
 
@@ -367,6 +418,7 @@ export class ColumnConfigService implements OnModuleInit {
         fieldKey: updated.fieldKey,
         valueKey: updated.valueKey,
         label: updated.label,
+        description: updated.description,
         status: updated.status,
         sortOrder: updated.sortOrder
       }

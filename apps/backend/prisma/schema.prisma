@@ -206,6 +206,7 @@ model BrandDropdownOption {
   fieldKey  BrandDropdownFieldKey     @map("field_key")
   valueKey  String                    @map("value_key")
   label     String
+  description String?                 @db.Text
   sortOrder Int                       @default(0) @map("sort_order")
   status    BrandDropdownOptionStatus @default(active)
   createdAt DateTime                  @default(now()) @map("created_at")
@@ -223,6 +224,7 @@ model GlobalCompanyFormatOption {
   fieldKey  BrandDropdownFieldKey     @map("field_key")
   valueKey  String                    @map("value_key")
   label     String
+  description String?                 @db.Text
   sortOrder Int                       @default(0) @map("sort_order")
   status    BrandDropdownOptionStatus @default(active)
   createdAt DateTime                  @default(now()) @map("created_at")

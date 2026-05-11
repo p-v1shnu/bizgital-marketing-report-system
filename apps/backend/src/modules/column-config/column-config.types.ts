@@ -14,6 +14,7 @@ export type GlobalCompanyFormatOptionsResponse = {
       fieldKey: BrandDropdownFieldKey;
       valueKey: string;
       label: string;
+      description: string | null;
       status: BrandDropdownOptionStatus;
       sortOrder: number;
     }>;
@@ -23,10 +24,12 @@ export type GlobalCompanyFormatOptionsResponse = {
 export type CreateGlobalCompanyFormatOptionInput = {
   fieldKey: BrandDropdownFieldKey;
   label: string;
+  description?: string | null;
 };
 
 export type UpdateGlobalCompanyFormatOptionInput = {
   label?: string;
+  description?: string | null;
   status?: BrandDropdownOptionStatus;
 };
 

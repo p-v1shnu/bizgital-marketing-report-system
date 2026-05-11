@@ -366,6 +366,7 @@ export type GlobalCompanyFormatOptionsResponse = {
       fieldKey: CompanyFormatFieldKey;
       valueKey: string;
       label: string;
+      description: string | null;
       status: CompanyFormatOptionStatus;
       sortOrder: number;
       isSystemOption?: boolean;
@@ -1780,6 +1781,7 @@ export async function createGlobalCompanyFormatOption(
   payload: {
     fieldKey: CompanyFormatFieldKey;
     label: string;
+    description?: string | null;
   }
 ) {
   return postReportingAction('/config/internal-options', payload);
@@ -1789,6 +1791,7 @@ export async function updateGlobalCompanyFormatOption(
   optionId: string,
   payload: {
     label?: string;
+    description?: string | null;
     status?: CompanyFormatOptionStatus;
   }
 ) {
@@ -1824,6 +1827,7 @@ export async function createBrandCompanyFormatOption(
   payload: {
     fieldKey: CompanyFormatFieldKey;
     label: string;
+    description?: string | null;
   }
 ) {
   return postReportingAction(`/brands/${brandCode}/internal-options`, payload);
@@ -1834,6 +1838,7 @@ export async function updateBrandCompanyFormatOption(
   optionId: string,
   payload: {
     label?: string;
+    description?: string | null;
     status?: CompanyFormatOptionStatus;
   }
 ) {

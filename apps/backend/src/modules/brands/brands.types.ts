@@ -21,6 +21,7 @@ export type CompanyFormatOptionsResponse = {
       fieldKey: BrandDropdownFieldKey;
       valueKey: string;
       label: string;
+      description: string | null;
       status: BrandDropdownOptionStatus;
       sortOrder: number;
       isSystemOption: boolean;
@@ -34,10 +35,12 @@ export type CompanyFormatOptionsResponse = {
 export type CreateCompanyFormatOptionInput = {
   fieldKey: BrandDropdownFieldKey;
   label: string;
+  description?: string | null;
 };
 
 export type UpdateCompanyFormatOptionInput = {
   label?: string;
+  description?: string | null;
   status?: BrandDropdownOptionStatus;
 };
 
