@@ -65,7 +65,7 @@ function QuestionDescriptionPreview({
           </button>
           {isOpen ? (
             <div
-              className="absolute left-0 top-full z-40 mt-2 w-[min(380px,calc(100vw-48px))] rounded-2xl border border-border/70 bg-popover p-4 text-popover-foreground shadow-xl"
+              className="absolute left-0 top-full z-40 mt-2 max-h-[min(360px,calc(100vh-160px))] w-[min(380px,calc(100vw-48px))] overflow-y-auto rounded-2xl border border-border/70 bg-popover p-4 text-popover-foreground shadow-xl"
               role="dialog"
             >
               <div className="flex items-start justify-between gap-3">
