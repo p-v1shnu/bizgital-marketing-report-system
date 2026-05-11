@@ -40,6 +40,7 @@ export type QuestionOverviewResponse = {
     question: {
       id: string;
       text: string;
+      description: string | null;
       status: QuestionStatus;
     };
     entry: {
@@ -76,6 +77,7 @@ export type QuestionSetupResponse = {
     question: {
       id: string;
       text: string;
+      description: string | null;
       status: QuestionStatus;
     };
     usage: {
@@ -86,6 +88,7 @@ export type QuestionSetupResponse = {
   availableCatalog: Array<{
     id: string;
     text: string;
+    description: string | null;
     status: QuestionStatus;
     usage: {
       assignedBrandCount: number;
@@ -94,6 +97,7 @@ export type QuestionSetupResponse = {
   fullCatalog: Array<{
     id: string;
     text: string;
+    description: string | null;
     status: QuestionStatus;
     usage: {
       assignedBrandCount: number;
@@ -110,6 +114,7 @@ export type QuestionCatalogResponse = {
   items: Array<{
     id: string;
     text: string;
+    description: string | null;
     status: QuestionStatus;
     canDelete: boolean;
     removeBlockedReason: string | null;
@@ -122,11 +127,13 @@ export type QuestionCatalogResponse = {
 
 export type SaveQuestionMasterInput = {
   questionText: string;
+  description?: string | null;
   status?: QuestionStatus;
 };
 
 export type UpdateQuestionMasterInput = {
   questionText?: string;
+  description?: string | null;
   status?: QuestionStatus;
 };
 

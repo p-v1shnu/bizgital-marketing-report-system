@@ -1067,16 +1067,11 @@ async function captureInsightsSingleShot(
   let dataUrl;
   try {
     if (captureResolution === 'standard') {
-      dataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: 'png' });
-      if (clipWidthOverride || clipHeightOverride) {
-        dataUrl = await cropDataUrlToBox(dataUrl, {
-          width: clipWidthOverride,
-          height: clipHeightOverride
-        });
-        steps.push('Captured in standard resolution and cropped to content-aware bounds.');
-      } else {
-        steps.push('Captured in standard resolution.');
-      }
+      dataUrl = await captureHiResWithDebugger(tabId, windowId, 1, steps, {
+        width: clipWidthOverride,
+        height: clipHeightOverride
+      });
+      steps.push('Captured in standard resolution using debugger capture (scale 1x).');
     } else {
       const scale =
         captureResolution === 'hires3x'
@@ -1114,8 +1109,7 @@ function resolveAutoQualityPlan(clientDeviceMemoryGb) {
   if (isLowMemory) {
     return [
       { resolution: 'hires2_5x', tries: 2, settleDelayMs: 950 },
-      { resolution: 'hires2x', tries: 2, settleDelayMs: 950 },
-      { resolution: 'standard', tries: 1, settleDelayMs: 700 }
+      { resolution: 'hires2x', tries: 2, settleDelayMs: 950 }
     ];
   }
   return [
@@ -1223,14 +1217,23 @@ async function captureInsightsWithAutoQuality(tabId, windowId, steps, captureOpt
         `Auto HQ pre-check ${entry.resolution} attempt ${attempt}/${entry.tries}: ${renderCheck.status}`
       );
 
-      const dataUrl = await captureInsightsSingleShot(
-        tabId,
-        windowId,
-        steps,
-        entry.resolution,
-        captureOptions
-      );
-      const metrics = await analyzeCaptureQuality(dataUrl);
+      let dataUrl;
+      let metrics;
+      try {
+        dataUrl = await captureInsightsSingleShot(
+          tabId,
+          windowId,
+          steps,
+          entry.resolution,
+          captureOptions
+        );
+        metrics = await analyzeCaptureQuality(dataUrl);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'unknown capture error';
+        steps.push(`Auto HQ ${entry.resolution} attempt ${attempt} failed: ${message}`);
+        continue;
+      }
+
       const score = scoreCaptureQuality(metrics);
       const acceptable = isCaptureQualityAcceptable(metrics);
       steps.push(
@@ -1561,8 +1564,8 @@ async function captureHiResWithDebugger(
   } catch (error) {
     const message =
       error instanceof Error ? error.message : 'unknown debugger capture error';
-    steps.push(`Hi-res capture failed (${message}). Fallback to standard capture.`);
-    return await chrome.tabs.captureVisibleTab(windowId, { format: 'png' });
+    steps.push(`Hi-res capture failed (${message}).`);
+    throw new Error(`Debugger capture failed: ${message}`);
   } finally {
     if (attached) {
       await chrome.debugger.detach(target).catch(() => undefined);

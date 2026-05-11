@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Plus } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -368,6 +369,7 @@ export function BrandKpiPlanManager({
               type="button"
               variant="outline"
             >
+              <Plus />
               Add KPI
             </Button>
           </div>

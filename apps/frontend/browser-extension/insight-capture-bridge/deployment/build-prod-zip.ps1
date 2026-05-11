@@ -31,12 +31,24 @@ if (Test-Path -LiteralPath $zipPath) {
 $tempDir = Join-Path $env:TEMP ("insight-capture-bridge-prod-" + [guid]::NewGuid().ToString("N"))
 New-Item -Path $tempDir -ItemType Directory -Force | Out-Null
 
-$excludeNames = @('.git', '.DS_Store', 'manifest.shared.json')
-Get-ChildItem -LiteralPath $extensionRoot -Force |
-  Where-Object { $excludeNames -notcontains $_.Name } |
-  ForEach-Object {
-    Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $tempDir $_.Name) -Recurse -Force
+$packageEntries = @(
+  'background.js',
+  'content-bridge.js',
+  'icons',
+  'options.html',
+  'options.js',
+  'popup.html',
+  'popup.js',
+  'README.md'
+)
+
+foreach ($entry in $packageEntries) {
+  $source = Join-Path $extensionRoot $entry
+  if (-not (Test-Path -LiteralPath $source)) {
+    throw "Package entry not found: $source"
   }
+  Copy-Item -LiteralPath $source -Destination (Join-Path $tempDir $entry) -Recurse -Force
+}
 
 & $manifestBuilder -Profile prod -OutputPath (Join-Path $tempDir "manifest.json") | Out-Null
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Settings2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { ConfirmActionModal } from '@/components/ui/confirm-action-modal';
@@ -361,6 +362,7 @@ export function KpiCatalogManager({
           </div>
           <div className="flex flex-wrap gap-2">
             <Button onClick={openDefaultSelectionModal} size="sm" type="button" variant="outline">
+              <Settings2 />
               New Brand Defaults
             </Button>
             <Button onClick={openCreateModal} size="sm" type="button">
@@ -543,29 +545,20 @@ export function KpiCatalogManager({
             {modalMode === 'create' ? (
               <div className="space-y-2">
                 <label className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                  Active
+                  Status
                 </label>
-                <button
-                  aria-label={draft.isActive ? 'Set inactive' : 'Set active'}
-                  className={`h-7 w-14 rounded-full border transition ${
-                    draft.isActive
-                      ? 'border-emerald-600/20 bg-emerald-500/40'
-                      : 'border-border bg-muted'
-                  }`}
-                  onClick={() => {
+                <Select
+                  onChange={event => {
                     setDraft(current => ({
                       ...current,
-                      isActive: !current.isActive
+                      isActive: event.currentTarget.value === 'active'
                     }));
                   }}
-                  type="button"
+                  value={draft.isActive ? 'active' : 'inactive'}
                 >
-                  <span
-                    className={`mx-1 block h-5 w-5 rounded-full bg-background transition-transform ${
-                      draft.isActive ? 'translate-x-6' : 'translate-x-0'
-                    }`}
-                  />
-                </button>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </Select>
               </div>
             ) : null}
             <div className="md:col-span-2">

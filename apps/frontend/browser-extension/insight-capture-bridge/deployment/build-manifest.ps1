@@ -45,6 +45,89 @@ if ($outputDir -and -not (Test-Path -LiteralPath $outputDir)) {
   New-Item -Path $outputDir -ItemType Directory -Force | Out-Null
 }
 
-$sharedManifest | ConvertTo-Json -Depth 50 | Set-Content -LiteralPath $resolvedOutputPath -Encoding utf8
+function Format-JsonTwoSpace {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Json
+  )
+
+  $builder = New-Object System.Text.StringBuilder
+  $indent = 0
+  $inString = $false
+  $escaped = $false
+
+  function Append-Indent {
+    param([int]$Level)
+    [void]$builder.Append(('  ' * $Level))
+  }
+
+  for ($i = 0; $i -lt $Json.Length; $i++) {
+    $char = $Json[$i]
+
+    if ($escaped) {
+      [void]$builder.Append($char)
+      $escaped = $false
+      continue
+    }
+
+    if ($char -eq '\') {
+      [void]$builder.Append($char)
+      if ($inString) {
+        $escaped = $true
+      }
+      continue
+    }
+
+    if ($char -eq '"') {
+      $inString = -not $inString
+      [void]$builder.Append($char)
+      continue
+    }
+
+    if ($inString) {
+      [void]$builder.Append($char)
+      continue
+    }
+
+    switch ($char) {
+      { $_ -eq '{' -or $_ -eq '[' } {
+        [void]$builder.Append($char)
+        [void]$builder.AppendLine()
+        $indent++
+        Append-Indent $indent
+        break
+      }
+      { $_ -eq '}' -or $_ -eq ']' } {
+        [void]$builder.AppendLine()
+        $indent--
+        Append-Indent $indent
+        [void]$builder.Append($char)
+        break
+      }
+      ',' {
+        [void]$builder.Append($char)
+        [void]$builder.AppendLine()
+        Append-Indent $indent
+        break
+      }
+      ':' {
+        [void]$builder.Append(': ')
+        break
+      }
+      default {
+        if (-not [char]::IsWhiteSpace($char)) {
+          [void]$builder.Append($char)
+        }
+      }
+    }
+  }
+
+  return $builder.ToString()
+}
+
+$json = Format-JsonTwoSpace ($sharedManifest | ConvertTo-Json -Depth 50 -Compress)
+
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText($resolvedOutputPath, $json + [Environment]::NewLine, $utf8NoBom)
 
 Write-Host "Created manifest ($Profile): $resolvedOutputPath" -ForegroundColor Green

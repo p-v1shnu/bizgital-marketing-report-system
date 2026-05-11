@@ -37,6 +37,7 @@ type ResolvedQuestionAssignment = {
   questionMaster: {
     id: string;
     questionText: string;
+    description: string | null;
     status: QuestionStatus;
   };
 };
@@ -123,6 +124,7 @@ export class QuestionsService {
     const fullCatalog = catalog.map(item => ({
       id: item.id,
       text: item.questionText,
+      description: item.description,
       status: item.status,
       usage: {
         assignedBrandCount: assignedBrandCountByQuestionId.get(item.id) ?? 0
@@ -153,6 +155,7 @@ export class QuestionsService {
         question: {
           id: item.questionMaster.id,
           text: item.questionMaster.questionText,
+          description: item.questionMaster.description,
           status: item.questionMaster.status
         },
         usage: {
@@ -173,6 +176,7 @@ export class QuestionsService {
     await this.prisma.questionMaster.create({
       data: {
         questionText,
+        description: this.normalizeOptionalText(input.description),
         status: input.status ?? QuestionStatus.active
       }
     });
@@ -186,6 +190,7 @@ export class QuestionsService {
     await this.prisma.questionMaster.create({
       data: {
         questionText,
+        description: this.normalizeOptionalText(input.description),
         status: input.status ?? QuestionStatus.active
       }
     });
@@ -212,11 +217,16 @@ export class QuestionsService {
 
     const data: {
       questionText?: string;
+      description?: string | null;
       status?: QuestionStatus;
     } = {};
 
     if (input.questionText !== undefined) {
       data.questionText = this.normalizeRequiredText(input.questionText, 'Question name');
+    }
+
+    if (input.description !== undefined) {
+      data.description = this.normalizeOptionalText(input.description);
     }
 
     if (input.status !== undefined) {
@@ -249,11 +259,16 @@ export class QuestionsService {
 
     const data: {
       questionText?: string;
+      description?: string | null;
       status?: QuestionStatus;
     } = {};
 
     if (input.questionText !== undefined) {
       data.questionText = this.normalizeRequiredText(input.questionText, 'Question name');
+    }
+
+    if (input.description !== undefined) {
+      data.description = this.normalizeOptionalText(input.description);
     }
 
     if (input.status !== undefined) {
@@ -582,6 +597,7 @@ export class QuestionsService {
         question: {
           id: assignment.questionMaster.id,
           text: assignment.questionMaster.questionText,
+          description: assignment.questionMaster.description,
           status: assignment.questionMaster.status
         },
         entry: {
@@ -1022,6 +1038,7 @@ export class QuestionsService {
             select: {
               id: true,
               questionText: true,
+              description: true,
               status: true
             }
           })
@@ -1042,6 +1059,7 @@ export class QuestionsService {
           questionMaster: {
             id: questionMaster.id,
             questionText: questionMaster.questionText,
+            description: questionMaster.description,
             status: questionMaster.status
           }
         } satisfies ResolvedQuestionAssignment;
@@ -1094,6 +1112,7 @@ export class QuestionsService {
         questionMaster: {
           id: row.question_master_id,
           questionText: row.question_text_snapshot,
+          description: null,
           status: QuestionStatus.active
         }
       }));
@@ -1580,6 +1599,7 @@ export class QuestionsService {
         return {
           id: item.id,
           text: item.questionText,
+          description: item.description,
           status: item.status,
           canDelete: !hasBrandUsage && !hasApprovedUsage,
           removeBlockedReason: hasBrandUsage

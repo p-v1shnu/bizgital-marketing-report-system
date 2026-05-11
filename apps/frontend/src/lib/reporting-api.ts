@@ -1166,6 +1166,7 @@ export type QuestionOverviewResponse = {
     question: {
       id: string;
       text: string;
+      description: string | null;
       status: 'active' | 'inactive';
     };
     entry: {
@@ -1202,6 +1203,7 @@ export type QuestionSetupResponse = {
     question: {
       id: string;
       text: string;
+      description: string | null;
       status: 'active' | 'inactive';
     };
     usage: {
@@ -1212,6 +1214,7 @@ export type QuestionSetupResponse = {
   availableCatalog: Array<{
     id: string;
     text: string;
+    description: string | null;
     status: 'active' | 'inactive';
     usage: {
       assignedBrandCount: number;
@@ -1220,6 +1223,7 @@ export type QuestionSetupResponse = {
   fullCatalog: Array<{
     id: string;
     text: string;
+    description: string | null;
     status: 'active' | 'inactive';
     usage: {
       assignedBrandCount: number;
@@ -1236,6 +1240,7 @@ export type QuestionCatalogResponse = {
   items: Array<{
     id: string;
     text: string;
+    description: string | null;
     status: 'active' | 'inactive';
     canDelete: boolean;
     removeBlockedReason: string | null;
@@ -2666,6 +2671,7 @@ export async function getQuestionCatalog(): Promise<QuestionCatalogResponse> {
 
 export async function createQuestionCatalogItem(payload: {
   questionText: string;
+  description?: string | null;
   status?: 'active' | 'inactive';
 }) {
   return postReportingAction('/config/questions/catalog', payload);
@@ -2675,6 +2681,7 @@ export async function updateQuestionCatalogItem(
   questionId: string,
   payload: {
     questionText?: string;
+    description?: string | null;
     status?: 'active' | 'inactive';
   }
 ) {

@@ -55,7 +55,10 @@ export function QuestionSetupManager({ brandId, initialSetup }: Props) {
       if (!keyword) {
         return true;
       }
-      return item.text.toLowerCase().includes(keyword);
+      return (
+        item.text.toLowerCase().includes(keyword) ||
+        (item.description ?? '').toLowerCase().includes(keyword)
+      );
     });
   }, [query, setup.availableCatalog]);
 
@@ -164,6 +167,11 @@ export function QuestionSetupManager({ brandId, initialSetup }: Props) {
                     <div className="truncate text-sm font-medium text-foreground">
                       {item.question.text}
                     </div>
+                    {item.question.description ? (
+                      <div className="mt-1 text-sm text-muted-foreground">
+                        {item.question.description}
+                      </div>
+                    ) : null}
                     {!item.canRemove && item.removeBlockedReason ? (
                       <div className="mt-1 text-xs text-amber-600 dark:text-amber-300">
                         {item.removeBlockedReason}
@@ -241,6 +249,11 @@ export function QuestionSetupManager({ brandId, initialSetup }: Props) {
                 >
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium text-foreground">{item.text}</div>
+                    {item.description ? (
+                      <div className="mt-1 text-sm text-muted-foreground">
+                        {item.description}
+                      </div>
+                    ) : null}
                     <div className="text-xs text-muted-foreground">
                       {item.usage.assignedBrandCount} brand(s) using
                     </div>

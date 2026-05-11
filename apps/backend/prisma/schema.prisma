@@ -748,6 +748,7 @@ model CompetitorMonitoringPost {
 model QuestionMaster {
   id           String         @id @default(cuid())
   questionText String         @unique @map("question_text")
+  description  String?        @db.Text
   status       QuestionStatus @default(active)
   createdAt    DateTime       @default(now()) @map("created_at")
   updatedAt    DateTime       @updatedAt @map("updated_at")
