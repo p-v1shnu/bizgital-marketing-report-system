@@ -652,7 +652,22 @@ function serializeMultiSelectValue(values: string[]) {
 }
 
 function isAllRelatedProductLabel(value: string) {
-  return value.trim().toLowerCase() === 'all';
+  const normalized = value.trim().toLowerCase();
+  return normalized === 'all' || normalized === 'all / overall products';
+}
+
+function normalizeRelatedProductSelectedLabels(
+  selectedLabels: string[],
+  activeLabels: string[]
+) {
+  const activeAllLabel = activeLabels.find(label => isAllRelatedProductLabel(label)) ?? null;
+  return Array.from(
+    new Set(
+      selectedLabels.map(label =>
+        activeAllLabel && isAllRelatedProductLabel(label) ? activeAllLabel : label
+      )
+    )
+  );
 }
 
 function toggleRelatedProductValue(currentValue: string, optionLabel: string) {
@@ -660,7 +675,9 @@ function toggleRelatedProductValue(currentValue: string, optionLabel: string) {
   const isAll = isAllRelatedProductLabel(optionLabel);
 
   if (isAll) {
-    return current.includes(optionLabel) ? '' : serializeMultiSelectValue([optionLabel]);
+    return current.some(value => isAllRelatedProductLabel(value))
+      ? ''
+      : serializeMultiSelectValue([optionLabel]);
   }
 
   if (current.some(value => isAllRelatedProductLabel(value))) {
@@ -2681,7 +2698,10 @@ export function ImportWorkingTable({
                         !!currentValue && !activeLabels.includes(currentValue);
 
                       if (column.key === 'related_product') {
-                        const selectedLabels = parseMultiSelectValue(currentValue);
+                        const selectedLabels = normalizeRelatedProductSelectedLabels(
+                          parseMultiSelectValue(currentValue),
+                          activeLabels
+                        );
                         const knownSelectedLabels = selectedLabels.filter(label =>
                           activeLabels.includes(label)
                         );
