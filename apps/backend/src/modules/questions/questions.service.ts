@@ -613,9 +613,12 @@ export class QuestionsService {
 
     const completedQuestionCount = items.filter(item => item.entry.isComplete).length;
     const highlightScreenshotCount = highlights.screenshots.length;
-    const hasHighlightScreenshot = highlightScreenshotCount >= 1;
+    const allCategoriesHaveNoQuestions =
+      items.length > 0 && items.every(item => item.entry.mode === 'no_questions');
+    const hasRequiredHighlightScreenshot =
+      allCategoriesHaveNoQuestions || highlightScreenshotCount >= 1;
     const hasCompleteCounts = completedQuestionCount === activeAssignments.length;
-    const isReady = hasCompleteCounts && hasHighlightScreenshot;
+    const isReady = hasCompleteCounts && hasRequiredHighlightScreenshot;
 
     return {
       ...baseResponse,
@@ -623,8 +626,10 @@ export class QuestionsService {
         state: isReady ? 'ready' : 'pending',
         detail: !hasCompleteCounts
           ? 'Complete question count for each active category before submit.'
-          : !hasHighlightScreenshot
+          : !hasRequiredHighlightScreenshot
             ? 'Add at least 1 highlight screenshot before submit.'
+            : allCategoriesHaveNoQuestions
+              ? 'Every active question category is marked as no questions this month.'
             : 'Every active question category has complete monthly monitoring.',
         requiredQuestionCount: activeAssignments.length,
         completedQuestionCount
@@ -945,7 +950,7 @@ export class QuestionsService {
     const modeByEvidenceId = await this.loadModeByEvidenceId(entryIds);
     const screenshotsByEvidenceId = await this.loadScreenshotsByEvidenceId(entryIds);
 
-    const completedQuestionCount = entries.filter(entry => {
+    const resolvedEntries = entries.map(entry => {
       const mode = this.resolveMode(modeByEvidenceId.get(entry.id)?.mode ?? null);
       const questionCount = this.resolveQuestionCount(
         entry,
@@ -954,27 +959,39 @@ export class QuestionsService {
       const note = this.normalizeOptionalText(entry.responseNote);
       const screenshotCount = (screenshotsByEvidenceId.get(entry.id) ?? []).length;
 
-      return this.isEntryComplete({
+      return {
         mode,
         questionCount,
-        note,
-        screenshotCount
-      });
-    }).length;
+        isComplete: this.isEntryComplete({
+          mode,
+          questionCount,
+          note,
+          screenshotCount
+        })
+      };
+    });
+    const completedQuestionCount = resolvedEntries.filter(entry => entry.isComplete).length;
     const highlightScreenshotCount = await this.prisma.questionHighlightScreenshot.count({
       where: {
         reportVersionId
       }
     });
-    const hasHighlightScreenshot = highlightScreenshotCount >= 1;
+    const allCategoriesHaveNoQuestions =
+      resolvedEntries.length === activeAssignments.length &&
+      resolvedEntries.length > 0 &&
+      resolvedEntries.every(entry => entry.mode === 'no_questions');
+    const hasRequiredHighlightScreenshot =
+      allCategoriesHaveNoQuestions || highlightScreenshotCount >= 1;
     const hasCompleteCounts = completedQuestionCount === activeAssignments.length;
 
     return {
-      isComplete: hasCompleteCounts && hasHighlightScreenshot,
+      isComplete: hasCompleteCounts && hasRequiredHighlightScreenshot,
       detail: !hasCompleteCounts
         ? `${completedQuestionCount}/${activeAssignments.length} question categories are complete this month.`
-        : !hasHighlightScreenshot
+        : !hasRequiredHighlightScreenshot
           ? 'Add at least 1 highlight screenshot before submit.'
+          : allCategoriesHaveNoQuestions
+            ? 'Every active question category is marked as no questions this month.'
           : 'Every active question category has complete monthly monitoring.',
       requiredQuestionCount: activeAssignments.length,
       completedQuestionCount

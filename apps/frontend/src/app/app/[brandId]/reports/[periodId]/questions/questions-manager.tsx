@@ -54,6 +54,7 @@ const AUTOSAVE_MS = 1000;
 const MAX_HIGHLIGHT_SHOTS = 10;
 const MIN_HIGHLIGHT_SHOTS = 1;
 const MAX_NOTE_LENGTH = 280;
+const NO_QUESTIONS_HIGHLIGHT_NOTE = 'No questions this month.';
 
 function ensureAtLeastOneScreenshotSlot(values: string[]) {
   return values.length >= MIN_HIGHLIGHT_SHOTS ? values : [''];
@@ -288,6 +289,13 @@ export function QuestionsManager({
   const highlightFilledCount = highlightDraft.screenshots.filter(
     (item) => item.trim().length > 0
   ).length;
+  const allCategoriesHaveNoQuestions =
+    requiredCount > 0 &&
+    items.every((item) => {
+      const draft = draftByActivation[item.activation.id] ?? toDraft(item);
+      return draft.mode === 'no_questions';
+    });
+  const isHighlightSectionDisabled = isReadOnly || allCategoriesHaveNoQuestions;
   const hasUnsavedChanges = dirtyCount > 0 || highlightMeta.dirty;
   const isSavingAnything = isAnyEntrySaving || highlightMeta.saveState === 'saving';
   const hasSaveError = isAnyEntryError || highlightMeta.saveState === 'error';
@@ -325,6 +333,33 @@ export function QuestionsManager({
       void persistHighlights('auto');
     }, AUTOSAVE_MS);
   }
+
+  useEffect(() => {
+    if (!allCategoriesHaveNoQuestions || isReadOnly) {
+      return;
+    }
+
+    const current = highlightsRef.current;
+    if (current.note.trim().length > 0) {
+      return;
+    }
+
+    setHighlightDraft((draft) => ({
+      ...draft,
+      note: NO_QUESTIONS_HIGHLIGHT_NOTE
+    }));
+    highlightsRef.current = {
+      ...current,
+      note: NO_QUESTIONS_HIGHLIGHT_NOTE
+    };
+    setHighlightMeta((meta) => ({
+      ...meta,
+      dirty: true,
+      saveState: 'idle',
+      saveError: null
+    }));
+    queueHighlightAutosave();
+  }, [allCategoriesHaveNoQuestions, isReadOnly]);
 
   function getBaseDraftFromSource(
     source: Record<string, DraftEntry>,
@@ -614,11 +649,13 @@ export function QuestionsManager({
             <Badge variant="outline">
               Categories complete: {completedCount}/{requiredCount}
             </Badge>
-            <Badge variant="outline">Highlight screenshots: {highlightFilledCount}</Badge>
+            <Badge variant="outline">
+              Highlight screenshots: {allCategoriesHaveNoQuestions ? 'not required' : highlightFilledCount}
+            </Badge>
             {!isReadOnly ? <Badge variant="outline">Auto-save enabled</Badge> : null}
           </>
         }
-        description="Step 1 records question count by category for charts. Step 2 captures highlight screenshots and an optional free-form note for presentation slides."
+        description="Step 1 records question count by category for charts. Step 2 captures highlight screenshots when this month has questions."
         title={`Questions for ${monthLabel}`}
       />
 
@@ -791,12 +828,19 @@ export function QuestionsManager({
               {highlightMeta.saveError}
             </div>
           ) : null}
+          {allCategoriesHaveNoQuestions ? (
+            <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/8 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300">
+              All categories are marked as no questions this month, so highlight screenshots are not required.
+            </div>
+          ) : null}
 
           <div className="space-y-2">
-            <label className="text-sm font-medium">Rich note (optional)</label>
+            <label className="text-sm font-medium">
+              Rich note {allCategoriesHaveNoQuestions ? '' : '(optional)'}
+            </label>
             <Textarea
               className="min-h-36 w-full rounded-2xl border border-input bg-background/70 px-4 py-3 text-sm text-foreground shadow-sm outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/60"
-              disabled={isReadOnly}
+              disabled={isHighlightSectionDisabled}
               maxLength={MAX_NOTE_LENGTH}
               onChange={(event) => {
                 const value = event.currentTarget.value.slice(0, MAX_NOTE_LENGTH);
@@ -805,7 +849,11 @@ export function QuestionsManager({
                   note: value
                 }));
               }}
-              placeholder="Write bullet points, summary, translation, or leave blank."
+              placeholder={
+                allCategoriesHaveNoQuestions
+                  ? NO_QUESTIONS_HIGHLIGHT_NOTE
+                  : 'Write bullet points, summary, translation, or leave blank.'
+              }
               value={highlightDraft.note}
             />
             <div className="text-xs text-muted-foreground">
@@ -820,7 +868,10 @@ export function QuestionsManager({
               </label>
               {!isReadOnly ? (
                 <Button
-                  disabled={highlightDraft.screenshots.length >= MAX_HIGHLIGHT_SHOTS}
+                  disabled={
+                    isHighlightSectionDisabled ||
+                    highlightDraft.screenshots.length >= MAX_HIGHLIGHT_SHOTS
+                  }
                   onClick={addHighlightScreenshot}
                   size="sm"
                   type="button"
@@ -832,49 +883,53 @@ export function QuestionsManager({
               ) : null}
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {highlightDraft.screenshots.map((screenshot, index) => (
-                <div
-                  className="space-y-2 rounded-2xl border border-border/60 bg-background/55 p-3"
-                  key={`highlight-shot-${index}`}
-                >
-                  <ImageUploadField
-                    disabled={isReadOnly}
-                    hideControlsWhenDisabled={isReadOnly}
-                    onChange={(value) => {
-                      updateHighlights((current) => ({
-                        ...current,
-                        screenshots: current.screenshots.map((item, itemIndex) =>
-                          itemIndex === index ? value : item
-                        )
-                      }));
-                    }}
-                    placeholderLabel={`Highlight ${index + 1}`}
-                    previewAlt={`Question highlight screenshot ${index + 1}`}
-                    previewAspectRatio="16/9"
-                    previewFit="contain"
-                    scope="questions"
-                    value={screenshot}
-                  />
-                  {!isReadOnly ? (
-                    <Button
-                      disabled={highlightDraft.screenshots.length <= MIN_HIGHLIGHT_SHOTS}
-                      onClick={() => removeHighlightScreenshot(index)}
-                      size="sm"
-                      type="button"
-                      variant="outline"
-                    >
-                      <Trash2 />
-                      Remove
-                    </Button>
-                  ) : null}
-                </div>
-              ))}
-            </div>
+            {!allCategoriesHaveNoQuestions ? (
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {highlightDraft.screenshots.map((screenshot, index) => (
+                  <div
+                    className="space-y-2 rounded-2xl border border-border/60 bg-background/55 p-3"
+                    key={`highlight-shot-${index}`}
+                  >
+                    <ImageUploadField
+                      disabled={isHighlightSectionDisabled}
+                      hideControlsWhenDisabled={isHighlightSectionDisabled}
+                      onChange={(value) => {
+                        updateHighlights((current) => ({
+                          ...current,
+                          screenshots: current.screenshots.map((item, itemIndex) =>
+                            itemIndex === index ? value : item
+                          )
+                        }));
+                      }}
+                      placeholderLabel={`Highlight ${index + 1}`}
+                      previewAlt={`Question highlight screenshot ${index + 1}`}
+                      previewAspectRatio="16/9"
+                      previewFit="contain"
+                      scope="questions"
+                      value={screenshot}
+                    />
+                    {!isReadOnly ? (
+                      <Button
+                        disabled={highlightDraft.screenshots.length <= MIN_HIGHLIGHT_SHOTS}
+                        onClick={() => removeHighlightScreenshot(index)}
+                        size="sm"
+                        type="button"
+                        variant="outline"
+                      >
+                        <Trash2 />
+                        Remove
+                      </Button>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
 
           <div className="text-xs text-muted-foreground">
-            Highlight screenshots are independent from category counts by design.
+            {allCategoriesHaveNoQuestions
+              ? 'No-question months can be submitted without highlight screenshots.'
+              : 'Highlight screenshots are independent from category counts by design.'}
           </div>
         </CardContent>
       </Card>
