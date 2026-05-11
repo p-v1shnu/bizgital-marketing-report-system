@@ -1715,6 +1715,24 @@ export class ReportingService implements OnModuleInit {
         questionHighlightNote: sourceVersion?.questionHighlightNote ?? null
       }
     });
+    try {
+      await tx.$executeRawUnsafe(
+        'ALTER TABLE report_versions ADD COLUMN question_highlight_note_optional TINYINT(1) NOT NULL DEFAULT 0 AFTER question_highlight_note'
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message.toLowerCase() : '';
+      if (!message.includes('duplicate column name')) {
+        throw error;
+      }
+    }
+    await tx.$executeRawUnsafe(
+      `UPDATE report_versions target
+       JOIN report_versions source ON source.id = ?
+       SET target.question_highlight_note_optional = COALESCE(source.question_highlight_note_optional, 0)
+       WHERE target.id = ?`,
+      sourceVersionId,
+      draftVersionId
+    );
 
     if (sourceHighlightScreenshots.length > 0) {
       await tx.questionHighlightScreenshot.createMany({
@@ -1742,6 +1760,30 @@ export class ReportingService implements OnModuleInit {
       }
     });
 
+    await tx.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS question_evidence_related_product_breakdowns (
+        id VARCHAR(191) NOT NULL,
+        question_evidence_id VARCHAR(191) NOT NULL,
+        related_product_option_id VARCHAR(191) NOT NULL,
+        value_key VARCHAR(191) NOT NULL,
+        label VARCHAR(255) NOT NULL,
+        question_count INT NOT NULL,
+        display_order INT NOT NULL DEFAULT 1,
+        created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (id),
+        UNIQUE KEY question_evidence_product_evidence_option_unique (question_evidence_id, related_product_option_id),
+        KEY question_evidence_product_evidence_idx (question_evidence_id),
+        KEY question_evidence_product_option_idx (related_product_option_id),
+        CONSTRAINT question_evidence_product_evidence_fkey
+          FOREIGN KEY (question_evidence_id) REFERENCES question_evidence(id)
+          ON DELETE CASCADE ON UPDATE CASCADE,
+        CONSTRAINT question_evidence_product_option_fkey
+          FOREIGN KEY (related_product_option_id) REFERENCES brand_dropdown_options(id)
+          ON DELETE RESTRICT ON UPDATE CASCADE
+      ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    `);
+
     for (const sourceEvidence of sourceQuestionEvidence) {
       const clonedQuestionEvidence = await tx.questionEvidence.create({
         data: {
@@ -1756,17 +1798,25 @@ export class ReportingService implements OnModuleInit {
         }
       });
 
-      if (sourceEvidence.screenshots.length === 0) {
-        continue;
+      if (sourceEvidence.screenshots.length > 0) {
+        await tx.questionEvidenceScreenshot.createMany({
+          data: sourceEvidence.screenshots.map(screenshot => ({
+            questionEvidenceId: clonedQuestionEvidence.id,
+            displayOrder: screenshot.displayOrder,
+            screenshotUrl: screenshot.screenshotUrl
+          }))
+        });
       }
 
-      await tx.questionEvidenceScreenshot.createMany({
-        data: sourceEvidence.screenshots.map(screenshot => ({
-          questionEvidenceId: clonedQuestionEvidence.id,
-          displayOrder: screenshot.displayOrder,
-          screenshotUrl: screenshot.screenshotUrl
-        }))
-      });
+      await tx.$executeRawUnsafe(
+        `INSERT INTO question_evidence_related_product_breakdowns
+          (id, question_evidence_id, related_product_option_id, value_key, label, question_count, display_order, created_at, updated_at)
+         SELECT CONCAT('qpb_', REPLACE(UUID(), '-', '')), ?, related_product_option_id, value_key, label, question_count, display_order, NOW(3), NOW(3)
+         FROM question_evidence_related_product_breakdowns
+         WHERE question_evidence_id = ?`,
+        clonedQuestionEvidence.id,
+        sourceEvidence.id
+      );
     }
   }
 
@@ -3081,7 +3131,10 @@ export class ReportingService implements OnModuleInit {
           where: {
             brandId,
             fieldKey: BrandDropdownFieldKey.related_product,
-            status: BrandDropdownOptionStatus.active
+            status: BrandDropdownOptionStatus.active,
+            valueKey: {
+              not: 'all'
+            }
           }
         })
       ]);
@@ -3175,7 +3228,7 @@ export class ReportingService implements OnModuleInit {
         passed: relatedProductPassed,
         detail: relatedProductPassed
           ? 'Related Product options are configured for this brand.'
-          : 'Add at least one active Related Product option before creating reports.'
+          : 'Add at least one active real Related Product option before creating reports.'
       }
     ];
 

@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ImageUploadField } from '@/components/ui/image-upload-field';
 import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useDebouncedRefresh } from '@/hooks/use-debounced-refresh';
 import type { QuestionOverviewResponse } from '@/lib/reporting-api';
@@ -36,10 +37,15 @@ type Props = {
 type DraftEntry = {
   mode: 'has_questions' | 'no_questions';
   questionCount: string;
+  relatedProductBreakdown: Array<{
+    relatedProductOptionId: string;
+    questionCount: string;
+  }>;
 };
 
 type DraftHighlights = {
   note: string;
+  noteOptional: boolean;
   screenshots: string[];
 };
 
@@ -73,7 +79,11 @@ function toDraft(item: QuestionOverviewResponse['items'][number]): DraftEntry {
 
   return {
     mode: defaultMode,
-    questionCount: defaultQuestionCount
+    questionCount: defaultQuestionCount,
+    relatedProductBreakdown: item.entry.relatedProductBreakdown.map(entry => ({
+      relatedProductOptionId: entry.relatedProductOptionId,
+      questionCount: String(entry.questionCount)
+    }))
   };
 }
 
@@ -82,6 +92,7 @@ function toHighlightDraft(
 ): DraftHighlights {
   return {
     note: highlights.note ?? '',
+    noteOptional: highlights.noteOptional,
     screenshots: ensureAtLeastOneScreenshotSlot(
       highlights.screenshots.map((entry) => entry.screenshotUrl)
     )
@@ -119,6 +130,13 @@ function isComplete(draft: DraftEntry) {
   return Number.isInteger(count) && count >= 1;
 }
 
+function sumRelatedProductBreakdown(draft: DraftEntry) {
+  return draft.relatedProductBreakdown.reduce((sum, item) => {
+    const count = Number(item.questionCount);
+    return Number.isInteger(count) && count > 0 ? sum + count : sum;
+  }, 0);
+}
+
 function createDefaultSaveMeta(): SaveMeta {
   return {
     dirty: false,
@@ -134,7 +152,8 @@ function serializeDraft(draft: DraftEntry) {
       ok: true as const,
       payload: {
         mode: 'no_questions' as const,
-        questionCount: 0
+        questionCount: 0,
+        relatedProductBreakdown: []
       }
     };
   }
@@ -150,11 +169,55 @@ function serializeDraft(draft: DraftEntry) {
     };
   }
 
+  const seenProductIds = new Set<string>();
+  const relatedProductBreakdown: Array<{
+    relatedProductOptionId: string;
+    questionCount: number;
+  }> = [];
+  for (const item of draft.relatedProductBreakdown) {
+    if (!item.relatedProductOptionId && !item.questionCount.trim()) {
+      continue;
+    }
+
+    const count = Number(item.questionCount);
+    if (!item.relatedProductOptionId) {
+      return {
+        ok: false as const,
+        error: 'Choose a related product for every breakdown row.'
+      };
+    }
+    if (seenProductIds.has(item.relatedProductOptionId)) {
+      return {
+        ok: false as const,
+        error: 'Related product breakdown cannot contain duplicate products.'
+      };
+    }
+    seenProductIds.add(item.relatedProductOptionId);
+    if (!Number.isInteger(count) || count <= 0) {
+      return {
+        ok: false as const,
+        error: 'Related product breakdown counts must be whole numbers greater than 0.'
+      };
+    }
+    relatedProductBreakdown.push({
+      relatedProductOptionId: item.relatedProductOptionId,
+      questionCount: count
+    });
+  }
+  const breakdownTotal = relatedProductBreakdown.reduce((sum, item) => sum + item.questionCount, 0);
+  if (breakdownTotal > questionCount) {
+    return {
+      ok: false as const,
+      error: 'Related product breakdown total cannot exceed the category question count.'
+    };
+  }
+
   return {
     ok: true as const,
     payload: {
       mode: 'has_questions' as const,
-      questionCount
+      questionCount,
+      relatedProductBreakdown
     }
   };
 }
@@ -174,7 +237,8 @@ function serializeHighlights(draft: DraftHighlights) {
   return {
     ok: true as const,
     payload: {
-      note: draft.note.trim() || null,
+      note: draft.noteOptional ? null : draft.note.trim() || null,
+      noteOptional: draft.noteOptional,
       screenshots
     }
   };
@@ -204,6 +268,10 @@ export function QuestionsManager({
   const [openDescriptionActivationId, setOpenDescriptionActivationId] = useState<string | null>(
     null
   );
+  const [openProductBreakdownActivationIds, setOpenProductBreakdownActivationIds] = useState<
+    Record<string, boolean>
+  >({});
+  const relatedProductOptions = initialOverview.relatedProductOptions;
 
   const entryTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -258,7 +326,25 @@ export function QuestionsManager({
     [draftByActivation, items]
   );
   const requiredCount = items.length;
-  const readyState = requiredCount > 0 && completedCount === requiredCount;
+  const highlightFilledCount = highlightDraft.screenshots.filter(
+    (item) => item.trim().length > 0
+  ).length;
+  const allCategoriesHaveNoQuestions =
+    requiredCount > 0 &&
+    items.every((item) => {
+      const draft = draftByActivation[item.activation.id] ?? toDraft(item);
+      return draft.mode === 'no_questions';
+    });
+  const highlightNoteFilled = highlightDraft.note.trim().length > 0;
+  const highlightNoteSatisfied =
+    allCategoriesHaveNoQuestions || highlightDraft.noteOptional || highlightNoteFilled;
+  const highlightScreenshotsSatisfied =
+    allCategoriesHaveNoQuestions || highlightFilledCount >= MIN_HIGHLIGHT_SHOTS;
+  const readyState =
+    requiredCount > 0 &&
+    completedCount === requiredCount &&
+    highlightScreenshotsSatisfied &&
+    highlightNoteSatisfied;
   const dirtyCount = useMemo(
     () =>
       items.filter(
@@ -302,16 +388,8 @@ export function QuestionsManager({
 
     return Math.max(...savedTimestamps);
   }, [items, metaByActivation, highlightMeta.savedAt]);
-  const highlightFilledCount = highlightDraft.screenshots.filter(
-    (item) => item.trim().length > 0
-  ).length;
-  const allCategoriesHaveNoQuestions =
-    requiredCount > 0 &&
-    items.every((item) => {
-      const draft = draftByActivation[item.activation.id] ?? toDraft(item);
-      return draft.mode === 'no_questions';
-    });
   const isHighlightSectionDisabled = isReadOnly || allCategoriesHaveNoQuestions;
+  const isHighlightNoteDisabled = isHighlightSectionDisabled || highlightDraft.noteOptional;
   const hasUnsavedChanges = dirtyCount > 0 || highlightMeta.dirty;
   const isSavingAnything = isAnyEntrySaving || highlightMeta.saveState === 'saving';
   const hasSaveError = isAnyEntryError || highlightMeta.saveState === 'error';
@@ -356,18 +434,27 @@ export function QuestionsManager({
     }
 
     const current = highlightsRef.current;
-    if (current.note.trim().length > 0) {
+    const shouldSetDefaultNote = current.note.trim().length === 0;
+    const hasScreenshotsToClear = current.screenshots.some(
+      (screenshot) => screenshot.trim().length > 0
+    );
+    const shouldResetOptional = current.noteOptional;
+
+    if (!shouldSetDefaultNote && !hasScreenshotsToClear && !shouldResetOptional) {
       return;
     }
 
+    const nextDraft = {
+      ...current,
+      noteOptional: false,
+      note: shouldSetDefaultNote ? NO_QUESTIONS_HIGHLIGHT_NOTE : current.note,
+      screenshots: []
+    };
     setHighlightDraft((draft) => ({
       ...draft,
-      note: NO_QUESTIONS_HIGHLIGHT_NOTE
+      ...nextDraft
     }));
-    highlightsRef.current = {
-      ...current,
-      note: NO_QUESTIONS_HIGHLIGHT_NOTE
-    };
+    highlightsRef.current = nextDraft;
     setHighlightMeta((meta) => ({
       ...meta,
       dirty: true,
@@ -420,6 +507,29 @@ export function QuestionsManager({
     }));
 
     queueEntryAutosave(activationId);
+  }
+
+  function clearDefaultNoQuestionsHighlightNote() {
+    const current = highlightsRef.current;
+    if (current.note.trim() !== NO_QUESTIONS_HIGHLIGHT_NOTE) {
+      return;
+    }
+
+    setHighlightDraft((draft) => ({
+      ...draft,
+      note: ''
+    }));
+    highlightsRef.current = {
+      ...current,
+      note: ''
+    };
+    setHighlightMeta((meta) => ({
+      ...meta,
+      dirty: true,
+      saveState: 'idle',
+      saveError: null
+    }));
+    queueHighlightAutosave();
   }
 
   function focusCountInputByActivationIndex(index: number) {
@@ -549,6 +659,25 @@ export function QuestionsManager({
                   ...candidate.entry,
                   mode: parsed.payload.mode,
                   questionCount: parsed.payload.questionCount,
+                  relatedProductBreakdown:
+                    parsed.payload.relatedProductBreakdown?.map((entry, index) => {
+                      const option =
+                        relatedProductOptions.find(
+                          candidateOption => candidateOption.id === entry.relatedProductOptionId
+                        ) ?? null;
+                      return {
+                        id: `draft-${entry.relatedProductOptionId}`,
+                        relatedProductOptionId: entry.relatedProductOptionId,
+                        valueKey: option?.valueKey ?? '',
+                        label: option?.label ?? 'Related product',
+                        questionCount: entry.questionCount,
+                        displayOrder: index + 1
+                      };
+                    }) ?? [],
+                  otherUnspecifiedCount: Math.max(
+                    0,
+                    parsed.payload.questionCount - sumRelatedProductBreakdown(draft)
+                  ),
                   isComplete: isComplete(draft)
                 }
               }
@@ -681,7 +810,7 @@ export function QuestionsManager({
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="rounded-2xl border border-border/60 bg-background/60">
-            <div className="hidden grid-cols-[minmax(240px,1fr)_minmax(360px,1.2fr)_140px_220px] gap-3 border-b border-border/60 bg-background/80 px-4 py-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground md:grid">
+            <div className="hidden grid-cols-[minmax(240px,1fr)_minmax(240px,0.75fr)_minmax(320px,1fr)_120px] gap-3 border-b border-border/60 bg-background/80 px-4 py-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground md:grid">
               <div>Category</div>
               <div>Monthly mode</div>
               <div>Question count</div>
@@ -700,10 +829,29 @@ export function QuestionsManager({
                   const meta = metaByActivation[activationId] ?? createDefaultSaveMeta();
                   const complete = isComplete(draft);
                   const currentIndex = activationIndexById[activationId] ?? -1;
+                  const totalQuestionCount = Number(draft.questionCount);
+                  const safeTotalQuestionCount =
+                    Number.isInteger(totalQuestionCount) && totalQuestionCount >= 0
+                      ? totalQuestionCount
+                      : 0;
+                  const breakdownTotal = sumRelatedProductBreakdown(draft);
+                  const otherUnspecifiedCount = Math.max(
+                    0,
+                    safeTotalQuestionCount - breakdownTotal
+                  );
+                  const selectedProductIds = new Set(
+                    draft.relatedProductBreakdown
+                      .map(entry => entry.relatedProductOptionId)
+                      .filter(Boolean)
+                  );
+                  const hasProductBreakdown = draft.relatedProductBreakdown.length > 0;
+                  const isProductBreakdownOpen =
+                    draft.mode === 'has_questions' &&
+                    (openProductBreakdownActivationIds[activationId] ?? hasProductBreakdown);
 
                   return (
                     <div
-                      className={`relative grid gap-3 px-4 py-4 md:grid-cols-[minmax(240px,1fr)_minmax(360px,1.2fr)_140px_220px] md:items-center ${
+                      className={`relative grid gap-3 px-4 py-4 md:grid-cols-[minmax(240px,1fr)_minmax(240px,0.75fr)_minmax(320px,1fr)_120px] md:items-center ${
                         openDescriptionActivationId === activationId ? 'z-40' : 'z-0'
                       }`}
                       key={activationId}
@@ -767,22 +915,23 @@ export function QuestionsManager({
                         <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground md:hidden">
                           Monthly mode
                         </div>
-                        <div className="grid gap-2 sm:grid-cols-2">
+                        <div className="grid h-10 grid-cols-2 overflow-hidden rounded-2xl border border-border/60 bg-background/70">
                           <button
-                            className={`rounded-2xl border px-3 py-2 text-left text-sm transition ${
+                            className={`px-3 text-left text-sm transition ${
                               draft.mode === 'has_questions'
-                                ? 'border-primary/40 bg-primary/10 text-foreground'
-                                : 'border-border/60 bg-background/70 text-muted-foreground'
+                                ? 'bg-primary/10 text-foreground'
+                                : 'text-muted-foreground'
                             }`}
                             disabled={isReadOnly}
-                            onClick={() =>
+                            onClick={() => {
+                              clearDefaultNoQuestionsHighlightNote();
                               updateDraft(activationId, (current) => ({
                                 ...current,
                                 mode: 'has_questions',
                                 questionCount:
                                   Number(current.questionCount) >= 1 ? current.questionCount : ''
-                              }))
-                            }
+                              }));
+                            }}
                             type="button"
                           >
                             <span className="inline-flex items-center gap-2">
@@ -791,21 +940,22 @@ export function QuestionsManager({
                               ) : (
                                 <Circle className="size-4 text-muted-foreground" />
                               )}
-                              Has questions
+                              Has
                             </span>
                           </button>
                           <button
-                            className={`rounded-2xl border px-3 py-2 text-left text-sm transition ${
+                            className={`border-l border-border/60 px-3 text-left text-sm transition ${
                               draft.mode === 'no_questions'
-                                ? 'border-primary/40 bg-primary/10 text-foreground'
-                                : 'border-border/60 bg-background/70 text-muted-foreground'
+                                ? 'bg-primary/10 text-foreground'
+                                : 'text-muted-foreground'
                             }`}
                             disabled={isReadOnly}
                             onClick={() =>
                               updateDraft(activationId, (current) => ({
                                 ...current,
                                 mode: 'no_questions',
-                                questionCount: '0'
+                                questionCount: '0',
+                                relatedProductBreakdown: []
                               }))
                             }
                             type="button"
@@ -816,7 +966,7 @@ export function QuestionsManager({
                               ) : (
                                 <Circle className="size-4 text-muted-foreground" />
                               )}
-                              No questions
+                              None
                             </span>
                           </button>
                         </div>
@@ -826,51 +976,240 @@ export function QuestionsManager({
                         <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground md:hidden">
                           Question count
                         </div>
-                        <Input
-                          disabled={isReadOnly || draft.mode === 'no_questions'}
-                          inputMode="numeric"
-                          onChange={(event) => {
-                            const value = event.currentTarget.value;
-                            const sanitizedValue = value.replace(/[^\d]/g, '');
+                        <div className="flex items-center gap-2">
+                          <Input
+                            className="min-w-0 flex-1"
+                            disabled={isReadOnly || draft.mode === 'no_questions'}
+                            inputMode="numeric"
+                            onChange={(event) => {
+                              const value = event.currentTarget.value;
+                              const sanitizedValue = value.replace(/[^\d]/g, '');
 
-                            updateDraft(activationId, (current) => ({
-                              ...current,
-                              questionCount: sanitizedValue
-                            }));
-                          }}
-                          onKeyDown={(event) => {
-                            if (currentIndex < 0) {
-                              return;
-                            }
+                              updateDraft(activationId, (current) => ({
+                                ...current,
+                                questionCount: sanitizedValue
+                              }));
+                            }}
+                            onKeyDown={(event) => {
+                              if (currentIndex < 0) {
+                                return;
+                              }
 
-                            if (event.key === 'Enter' || event.key === 'ArrowDown') {
-                              event.preventDefault();
-                              focusCountInputByActivationIndex(currentIndex + 1);
-                            } else if (event.key === 'ArrowUp') {
-                              event.preventDefault();
-                              focusCountInputByActivationIndex(currentIndex - 1);
-                            }
-                          }}
-                          placeholder={draft.mode === 'no_questions' ? '0' : 'Required'}
-                          ref={(element) => {
-                            countInputRefs.current[activationId] = element;
-                          }}
-                          type="text"
-                          value={draft.mode === 'no_questions' ? '0' : draft.questionCount}
-                        />
+                              if (event.key === 'Enter' || event.key === 'ArrowDown') {
+                                event.preventDefault();
+                                focusCountInputByActivationIndex(currentIndex + 1);
+                              } else if (event.key === 'ArrowUp') {
+                                event.preventDefault();
+                                focusCountInputByActivationIndex(currentIndex - 1);
+                              }
+                            }}
+                            placeholder={draft.mode === 'no_questions' ? '0' : 'Required'}
+                            ref={(element) => {
+                              countInputRefs.current[activationId] = element;
+                            }}
+                            type="text"
+                            value={draft.mode === 'no_questions' ? '0' : draft.questionCount}
+                          />
+                          {draft.mode === 'has_questions' ? (
+                            <Button
+                              className="shrink-0 whitespace-nowrap"
+                              disabled={isReadOnly && !hasProductBreakdown}
+                              onClick={() => {
+                                if (hasProductBreakdown) {
+                                  setOpenProductBreakdownActivationIds((current) => ({
+                                    ...current,
+                                    [activationId]: !isProductBreakdownOpen
+                                  }));
+                                  return;
+                                }
+
+                                updateDraft(activationId, (current) => ({
+                                  ...current,
+                                  relatedProductBreakdown: [
+                                    ...current.relatedProductBreakdown,
+                                    {
+                                      relatedProductOptionId: '',
+                                      questionCount: ''
+                                    }
+                                  ]
+                                }));
+                                setOpenProductBreakdownActivationIds((current) => ({
+                                  ...current,
+                                  [activationId]: true
+                                }));
+                              }}
+                              size="sm"
+                              type="button"
+                              variant="outline"
+                            >
+                              {hasProductBreakdown
+                                ? `Products ${breakdownTotal}/${safeTotalQuestionCount}`
+                                : 'Add product'}
+                            </Button>
+                          ) : null}
+                        </div>
                       </div>
 
                       <div className="space-y-1">
                         <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground md:hidden">
                           Status
                         </div>
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2 md:justify-start">
                           <Badge variant="outline">{complete ? 'Complete' : 'Incomplete'}</Badge>
-                        </div>
+                          </div>
                         {meta.saveState === 'error' && meta.saveError ? (
                           <div className="text-xs text-rose-600 dark:text-rose-300">{meta.saveError}</div>
                         ) : null}
                       </div>
+
+                      {isProductBreakdownOpen ? (
+                        <div className="space-y-3 rounded-2xl border border-border/60 bg-background/45 p-3 md:col-span-4">
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                              <div className="text-sm font-medium text-foreground">
+                                Related product breakdown
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                Assigned {breakdownTotal}/{safeTotalQuestionCount} • Other/Unspecified {otherUnspecifiedCount}
+                              </div>
+                            </div>
+                            {!isReadOnly ? (
+                              <div className="flex flex-wrap gap-2">
+                                <Button
+                                  disabled={breakdownTotal <= 0}
+                                  onClick={() =>
+                                    updateDraft(activationId, (current) => ({
+                                      ...current,
+                                      questionCount: String(sumRelatedProductBreakdown(current))
+                                    }))
+                                  }
+                                  size="sm"
+                                  type="button"
+                                  variant="outline"
+                                >
+                                  Use total
+                                </Button>
+                                <Button
+                                  disabled={
+                                    relatedProductOptions.length === 0 ||
+                                    draft.relatedProductBreakdown.length >= relatedProductOptions.length
+                                  }
+                                  onClick={() =>
+                                    updateDraft(activationId, (current) => ({
+                                      ...current,
+                                      relatedProductBreakdown: [
+                                        ...current.relatedProductBreakdown,
+                                        {
+                                          relatedProductOptionId: '',
+                                          questionCount: ''
+                                        }
+                                      ]
+                                    }))
+                                  }
+                                  size="sm"
+                                  type="button"
+                                  variant="outline"
+                                >
+                                  Add product
+                                </Button>
+                              </div>
+                            ) : null}
+                          </div>
+                          {draft.relatedProductBreakdown.length === 0 ? (
+                            <div className="text-xs text-muted-foreground">
+                              No product breakdown added. The full count is treated as Other/Unspecified.
+                            </div>
+                          ) : (
+                            <div className="grid gap-2">
+                              {draft.relatedProductBreakdown.map((entry, productIndex) => (
+                                <div
+                                  className="grid gap-2 md:grid-cols-[minmax(220px,1fr)_120px_auto]"
+                                  key={`${activationId}-product-${productIndex}`}
+                                >
+                                  <Select
+                                    disabled={isReadOnly}
+                                    onChange={event => {
+                                      const nextProductId = event.currentTarget.value;
+                                      updateDraft(activationId, (current) => ({
+                                        ...current,
+                                        relatedProductBreakdown: current.relatedProductBreakdown.map(
+                                          (candidate, index) =>
+                                            index === productIndex
+                                              ? {
+                                                  ...candidate,
+                                                  relatedProductOptionId: nextProductId
+                                                }
+                                              : candidate
+                                        )
+                                      }));
+                                    }}
+                                    value={entry.relatedProductOptionId}
+                                  >
+                                    <option value="">Choose product...</option>
+                                    {relatedProductOptions.map(option => {
+                                      const disabled =
+                                        selectedProductIds.has(option.id) &&
+                                        option.id !== entry.relatedProductOptionId;
+                                      return (
+                                        <option disabled={disabled} key={option.id} value={option.id}>
+                                          {option.label}
+                                        </option>
+                                      );
+                                    })}
+                                  </Select>
+                                  <Input
+                                    disabled={isReadOnly}
+                                    inputMode="numeric"
+                                    onChange={event => {
+                                      const value = event.currentTarget.value.replace(/[^\d]/g, '');
+                                      updateDraft(activationId, (current) => ({
+                                        ...current,
+                                        relatedProductBreakdown: current.relatedProductBreakdown.map(
+                                          (candidate, index) =>
+                                            index === productIndex
+                                              ? {
+                                                  ...candidate,
+                                                  questionCount: value
+                                                }
+                                              : candidate
+                                        )
+                                      }));
+                                    }}
+                                    placeholder="Count"
+                                    type="text"
+                                    value={entry.questionCount}
+                                  />
+                                  {!isReadOnly ? (
+                                    <Button
+                                      onClick={() => {
+                                        if (draft.relatedProductBreakdown.length <= 1) {
+                                          setOpenProductBreakdownActivationIds((current) => ({
+                                            ...current,
+                                            [activationId]: false
+                                          }));
+                                        }
+                                        updateDraft(activationId, (current) => ({
+                                          ...current,
+                                          relatedProductBreakdown:
+                                            current.relatedProductBreakdown.filter(
+                                              (_, index) => index !== productIndex
+                                            )
+                                        }));
+                                      }}
+                                      size="sm"
+                                      type="button"
+                                      variant="outline"
+                                    >
+                                      <Trash2 className="size-4" />
+                                      Remove
+                                    </Button>
+                                  ) : null}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ) : null}
                     </div>
                   );
                 })}
@@ -901,12 +1240,33 @@ export function QuestionsManager({
           ) : null}
 
           <div className="space-y-2">
-            <label className="text-sm font-medium">
-              Rich note {allCategoriesHaveNoQuestions ? '' : '(optional)'}
-            </label>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <label className="text-sm font-medium">
+                Rich note {allCategoriesHaveNoQuestions || highlightDraft.noteOptional ? '(optional)' : '(required)'}
+              </label>
+              {!allCategoriesHaveNoQuestions ? (
+                <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+                  <input
+                    checked={highlightDraft.noteOptional}
+                    className="size-4"
+                    disabled={isReadOnly}
+                    onChange={event => {
+                      const nextOptional = event.currentTarget.checked;
+                      updateHighlights((current) => ({
+                        ...current,
+                        noteOptional: nextOptional,
+                        note: nextOptional ? '' : current.note
+                      }));
+                    }}
+                    type="checkbox"
+                  />
+                  Mark note as optional
+                </label>
+              ) : null}
+            </div>
             <Textarea
               className="min-h-36 w-full rounded-2xl border border-input bg-background/70 px-4 py-3 text-sm text-foreground shadow-sm outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/60"
-              disabled={isHighlightSectionDisabled}
+              disabled={isHighlightNoteDisabled}
               maxLength={MAX_NOTE_LENGTH}
               onChange={(event) => {
                 const value = event.currentTarget.value.slice(0, MAX_NOTE_LENGTH);
@@ -918,6 +1278,8 @@ export function QuestionsManager({
               placeholder={
                 allCategoriesHaveNoQuestions
                   ? NO_QUESTIONS_HIGHLIGHT_NOTE
+                  : highlightDraft.noteOptional
+                    ? 'Rich note is marked optional for this report.'
                   : 'Write bullet points, summary, translation, or leave blank.'
               }
               value={highlightDraft.note}
@@ -1010,7 +1372,13 @@ export function QuestionsManager({
               </CardTitle>
             </CardHeader>
             <CardContent className="text-sm leading-6 text-amber-700 dark:text-amber-300">
-              Complete question count for all assigned categories in {monthLabel}.
+              {completedCount !== requiredCount
+                ? `Complete question count for all assigned categories in ${monthLabel}.`
+                : !highlightScreenshotsSatisfied
+                  ? 'Add at least 1 highlight screenshot.'
+                  : !highlightNoteSatisfied
+                    ? 'Add a rich note or mark it optional.'
+                    : `Complete question monitoring for ${monthLabel}.`}
             </CardContent>
           </Card>
         ) : null}

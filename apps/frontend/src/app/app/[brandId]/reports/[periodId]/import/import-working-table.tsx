@@ -618,6 +618,63 @@ function normalizeInputValue(value: string | null | undefined) {
   return normalized.length > 0 ? normalized : null;
 }
 
+function parseMultiSelectValue(value: string | null | undefined) {
+  const normalized = String(value ?? '').trim();
+  if (!normalized) {
+    return [];
+  }
+
+  if (normalized.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(normalized) as unknown;
+      if (Array.isArray(parsed)) {
+        return Array.from(
+          new Set(
+            parsed
+              .map(item => String(item ?? '').trim())
+              .filter(item => item.length > 0)
+          )
+        );
+      }
+    } catch {
+      return [normalized];
+    }
+  }
+
+  return [normalized];
+}
+
+function serializeMultiSelectValue(values: string[]) {
+  const normalized = Array.from(
+    new Set(values.map(value => value.trim()).filter(value => value.length > 0))
+  );
+  return normalized.length > 0 ? JSON.stringify(normalized) : '';
+}
+
+function isAllRelatedProductLabel(value: string) {
+  return value.trim().toLowerCase() === 'all';
+}
+
+function toggleRelatedProductValue(currentValue: string, optionLabel: string) {
+  const current = parseMultiSelectValue(currentValue);
+  const isAll = isAllRelatedProductLabel(optionLabel);
+
+  if (isAll) {
+    return current.includes(optionLabel) ? '' : serializeMultiSelectValue([optionLabel]);
+  }
+
+  if (current.some(value => isAllRelatedProductLabel(value))) {
+    return currentValue;
+  }
+
+  const withoutAll = current.filter(value => !isAllRelatedProductLabel(value));
+  const next = withoutAll.includes(optionLabel)
+    ? withoutAll.filter(value => value !== optionLabel)
+    : [...withoutAll, optionLabel];
+
+  return serializeMultiSelectValue(next);
+}
+
 function normalizePageIdFromText(value: string | null | undefined) {
   const digits = String(value ?? '').replace(/[^0-9]/g, '');
   return digits.length >= 5 ? digits : '';
@@ -776,6 +833,9 @@ export function ImportWorkingTable({
   const [manualHeaderSavedAt, setManualHeaderSavedAt] = useState<string | null>(null);
   const [manualHeaderSaveError, setManualHeaderSaveError] = useState<string | null>(null);
   const [captureLaunchError, setCaptureLaunchError] = useState<string | null>(null);
+  const [openRelatedProductDropdownKey, setOpenRelatedProductDropdownKey] = useState<string | null>(
+    null
+  );
   const autosaveRequestSequence = useRef(0);
   const manualRowsAutosaveRequestSequence = useRef(0);
   const lastPersistedManualHeaderValuesRef = useRef(
@@ -814,6 +874,22 @@ export function ImportWorkingTable({
   useEffect(() => {
     setDropdownFields(resolveFields(companyFormatFields));
   }, [companyFormatFields]);
+
+  useEffect(() => {
+    function closeRelatedProductDropdownOnOutsideClick(event: MouseEvent) {
+      const target = event.target;
+      if (target instanceof Element && target.closest('[data-related-product-dropdown="true"]')) {
+        return;
+      }
+
+      setOpenRelatedProductDropdownKey(null);
+    }
+
+    window.addEventListener('mousedown', closeRelatedProductDropdownOnOutsideClick);
+    return () => {
+      window.removeEventListener('mousedown', closeRelatedProductDropdownOnOutsideClick);
+    };
+  }, []);
 
   useEffect(() => {
     setIsManualStorageHydrated(false);
@@ -2603,6 +2679,102 @@ export function ImportWorkingTable({
                         activeOptionLabelsByField.get(column.dropdownFieldKey) ?? [];
                       const hasLegacyValue =
                         !!currentValue && !activeLabels.includes(currentValue);
+
+                      if (column.key === 'related_product') {
+                        const selectedLabels = parseMultiSelectValue(currentValue);
+                        const knownSelectedLabels = selectedLabels.filter(label =>
+                          activeLabels.includes(label)
+                        );
+                        const legacySelectedLabels = selectedLabels.filter(label =>
+                          !activeLabels.includes(label)
+                        );
+                        const isAllSelected = selectedLabels.some(label =>
+                          isAllRelatedProductLabel(label)
+                        );
+                        const displayLabel =
+                          selectedLabels.length === 0
+                            ? 'Choose...'
+                            : selectedLabels.join(', ');
+                        const dropdownKey = `${rowItem.rowKey}:${column.key}`;
+                        const dropdownOpen = openRelatedProductDropdownKey === dropdownKey;
+
+                        return (
+                          <td className="px-4 py-3 align-middle" key={column.key}>
+                            <details
+                              className="group relative min-w-56"
+                              data-related-product-dropdown="true"
+                              open={dropdownOpen}
+                            >
+                              <summary
+                                className={`flex h-10 cursor-pointer list-none items-center justify-between gap-3 rounded-md border border-input bg-background px-3 text-sm text-foreground ${
+                                  !isCompanyFormatEditable ? 'cursor-not-allowed opacity-60' : ''
+                                }`}
+                                onClick={event => {
+                                  event.preventDefault();
+                                  if (!isCompanyFormatEditable) {
+                                    return;
+                                  }
+
+                                  setOpenRelatedProductDropdownKey(current =>
+                                    current === dropdownKey ? null : dropdownKey
+                                  );
+                                }}
+                              >
+                                <span
+                                  className={`truncate ${
+                                    selectedLabels.length === 0 ? 'text-muted-foreground' : ''
+                                  }`}
+                                >
+                                  {displayLabel}
+                                </span>
+                                <span className="text-xs text-muted-foreground transition group-open:rotate-180">
+                                  ▾
+                                </span>
+                              </summary>
+                              {dropdownOpen ? (
+                                <div className="absolute left-0 top-full z-30 mt-1 grid max-h-56 w-full gap-1 overflow-y-auto rounded-md border border-input bg-popover p-2 shadow-xl">
+                                {legacySelectedLabels.map(label => (
+                                  <label
+                                    className="flex items-center gap-2 text-xs text-muted-foreground"
+                                    key={label}
+                                  >
+                                    <input checked disabled type="checkbox" />
+                                    {label} (Legacy)
+                                  </label>
+                                ))}
+                                {activeLabels.map(label => (
+                                  <label
+                                    className={`flex items-center gap-2 rounded px-1.5 py-1 text-sm ${
+                                      isAllSelected && !isAllRelatedProductLabel(label)
+                                        ? 'text-muted-foreground'
+                                        : 'text-foreground'
+                                    }`}
+                                    key={label}
+                                  >
+                                    <input
+                                      checked={knownSelectedLabels.includes(label)}
+                                      disabled={
+                                        !isCompanyFormatEditable ||
+                                        (isAllSelected && !isAllRelatedProductLabel(label))
+                                      }
+                                      onChange={() =>
+                                        updateManualValue(
+                                          rowItem.rowKey,
+                                          column.key,
+                                          toggleRelatedProductValue(currentValue, label)
+                                        )
+                                      }
+                                      type="checkbox"
+                                    />
+                                    {label}
+                                  </label>
+                                ))}
+                                </div>
+                              ) : null}
+                            </details>
+                          </td>
+                        );
+                      }
 
                       return (
                         <td className="px-4 py-3 align-middle" key={column.key}>

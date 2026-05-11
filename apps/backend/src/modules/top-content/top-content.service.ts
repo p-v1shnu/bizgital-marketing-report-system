@@ -1731,12 +1731,12 @@ export class TopContentService {
   }) {
     const relatedProductLookup =
       input.lookup ?? (await this.getRelatedProductOptionLookup());
-    return this.getManualSourceColumnValuesByRow<string | null>({
+    return this.getManualSourceColumnValuesByRow<string[] | null>({
       reportVersionId: input.reportVersionId,
       rowsByRowNumber: input.rowsByRowNumber,
       columnLabelPredicate: (columnLabel) => this.isRelatedProductColumnLabel(columnLabel),
       valueResolver: ({ columns, explicitValue }) =>
-        this.resolveDropdownValueKey({
+        this.resolveDropdownValueKeys({
           rawValues: Object.values(columns),
           explicitValue,
           lookup: relatedProductLookup
@@ -2060,7 +2060,7 @@ export class TopContentService {
     const csvMediaFormatByRowNumber = new Map<number, string | null>();
     const csvContentStyleByRowNumber = new Map<number, string | null>();
     const csvContentObjectiveByRowNumber = new Map<number, string | null>();
-    const csvRelatedProductByRowNumber = new Map<number, string | null>();
+    const csvRelatedProductByRowNumber = new Map<number, string[] | null>();
     const csvCampaignBaseByRowNumber = new Map<number, boolean | null>();
     const csvCampaignNameByRowNumber = new Map<number, string | null>();
     if (snapshot) {
@@ -2151,7 +2151,7 @@ export class TopContentService {
 
         const relatedProductExplicitValue =
           relatedProductIndex >= 0 ? row[relatedProductIndex] ?? null : null;
-        const relatedProductValueKey = this.resolveDropdownValueKey({
+        const relatedProductValueKey = this.resolveDropdownValueKeys({
           rawValues: [relatedProductExplicitValue],
           explicitValue: relatedProductExplicitValue,
           lookup: relatedProductLookup
@@ -2302,8 +2302,8 @@ export class TopContentService {
   private buildCategoricalBreakdown(input: {
     includedRowNumbers: number[];
     csvRowCount: number;
-    manualByRowNumber: Map<number, string | null>;
-    csvByRowNumber: Map<number, string | null>;
+    manualByRowNumber: Map<number, string | string[] | null>;
+    csvByRowNumber: Map<number, string | string[] | null>;
     lookup: DropdownOptionLookup;
   }) {
     const countByValueKey = new Map<string, number>();
@@ -2313,14 +2313,18 @@ export class TopContentService {
       const manualOverrideValueKey = input.manualByRowNumber.get(rowNumber) ?? null;
       const csvSnapshotValueKey =
         rowNumber <= input.csvRowCount ? input.csvByRowNumber.get(rowNumber) ?? null : null;
-      const rawValueKey = manualOverrideValueKey ?? csvSnapshotValueKey;
-      const valueKey = this.normalizeTextOrNull(rawValueKey) ?? UNASSIGN_VALUE_KEY;
+      const rawValueKeys = this.normalizeCategoricalValueKeys(
+        manualOverrideValueKey ?? csvSnapshotValueKey
+      );
+      const valueKeys = rawValueKeys.length > 0 ? rawValueKeys : [UNASSIGN_VALUE_KEY];
 
-      if (valueKey === UNASSIGN_VALUE_KEY) {
-        unassignCount += 1;
+      for (const valueKey of valueKeys) {
+        if (valueKey === UNASSIGN_VALUE_KEY) {
+          unassignCount += 1;
+        }
+
+        countByValueKey.set(valueKey, (countByValueKey.get(valueKey) ?? 0) + 1);
       }
-
-      countByValueKey.set(valueKey, (countByValueKey.get(valueKey) ?? 0) + 1);
     }
 
     const items = Array.from(countByValueKey.entries())
@@ -2676,6 +2680,79 @@ export class TopContentService {
     }
 
     return null;
+  }
+
+  private resolveDropdownValueKeys(input: {
+    rawValues: Array<string | null | undefined>;
+    explicitValue: string | null | undefined;
+    lookup: DropdownOptionLookup;
+  }) {
+    const candidates = this.toMultiValueCandidates(input.explicitValue);
+    const matched: string[] = [];
+    for (const candidate of candidates) {
+      const valueKey =
+        this.matchDropdownCandidate(candidate, input.lookup) ??
+        this.toOptionValueKey(candidate);
+      if (valueKey && !matched.includes(valueKey)) {
+        matched.push(valueKey);
+      }
+    }
+
+    if (matched.length > 0) {
+      return matched;
+    }
+
+    const fallback = this.resolveDropdownValueKey(input);
+    return fallback ? [fallback] : null;
+  }
+
+  private normalizeCategoricalValueKeys(value: string | string[] | null | undefined) {
+    if (Array.isArray(value)) {
+      return Array.from(
+        new Set(value.map(item => this.normalizeTextOrNull(item)).filter((item): item is string => !!item))
+      );
+    }
+
+    const parsed = this.parseSerializedValueList(value);
+    if (parsed.length > 0) {
+      return parsed;
+    }
+
+    const normalized = this.normalizeTextOrNull(value);
+    return normalized ? [normalized] : [];
+  }
+
+  private toMultiValueCandidates(rawValue: string | null | undefined) {
+    const serialized = this.parseSerializedValueList(rawValue);
+    if (serialized.length > 0) {
+      return serialized;
+    }
+
+    return this.toContentStyleCandidates(rawValue);
+  }
+
+  private parseSerializedValueList(rawValue: string | null | undefined) {
+    const normalized = String(rawValue ?? '').trim();
+    if (!normalized.startsWith('[')) {
+      return [];
+    }
+
+    try {
+      const parsed = JSON.parse(normalized) as unknown;
+      if (!Array.isArray(parsed)) {
+        return [];
+      }
+
+      return Array.from(
+        new Set(
+          parsed
+            .map(item => String(item ?? '').trim())
+            .filter(item => item.length > 0)
+        )
+      );
+    } catch {
+      return [];
+    }
   }
 
   private matchDropdownCandidate(

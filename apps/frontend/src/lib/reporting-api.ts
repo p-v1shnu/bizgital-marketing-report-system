@@ -368,6 +368,10 @@ export type GlobalCompanyFormatOptionsResponse = {
       label: string;
       status: CompanyFormatOptionStatus;
       sortOrder: number;
+      isSystemOption?: boolean;
+      canRename?: boolean;
+      canChangeStatus?: boolean;
+      canDelete?: boolean;
     }>;
   }>;
 };
@@ -1152,12 +1156,19 @@ export type QuestionOverviewResponse = {
   };
   highlights: {
     note: string | null;
+    noteOptional: boolean;
     screenshots: Array<{
       id: string;
       displayOrder: number;
       screenshotUrl: string;
     }>;
   };
+  relatedProductOptions: Array<{
+    id: string;
+    valueKey: string;
+    label: string;
+    sortOrder: number;
+  }>;
   items: Array<{
     activation: {
       id: string;
@@ -1174,6 +1185,15 @@ export type QuestionOverviewResponse = {
       mode: 'has_questions' | 'no_questions';
       questionCount: number;
       note: string | null;
+      relatedProductBreakdown: Array<{
+        id: string;
+        relatedProductOptionId: string;
+        valueKey: string;
+        label: string;
+        questionCount: number;
+        displayOrder: number;
+      }>;
+      otherUnspecifiedCount: number;
       screenshots: Array<{
         id: string;
         displayOrder: number;
@@ -2812,6 +2832,11 @@ export async function saveQuestionEntry(
     mode: 'has_questions' | 'no_questions';
     questionCount: number;
     note?: string | null;
+    relatedProductBreakdown?: Array<{
+      relatedProductOptionId?: string | null;
+      valueKey?: string | null;
+      questionCount?: number | null;
+    }>;
     screenshots?: string[];
   }
 ) {
@@ -2826,6 +2851,7 @@ export async function saveQuestionHighlights(
   periodId: string,
   payload: {
     note?: string | null;
+    noteOptional?: boolean | null;
     screenshots: string[];
   }
 ) {

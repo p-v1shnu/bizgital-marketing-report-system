@@ -247,13 +247,16 @@ export function QuestionCatalogManager({ initialCatalog }: Props) {
         ) : (
           filteredCatalog.map(item => (
             <div
-              className="flex items-center gap-3 rounded-2xl border border-border/60 bg-background/55 px-3 py-3"
+              className="grid gap-3 rounded-2xl border border-border/60 bg-background/55 px-3 py-3 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-center"
               key={item.id}
             >
               <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium text-foreground">{item.text}</div>
+                <div className="truncate text-sm font-medium text-foreground">{item.text}</div>
                 {item.description ? (
-                  <div className="mt-1 max-w-4xl text-sm text-muted-foreground">
+                  <div
+                    className="mt-1 truncate text-sm text-muted-foreground"
+                    title={item.description}
+                  >
                     {item.description}
                   </div>
                 ) : null}

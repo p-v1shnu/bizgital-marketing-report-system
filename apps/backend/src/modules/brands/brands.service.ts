@@ -93,9 +93,15 @@ const COMPANY_FORMAT_FIELD_DEFINITIONS: Array<{
     defaultOptions: ['AWR', 'CON', 'ACT']
   }
 ];
+const RELATED_PRODUCT_ALL_VALUE_KEY = 'all';
+const RELATED_PRODUCT_ALL_LABEL = 'All';
 
 function normalizeLabel(value: string) {
   return value.replace(/\s+/g, ' ').trim();
+}
+
+function normalizeSystemLabel(value: string) {
+  return normalizeLabel(value).toLowerCase();
 }
 
 function toValueKey(value: string) {
@@ -570,6 +576,7 @@ export class BrandsService {
     }
 
     const createdBrand = await this.getBrandByCodeOrThrow(createdCode);
+    await this.ensureCompanyFormatDefaults(createdBrand.id);
 
     await this.auditLogService.append({
       actionKey: 'BRAND_CREATED',
@@ -1181,7 +1188,11 @@ export class BrandsService {
             valueKey: option.valueKey,
             label: option.label,
             status: option.status,
-            sortOrder: option.sortOrder
+            sortOrder: option.sortOrder,
+            isSystemOption: this.isSystemRelatedProductAll(option),
+            canRename: !this.isSystemRelatedProductAll(option),
+            canChangeStatus: !this.isSystemRelatedProductAll(option),
+            canDelete: !this.isSystemRelatedProductAll(option)
           }))
       }))
     };
@@ -1255,6 +1266,15 @@ export class BrandsService {
 
     if (!option || option.brandId !== brand.id) {
       throw new NotFoundException('Internal option was not found for this brand.');
+    }
+
+    if (this.isSystemRelatedProductAll(option)) {
+      if (
+        input.label !== undefined ||
+        (input.status !== undefined && input.status !== BrandDropdownOptionStatus.active)
+      ) {
+        throw new ConflictException('System Related Product "All" cannot be renamed or disabled.');
+      }
     }
 
     const nextStatus =
@@ -1346,6 +1366,10 @@ export class BrandsService {
 
     if (!option || option.brandId !== brand.id) {
       throw new NotFoundException('Internal option was not found for this brand.');
+    }
+
+    if (this.isSystemRelatedProductAll(option)) {
+      throw new ConflictException('System Related Product "All" cannot be deleted.');
     }
 
     const usedInApprovedReport = await this.isDropdownOptionUsedInApprovedReports(
@@ -1456,7 +1480,64 @@ export class BrandsService {
       });
     }
 
+    await this.ensureRelatedProductAllOption(brandId);
     await this.syncContentStyleOptions(brandId);
+  }
+
+  private async ensureRelatedProductAllOption(brandId: string) {
+    const fieldKey = BrandDropdownFieldKey.related_product;
+    const options = await this.prisma.brandDropdownOption.findMany({
+      where: {
+        brandId,
+        fieldKey
+      },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }]
+    });
+
+    const canonical =
+      options.find(option => option.valueKey === RELATED_PRODUCT_ALL_VALUE_KEY) ??
+      options.find(option => normalizeSystemLabel(option.label) === RELATED_PRODUCT_ALL_VALUE_KEY) ??
+      null;
+
+    if (canonical) {
+      await this.prisma.brandDropdownOption.update({
+        where: {
+          id: canonical.id
+        },
+        data: {
+          valueKey: RELATED_PRODUCT_ALL_VALUE_KEY,
+          label: RELATED_PRODUCT_ALL_LABEL,
+          status: BrandDropdownOptionStatus.active
+        }
+      });
+      return;
+    }
+
+    const maxSortOrder = options.reduce(
+      (max, option) => Math.max(max, option.sortOrder),
+      0
+    );
+
+    await this.prisma.brandDropdownOption.create({
+      data: {
+        brandId,
+        fieldKey,
+        valueKey: RELATED_PRODUCT_ALL_VALUE_KEY,
+        label: RELATED_PRODUCT_ALL_LABEL,
+        sortOrder: maxSortOrder + 1,
+        status: BrandDropdownOptionStatus.active
+      }
+    });
+  }
+
+  private isSystemRelatedProductAll(option: {
+    fieldKey: BrandDropdownFieldKey;
+    valueKey: string;
+  }) {
+    return (
+      option.fieldKey === BrandDropdownFieldKey.related_product &&
+      option.valueKey === RELATED_PRODUCT_ALL_VALUE_KEY
+    );
   }
 
   private async syncContentStyleOptions(brandId: string) {

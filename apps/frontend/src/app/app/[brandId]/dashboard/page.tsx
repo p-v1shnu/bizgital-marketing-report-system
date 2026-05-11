@@ -2035,7 +2035,7 @@ export default async function DashboardPage({
                           <article className={contentSurfaceCardClassName}>
                             <div className="flex items-center justify-between gap-3">
                               <div className="text-xs uppercase tracking-[0.12em] text-slate-500">
-                                Related Product
+                                Product mentions by post
                               </div>
                               <Package className="h-4 w-4 text-orange-700" />
                             </div>

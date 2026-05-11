@@ -405,6 +405,7 @@ model ReportVersion {
   rejectedAt           DateTime?           @map("rejected_at")
   supersededAt         DateTime?           @map("superseded_at")
   questionHighlightNote String?            @db.LongText @map("question_highlight_note")
+  questionHighlightNoteOptional Boolean    @default(false) @map("question_highlight_note_optional")
   createdAt            DateTime            @default(now()) @map("created_at")
   updatedAt            DateTime            @updatedAt @map("updated_at")
 
@@ -795,11 +796,31 @@ model QuestionEvidence {
   reportVersion          ReportVersion           @relation(fields: [reportVersionId], references: [id], onDelete: Cascade)
   brandQuestionActivation BrandQuestionActivation @relation(fields: [brandQuestionActivationId], references: [id], onDelete: Cascade)
   screenshots            QuestionEvidenceScreenshot[]
+  relatedProductBreakdowns QuestionEvidenceRelatedProductBreakdown[]
 
   @@unique([reportVersionId, brandQuestionActivationId], name: "question_evidence_version_activation_unique")
   @@index([reportVersionId, displayOrder])
   @@index([brandQuestionActivationId])
   @@map("question_evidence")
+}
+
+model QuestionEvidenceRelatedProductBreakdown {
+  id                     String   @id @default(cuid())
+  questionEvidenceId     String   @map("question_evidence_id")
+  relatedProductOptionId String   @map("related_product_option_id")
+  valueKey               String   @map("value_key")
+  label                  String
+  questionCount          Int      @map("question_count")
+  displayOrder           Int      @default(1) @map("display_order")
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  questionEvidence QuestionEvidence @relation(fields: [questionEvidenceId], references: [id], onDelete: Cascade)
+
+  @@unique([questionEvidenceId, relatedProductOptionId], name: "question_evidence_product_evidence_option_unique")
+  @@index([questionEvidenceId])
+  @@index([relatedProductOptionId])
+  @@map("question_evidence_related_product_breakdowns")
 }
 
 model QuestionEvidenceScreenshot {

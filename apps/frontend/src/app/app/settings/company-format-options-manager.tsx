@@ -90,9 +90,11 @@ export function CompanyFormatOptionsManager({
     scope === 'global'
       ? `${apiBase}/config/internal-options`
       : `${apiBase}/brands/${brandCode}/internal-options`;
-  const canDeleteOption = true;
   const editingOption =
     editingOptionId ? orderedOptions.find(option => option.id === editingOptionId) ?? null : null;
+  const canEditOptionLabel = editingOption?.canRename ?? true;
+  const canEditOptionStatus = editingOption?.canChangeStatus ?? true;
+  const canDeleteOption = editingOption?.canDelete ?? true;
 
   function openCreateModal() {
     setModalMode('create');
@@ -318,8 +320,18 @@ export function CompanyFormatOptionsManager({
               key={option.id}
             >
               <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium text-foreground">{option.label}</div>
-                <div className="text-xs text-muted-foreground">Position {index + 1}</div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="text-sm font-medium text-foreground">{option.label}</div>
+                  {option.isSystemOption ? (
+                    <span className="rounded-full border border-border/60 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                      System
+                    </span>
+                  ) : null}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Position {index + 1}
+                  {option.isSystemOption ? ' • Locked default' : ''}
+                </div>
               </div>
               <Button onClick={() => openEditModal(option)} size="sm" type="button" variant="outline">
                 Edit
@@ -340,7 +352,10 @@ export function CompanyFormatOptionsManager({
                 className="flex flex-wrap items-center gap-2 rounded-[18px] border border-border/60 bg-background/70 px-3 py-2"
                 key={option.id}
               >
-                <div className="min-w-0 flex-1 text-sm text-muted-foreground">{option.label}</div>
+                <div className="min-w-0 flex-1 text-sm text-muted-foreground">
+                  {option.label}
+                  {option.isSystemOption ? ' • System' : ''}
+                </div>
                 <Button onClick={() => openEditModal(option)} size="sm" type="button" variant="outline">
                   Edit
                 </Button>
@@ -364,6 +379,7 @@ export function CompanyFormatOptionsManager({
                 {fieldLabel} label
               </label>
               <Input
+                disabled={!canEditOptionLabel}
                 id="company-format-label-input"
                 onChange={event => {
                   const value = event.currentTarget.value;
@@ -378,6 +394,7 @@ export function CompanyFormatOptionsManager({
                 Status
               </label>
               <Select
+                disabled={!canEditOptionStatus}
                 id="company-format-status-input"
                 onChange={event => {
                   const value = event.currentTarget.value as Draft['status'];
@@ -440,6 +457,11 @@ export function CompanyFormatOptionsManager({
               </Button>
             ) : null}
           </div>
+          {modalMode === 'edit' && editingOption?.isSystemOption ? (
+            <p className="mt-3 text-xs text-muted-foreground">
+              This system option stays active for every brand and cannot be renamed, disabled, or deleted.
+            </p>
+          ) : null}
           {modalMode === 'edit' && canDeleteOption ? (
             <p className="mt-3 text-xs text-muted-foreground">
               Delete is allowed only when this option is not used in any approved report.

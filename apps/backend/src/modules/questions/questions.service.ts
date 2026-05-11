@@ -6,6 +6,8 @@ import {
   NotFoundException
 } from '@nestjs/common';
 import {
+  BrandDropdownFieldKey,
+  BrandDropdownOptionStatus,
   Prisma,
   QuestionStatus,
   ReportingPeriodState,
@@ -29,7 +31,21 @@ import type {
 const BRAND_ASSIGNMENT_ANCHOR_DATE = new Date('2000-01-01T00:00:00.000Z');
 const MAX_HIGHLIGHT_SCREENSHOTS = 10;
 const MAX_QUESTION_NOTE_LENGTH = 280;
+const RELATED_PRODUCT_ALL_VALUE_KEY = 'all';
 type QuestionMonthlyMode = 'has_questions' | 'no_questions';
+type RelatedProductOption = {
+  id: string;
+  valueKey: string;
+  label: string;
+  sortOrder: number;
+};
+type NormalizedRelatedProductBreakdownItem = {
+  relatedProductOptionId: string;
+  valueKey: string;
+  label: string;
+  questionCount: number;
+  displayOrder: number;
+};
 type ResolvedQuestionAssignment = {
   id: string;
   questionMasterId: string;
@@ -490,6 +506,10 @@ export class QuestionsService {
       null;
     const latestVersion = period.reportVersions[0] ?? null;
     const targetVersion = currentDraft ?? latestVersion;
+    const relatedProductOptions = await this.listQuestionRelatedProductOptions(brand.id);
+    const highlightNoteOptional = targetVersion
+      ? await this.getQuestionHighlightNoteOptional(targetVersion.id)
+      : false;
 
     const baseResponse: Omit<QuestionOverviewResponse, 'readiness' | 'items' | 'highlights'> = {
       brand: {
@@ -508,7 +528,8 @@ export class QuestionsService {
         }).format(new Date(Date.UTC(period.year, period.month - 1, 1))),
         currentDraftVersionId: currentDraft?.id ?? null,
         latestVersionState: latestVersion?.workflowState ?? null
-      }
+      },
+      relatedProductOptions
     };
 
     if (!targetVersion) {
@@ -522,8 +543,10 @@ export class QuestionsService {
         },
         highlights: {
           note: null,
+          noteOptional: false,
           screenshots: []
         },
+        relatedProductOptions,
         items: []
       };
     }
@@ -541,6 +564,7 @@ export class QuestionsService {
         },
         highlights: {
           note: this.normalizeOptionalText(targetVersion.questionHighlightNote),
+          noteOptional: highlightNoteOptional,
           screenshots: await this.loadHighlightScreenshotsByReportVersionId(targetVersion.id)
         },
         items: []
@@ -567,8 +591,12 @@ export class QuestionsService {
     const entryIds = entries.map(item => item.id);
     const modeByEvidenceId = await this.loadModeByEvidenceId(entryIds);
     const screenshotsByEvidenceId = await this.loadScreenshotsByEvidenceId(entryIds);
+    const productBreakdownByEvidenceId = await this.loadRelatedProductBreakdownByEvidenceId(
+      entryIds
+    );
     const highlights = {
       note: this.normalizeOptionalText(targetVersion.questionHighlightNote),
+      noteOptional: highlightNoteOptional,
       screenshots: await this.loadHighlightScreenshotsByReportVersionId(targetVersion.id)
     };
 
@@ -580,6 +608,13 @@ export class QuestionsService {
       const questionCount = this.resolveQuestionCount(
         entry,
         entry ? modeByEvidenceId.get(entry.id)?.questionCount ?? null : null
+      );
+      const relatedProductBreakdown = entry
+        ? productBreakdownByEvidenceId.get(entry.id) ?? []
+        : [];
+      const assignedProductCount = relatedProductBreakdown.reduce(
+        (sum, item) => sum + item.questionCount,
+        0
       );
       const note = this.normalizeOptionalText(entry?.responseNote ?? null);
       const isComplete = this.isEntryComplete({
@@ -605,6 +640,8 @@ export class QuestionsService {
           mode,
           questionCount,
           note,
+          relatedProductBreakdown,
+          otherUnspecifiedCount: Math.max(0, questionCount - assignedProductCount),
           screenshots,
           isComplete
         }
@@ -617,8 +654,12 @@ export class QuestionsService {
       items.length > 0 && items.every(item => item.entry.mode === 'no_questions');
     const hasRequiredHighlightScreenshot =
       allCategoriesHaveNoQuestions || highlightScreenshotCount >= 1;
+    const hasRequiredHighlightNote =
+      allCategoriesHaveNoQuestions ||
+      highlights.noteOptional ||
+      !!this.normalizeOptionalText(highlights.note);
     const hasCompleteCounts = completedQuestionCount === activeAssignments.length;
-    const isReady = hasCompleteCounts && hasRequiredHighlightScreenshot;
+    const isReady = hasCompleteCounts && hasRequiredHighlightScreenshot && hasRequiredHighlightNote;
 
     return {
       ...baseResponse,
@@ -628,6 +669,8 @@ export class QuestionsService {
           ? 'Complete question count for each active category before submit.'
           : !hasRequiredHighlightScreenshot
             ? 'Add at least 1 highlight screenshot before submit.'
+          : !hasRequiredHighlightNote
+            ? 'Add a rich note or mark the rich note as optional before submit.'
             : allCategoriesHaveNoQuestions
               ? 'Every active question category is marked as no questions this month.'
             : 'Every active question category has complete monthly monitoring.',
@@ -677,6 +720,13 @@ export class QuestionsService {
     }
 
     const normalized = this.normalizeEntryInput(input);
+    const relatedProductOptions = await this.listQuestionRelatedProductOptions(brand.id);
+    const normalizedProductBreakdown = this.normalizeRelatedProductBreakdownInput(
+      input.relatedProductBreakdown,
+      relatedProductOptions,
+      Number(normalized.questionCount),
+      normalized.mode
+    );
     await this.mediaService.assertManagedPublicUrlsExist(
       normalized.screenshots ?? [],
       'Question evidence screenshot'
@@ -774,6 +824,12 @@ export class QuestionsService {
           );
         }
       }
+      if (input.relatedProductBreakdown !== undefined || normalized.mode === 'no_questions') {
+        await this.replaceRelatedProductBreakdown(
+          evidence.id,
+          normalizedProductBreakdown
+        );
+      }
     } catch (error) {
       if (this.isQuestionSchemaOutdatedError(error)) {
         throw new BadRequestException(
@@ -835,6 +891,7 @@ export class QuestionsService {
     }
 
     const normalized = this.normalizeHighlightsInput(input);
+    const noteOptional = normalized.noteOptional;
     await this.mediaService.assertManagedPublicUrlsExist(
       normalized.screenshots,
       'Question highlight screenshot'
@@ -852,6 +909,12 @@ export class QuestionsService {
           questionHighlightNote: normalized.note
         }
       });
+      await this.ensureQuestionHighlightNoteOptionalStorageWithClient(tx);
+      await tx.$executeRawUnsafe(
+        'UPDATE report_versions SET question_highlight_note_optional = ? WHERE id = ?',
+        noteOptional ? 1 : 0,
+        currentDraft.id
+      );
 
       await tx.questionHighlightScreenshot.deleteMany({
         where: {
@@ -888,7 +951,8 @@ export class QuestionsService {
       summary: `Updated question highlights for ${period.year}-${String(period.month).padStart(2, '0')}.`,
       metadata: {
         reportVersionId: currentDraft.id,
-        screenshotCount: normalized.screenshots.length
+        screenshotCount: normalized.screenshots.length,
+        noteOptional
       },
       actor: {
         actorName: input.actorName,
@@ -976,20 +1040,33 @@ export class QuestionsService {
         reportVersionId
       }
     });
+    const [highlightNoteRow, highlightNoteOptional] = await Promise.all([
+      this.prisma.reportVersion.findUnique({
+        where: { id: reportVersionId },
+        select: { questionHighlightNote: true }
+      }),
+      this.getQuestionHighlightNoteOptional(reportVersionId)
+    ]);
     const allCategoriesHaveNoQuestions =
       resolvedEntries.length === activeAssignments.length &&
       resolvedEntries.length > 0 &&
       resolvedEntries.every(entry => entry.mode === 'no_questions');
     const hasRequiredHighlightScreenshot =
       allCategoriesHaveNoQuestions || highlightScreenshotCount >= 1;
+    const hasRequiredHighlightNote =
+      allCategoriesHaveNoQuestions ||
+      highlightNoteOptional ||
+      !!this.normalizeOptionalText(highlightNoteRow?.questionHighlightNote ?? null);
     const hasCompleteCounts = completedQuestionCount === activeAssignments.length;
 
     return {
-      isComplete: hasCompleteCounts && hasRequiredHighlightScreenshot,
+      isComplete: hasCompleteCounts && hasRequiredHighlightScreenshot && hasRequiredHighlightNote,
       detail: !hasCompleteCounts
         ? `${completedQuestionCount}/${activeAssignments.length} question categories are complete this month.`
         : !hasRequiredHighlightScreenshot
           ? 'Add at least 1 highlight screenshot before submit.'
+        : !hasRequiredHighlightNote
+          ? 'Add a rich note or mark the rich note as optional before submit.'
           : allCategoriesHaveNoQuestions
             ? 'Every active question category is marked as no questions this month.'
           : 'Every active question category has complete monthly monitoring.',
@@ -1214,6 +1291,148 @@ export class QuestionsService {
     }
 
     return map;
+  }
+
+  private async ensureQuestionRelatedProductBreakdownStorage() {
+    await this.prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS question_evidence_related_product_breakdowns (
+        id VARCHAR(191) NOT NULL,
+        question_evidence_id VARCHAR(191) NOT NULL,
+        related_product_option_id VARCHAR(191) NOT NULL,
+        value_key VARCHAR(191) NOT NULL,
+        label VARCHAR(255) NOT NULL,
+        question_count INT NOT NULL,
+        display_order INT NOT NULL DEFAULT 1,
+        created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (id),
+        UNIQUE KEY question_evidence_product_evidence_option_unique (question_evidence_id, related_product_option_id),
+        KEY question_evidence_product_evidence_idx (question_evidence_id),
+        KEY question_evidence_product_option_idx (related_product_option_id),
+        CONSTRAINT question_evidence_product_evidence_fkey
+          FOREIGN KEY (question_evidence_id) REFERENCES question_evidence(id)
+          ON DELETE CASCADE ON UPDATE CASCADE,
+        CONSTRAINT question_evidence_product_option_fkey
+          FOREIGN KEY (related_product_option_id) REFERENCES brand_dropdown_options(id)
+          ON DELETE RESTRICT ON UPDATE CASCADE
+      ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    `);
+  }
+
+  private async ensureQuestionHighlightNoteOptionalStorageWithClient(
+    client: Pick<Prisma.TransactionClient, '$executeRawUnsafe'>
+  ) {
+    try {
+      await client.$executeRawUnsafe(
+        'ALTER TABLE report_versions ADD COLUMN question_highlight_note_optional TINYINT(1) NOT NULL DEFAULT 0 AFTER question_highlight_note'
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message.toLowerCase() : '';
+      if (!message.includes('duplicate column name')) {
+        throw error;
+      }
+    }
+  }
+
+  private async ensureQuestionHighlightNoteOptionalStorage() {
+    await this.ensureQuestionHighlightNoteOptionalStorageWithClient(this.prisma);
+  }
+
+  private async getQuestionHighlightNoteOptional(reportVersionId: string) {
+    try {
+      await this.ensureQuestionHighlightNoteOptionalStorage();
+      const rows = await this.prisma.$queryRawUnsafe<Array<{ note_optional: number | boolean | null }>>(
+        'SELECT question_highlight_note_optional AS note_optional FROM report_versions WHERE id = ? LIMIT 1',
+        reportVersionId
+      );
+
+      return rows[0]?.note_optional === true || rows[0]?.note_optional === 1;
+    } catch (error) {
+      if (this.isQuestionSchemaOutdatedError(error)) {
+        return false;
+      }
+
+      throw error;
+    }
+  }
+
+  private async loadRelatedProductBreakdownByEvidenceId(evidenceIds: string[]) {
+    const map = new Map<
+      string,
+      QuestionOverviewResponse['items'][number]['entry']['relatedProductBreakdown']
+    >();
+    if (evidenceIds.length === 0) {
+      return map;
+    }
+
+    try {
+      await this.ensureQuestionRelatedProductBreakdownStorage();
+      const placeholders = evidenceIds.map(() => '?').join(', ');
+      const rows = await this.prisma.$queryRawUnsafe<
+        Array<{
+          id: string;
+          question_evidence_id: string;
+          related_product_option_id: string;
+          value_key: string;
+          label: string;
+          question_count: number;
+          display_order: number;
+        }>
+      >(
+        `SELECT id, question_evidence_id, related_product_option_id, value_key, label, question_count, display_order
+         FROM question_evidence_related_product_breakdowns
+         WHERE question_evidence_id IN (${placeholders})
+         ORDER BY question_evidence_id ASC, display_order ASC`,
+        ...evidenceIds
+      );
+
+      for (const row of rows) {
+        const current = map.get(row.question_evidence_id) ?? [];
+        current.push({
+          id: row.id,
+          relatedProductOptionId: row.related_product_option_id,
+          valueKey: row.value_key,
+          label: row.label,
+          questionCount: row.question_count,
+          displayOrder: row.display_order
+        });
+        map.set(row.question_evidence_id, current);
+      }
+    } catch (error) {
+      if (this.isQuestionSchemaOutdatedError(error)) {
+        return map;
+      }
+
+      throw error;
+    }
+
+    return map;
+  }
+
+  private async replaceRelatedProductBreakdown(
+    questionEvidenceId: string,
+    items: NormalizedRelatedProductBreakdownItem[]
+  ) {
+    await this.ensureQuestionRelatedProductBreakdownStorage();
+    await this.prisma.$executeRawUnsafe(
+      'DELETE FROM question_evidence_related_product_breakdowns WHERE question_evidence_id = ?',
+      questionEvidenceId
+    );
+
+    for (const item of items) {
+      await this.prisma.$executeRawUnsafe(
+        `INSERT INTO question_evidence_related_product_breakdowns
+          (id, question_evidence_id, related_product_option_id, value_key, label, question_count, display_order, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, NOW(3), NOW(3))`,
+        this.generateId(),
+        questionEvidenceId,
+        item.relatedProductOptionId,
+        item.valueKey,
+        item.label,
+        item.questionCount,
+        item.displayOrder
+      );
+    }
   }
 
   private async loadHighlightScreenshotsByReportVersionId(reportVersionId: string) {
@@ -1452,9 +1671,101 @@ export class QuestionsService {
     };
   }
 
+  private async listQuestionRelatedProductOptions(
+    brandId: string
+  ): Promise<RelatedProductOption[]> {
+    const options = await this.prisma.brandDropdownOption.findMany({
+      where: {
+        brandId,
+        fieldKey: BrandDropdownFieldKey.related_product,
+        status: BrandDropdownOptionStatus.active,
+        valueKey: {
+          not: RELATED_PRODUCT_ALL_VALUE_KEY
+        }
+      },
+      orderBy: [{ sortOrder: 'asc' }, { label: 'asc' }],
+      select: {
+        id: true,
+        valueKey: true,
+        label: true,
+        sortOrder: true
+      }
+    });
+
+    return options;
+  }
+
+  private normalizeRelatedProductBreakdownInput(
+    input: SaveQuestionEntryInput['relatedProductBreakdown'],
+    options: RelatedProductOption[],
+    questionCount: number,
+    mode: QuestionMonthlyMode
+  ): NormalizedRelatedProductBreakdownItem[] {
+    if (mode === 'no_questions') {
+      return [];
+    }
+
+    if (input === undefined || input === null) {
+      return [];
+    }
+
+    if (!Array.isArray(input)) {
+      throw new BadRequestException('Related product breakdown must be a list.');
+    }
+
+    const optionById = new Map(options.map(option => [option.id, option]));
+    const optionByValueKey = new Map(options.map(option => [option.valueKey, option]));
+    const seen = new Set<string>();
+    let total = 0;
+
+    const normalized = input
+      .map((item, index) => {
+        const option =
+          optionById.get(String(item.relatedProductOptionId ?? '').trim()) ??
+          optionByValueKey.get(String(item.valueKey ?? '').trim()) ??
+          null;
+
+        if (!option) {
+          throw new BadRequestException('Choose a valid related product for every breakdown row.');
+        }
+
+        if (seen.has(option.id)) {
+          throw new BadRequestException('Related product breakdown cannot contain duplicates.');
+        }
+        seen.add(option.id);
+
+        const count = item.questionCount;
+        if (!Number.isInteger(count) || (count ?? 0) <= 0) {
+          throw new BadRequestException(
+            'Related product breakdown counts must be whole numbers greater than 0.'
+          );
+        }
+
+        const questionCount = Number(count);
+        total += questionCount;
+
+        return {
+          relatedProductOptionId: option.id,
+          valueKey: option.valueKey,
+          label: option.label,
+          questionCount,
+          displayOrder: index + 1
+        };
+      });
+
+    if (total > questionCount) {
+      throw new BadRequestException(
+        'Related product breakdown total cannot exceed the category question count.'
+      );
+    }
+
+    return normalized;
+  }
+
   private normalizeHighlightsInput(input: SaveQuestionHighlightsInput) {
+    const noteOptional = input.noteOptional === true;
     const note = this.normalizeOptionalTextWithMaxLength(
-      input.note,
+      noteOptional ? null : input.note,
       MAX_QUESTION_NOTE_LENGTH,
       'Question highlight note'
     );
@@ -1473,6 +1784,7 @@ export class QuestionsService {
 
     return {
       note,
+      noteOptional,
       screenshots
     };
   }
@@ -1574,7 +1886,9 @@ export class QuestionsService {
       missingColumn.includes('question_evidence.question_count') ||
       message.includes('question_evidence.mode') ||
       message.includes('question_evidence.question_count') ||
-      message.includes('question_evidence_screenshots')
+      message.includes('question_evidence_screenshots') ||
+      message.includes('question_evidence_related_product_breakdowns') ||
+      message.includes('question_highlight_note_optional')
     );
   }
 

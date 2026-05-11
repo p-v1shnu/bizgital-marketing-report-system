@@ -26,12 +26,19 @@ export type QuestionOverviewResponse = {
   };
   highlights: {
     note: string | null;
+    noteOptional: boolean;
     screenshots: Array<{
       id: string;
       displayOrder: number;
       screenshotUrl: string;
     }>;
   };
+  relatedProductOptions: Array<{
+    id: string;
+    valueKey: string;
+    label: string;
+    sortOrder: number;
+  }>;
   items: Array<{
     activation: {
       id: string;
@@ -48,6 +55,15 @@ export type QuestionOverviewResponse = {
       mode: 'has_questions' | 'no_questions';
       questionCount: number;
       note: string | null;
+      relatedProductBreakdown: Array<{
+        id: string;
+        relatedProductOptionId: string;
+        valueKey: string;
+        label: string;
+        questionCount: number;
+        displayOrder: number;
+      }>;
+      otherUnspecifiedCount: number;
       screenshots: Array<{
         id: string;
         displayOrder: number;
@@ -145,11 +161,17 @@ export type SaveQuestionEntryInput = {
   mode?: 'has_questions' | 'no_questions' | null;
   questionCount?: number | null;
   note?: string | null;
+  relatedProductBreakdown?: Array<{
+    relatedProductOptionId?: string | null;
+    valueKey?: string | null;
+    questionCount?: number | null;
+  }> | null;
   screenshots?: string[] | null;
 };
 
 export type SaveQuestionHighlightsInput = {
   note?: string | null;
+  noteOptional?: boolean | null;
   screenshots?: string[] | null;
   actorName?: string | null;
   actorEmail?: string | null;

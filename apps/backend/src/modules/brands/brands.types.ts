@@ -23,6 +23,10 @@ export type CompanyFormatOptionsResponse = {
       label: string;
       status: BrandDropdownOptionStatus;
       sortOrder: number;
+      isSystemOption: boolean;
+      canRename: boolean;
+      canChangeStatus: boolean;
+      canDelete: boolean;
     }>;
   }>;
 };
