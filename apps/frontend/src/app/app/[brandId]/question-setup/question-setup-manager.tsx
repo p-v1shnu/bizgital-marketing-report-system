@@ -52,12 +52,13 @@ function QuestionDescriptionPreview({
 
   return (
     <div className="relative mt-1 max-w-xl text-sm text-muted-foreground">
-      <span className="break-words [overflow-wrap:anywhere]">{preview.text}</span>
+      <span className="inline-flex max-w-full items-center gap-2 align-top">
+        <span className="min-w-0 truncate">{preview.text}</span>
       {preview.isTruncated ? (
         <>
           <button
             aria-label={`Show full description for ${title}`}
-            className="ml-2 inline-flex size-6 align-middle items-center justify-center rounded-full border border-border/60 bg-background/70 text-muted-foreground transition hover:border-primary/40 hover:text-foreground"
+            className="inline-flex size-6 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/70 text-muted-foreground transition hover:border-primary/40 hover:text-foreground"
             onClick={onToggle}
             type="button"
           >
@@ -91,6 +92,7 @@ function QuestionDescriptionPreview({
           ) : null}
         </>
       ) : null}
+      </span>
     </div>
   );
 }
