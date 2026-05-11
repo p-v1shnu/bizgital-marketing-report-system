@@ -94,7 +94,7 @@ const COMPANY_FORMAT_FIELD_DEFINITIONS: Array<{
   }
 ];
 const RELATED_PRODUCT_ALL_VALUE_KEY = 'all';
-const RELATED_PRODUCT_ALL_LABEL = 'All';
+const RELATED_PRODUCT_ALL_LABEL = 'All / Overall Products';
 
 function normalizeLabel(value: string) {
   return value.replace(/\s+/g, ' ').trim();
@@ -1273,7 +1273,9 @@ export class BrandsService {
         input.label !== undefined ||
         (input.status !== undefined && input.status !== BrandDropdownOptionStatus.active)
       ) {
-        throw new ConflictException('System Related Product "All" cannot be renamed or disabled.');
+        throw new ConflictException(
+          `System Related Product "${RELATED_PRODUCT_ALL_LABEL}" cannot be renamed or disabled.`
+        );
       }
     }
 
@@ -1369,7 +1371,9 @@ export class BrandsService {
     }
 
     if (this.isSystemRelatedProductAll(option)) {
-      throw new ConflictException('System Related Product "All" cannot be deleted.');
+      throw new ConflictException(
+        `System Related Product "${RELATED_PRODUCT_ALL_LABEL}" cannot be deleted.`
+      );
     }
 
     const usedInApprovedReport = await this.isDropdownOptionUsedInApprovedReports(

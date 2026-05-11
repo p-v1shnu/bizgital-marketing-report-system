@@ -508,10 +508,11 @@ Each question monitoring entry tracks an optional per-product breakdown of the q
 - A question entry has `questionCount`, for example "12 questions this month"
 - The breakdown table stores how many of those 12 belong to each related product, for example "Coffee: 5, Tea: 3, Other/Unspecified: 4"
 - "Other/Unspecified" is implicit: `questionCount - sum(breakdown.questionCount)` and is never stored as a row
-- Each brand has a system Related Product option "All" with `valueKey: 'all'`
+- Each brand has a system Related Product option "All / Overall Products" with `valueKey: 'all'`
   - It cannot be renamed, disabled, or deleted
-  - It is excluded from breakdown choices and used only as a marker in CSV imports to indicate "this post mentions all products"
-  - Year setup readiness requires at least one non-"All" Related Product option
+  - It represents posts that broadly cover all, most, or overall product offerings without requiring every specific product to be selected
+  - It is excluded from breakdown choices and used only as a marker in CSV imports to indicate a broad/overall product mention
+  - Year setup readiness requires at least one non-"All / Overall Products" Related Product option
 - Breakdown rows in the dashboard "Product mentions by post" card count post mentions, not unique posts
 - One post tagged with multiple products increments each product's count separately, so the sum may exceed total post count
 

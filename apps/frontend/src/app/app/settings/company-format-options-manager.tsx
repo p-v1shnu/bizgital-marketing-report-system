@@ -330,7 +330,7 @@ export function CompanyFormatOptionsManager({
                 </div>
                 <div className="text-xs text-muted-foreground">
                   Position {index + 1}
-                  {option.isSystemOption ? ' • Locked default' : ''}
+                  {option.isSystemOption ? ' • Locked default for broad/overall product posts' : ''}
                 </div>
               </div>
               <Button onClick={() => openEditModal(option)} size="sm" type="button" variant="outline">
