@@ -8,7 +8,8 @@ import {
   LoaderCircle,
   MinusCircle,
   PlusCircle,
-  Save
+  Save,
+  ShieldAlert
 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
@@ -1037,9 +1038,17 @@ export function CompetitorMonitoringWorkspace({
                 {requiredCount > 0 && completeRequiredCount < requiredCount ? (
                   <div
                     data-testid="monitoring-readiness-banner"
-                    className="rounded-2xl border border-amber-500/25 bg-amber-500/8 p-4 text-sm text-amber-700 dark:text-amber-300"
+                    className="rounded-2xl border border-amber-500/25 bg-amber-500/8"
                   >
-                    Complete monitoring for all active assigned competitors before submit.
+                    <div className="px-6 pt-6">
+                      <div className="flex items-center gap-3 text-base font-semibold text-foreground">
+                        <ShieldAlert className="text-amber-700 dark:text-amber-300" />
+                        What still blocks review
+                      </div>
+                    </div>
+                    <div className="px-6 pb-6 pt-4 text-sm leading-6 text-amber-700 dark:text-amber-300">
+                      Complete monitoring for all active assigned competitors before submit.
+                    </div>
                   </div>
                 ) : null}
               </CardContent>
