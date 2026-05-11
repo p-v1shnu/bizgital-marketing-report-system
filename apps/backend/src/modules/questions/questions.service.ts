@@ -723,12 +723,6 @@ export class QuestionsService {
 
     const normalized = this.normalizeEntryInput(input);
     const relatedProductOptions = await this.listQuestionRelatedProductOptions(brand.id);
-    const normalizedProductBreakdown = this.normalizeRelatedProductBreakdownInput(
-      input.relatedProductBreakdown,
-      relatedProductOptions,
-      Number(normalized.questionCount),
-      normalized.mode
-    );
     await this.mediaService.assertManagedPublicUrlsExist(
       normalized.screenshots ?? [],
       'Question evidence screenshot'
@@ -819,6 +813,23 @@ export class QuestionsService {
           }
         }
         if (input.relatedProductBreakdown !== undefined || normalized.mode === 'no_questions') {
+          const existingBreakdownRows = await tx.$queryRawUnsafe<
+            Array<{ related_product_option_id: string }>
+          >(
+            'SELECT related_product_option_id FROM question_evidence_related_product_breakdowns WHERE question_evidence_id = ?',
+            evidence.id
+          );
+          const previouslyAssignedOptionIds = new Set(
+            existingBreakdownRows.map(row => row.related_product_option_id)
+          );
+          const normalizedProductBreakdown = this.normalizeRelatedProductBreakdownInput(
+            input.relatedProductBreakdown,
+            relatedProductOptions,
+            Number(normalized.questionCount),
+            normalized.mode,
+            previouslyAssignedOptionIds
+          );
+
           await this.replaceRelatedProductBreakdown(
             tx,
             evidence.id,
@@ -1360,6 +1371,15 @@ export class QuestionsService {
     return map;
   }
 
+  /**
+   * Replace all related product breakdown rows for a question evidence.
+   *
+   * IMPORTANT: MUST be called from within a `$transaction` callback. The
+   * DELETE-then-INSERT-loop is only atomic when `client` is a transaction
+   * client. Passing `PrismaService` (non-tx) compiles but silently drops the
+   * atomicity guarantee -- if any INSERT fails after the DELETE succeeds the
+   * breakdown ends up partially wiped.
+   */
   private async replaceRelatedProductBreakdown(
     client: Pick<Prisma.TransactionClient, '$executeRawUnsafe'>,
     questionEvidenceId: string,
@@ -1477,6 +1497,13 @@ export class QuestionsService {
     ]);
   }
 
+  /**
+   * Load existing screenshot URLs for a question evidence.
+   *
+   * Safe with either `PrismaService` or a transaction client. When called from
+   * inside a `$transaction` callback, pass the same `tx` client so the read uses
+   * the same transactional snapshot as the surrounding write flow.
+   */
   private async loadScreenshotUrlsForEvidence(
     evidenceId: string,
     client: QuestionsPersistenceClient = this.prisma
@@ -1653,7 +1680,8 @@ export class QuestionsService {
     input: SaveQuestionEntryInput['relatedProductBreakdown'],
     options: RelatedProductOption[],
     questionCount: number,
-    mode: QuestionMonthlyMode
+    mode: QuestionMonthlyMode,
+    previouslyAssignedOptionIds: Set<string>
   ): NormalizedRelatedProductBreakdownItem[] {
     if (mode === 'no_questions') {
       return [];
@@ -1681,6 +1709,14 @@ export class QuestionsService {
 
         if (!option) {
           throw new BadRequestException('Choose a valid related product for every breakdown row.');
+        }
+        if (
+          option.status === BrandDropdownOptionStatus.deprecated &&
+          !previouslyAssignedOptionIds.has(option.id)
+        ) {
+          throw new BadRequestException(
+            'Cannot add a deprecated related product option. Choose an active option instead.'
+          );
         }
 
         if (seen.has(option.id)) {

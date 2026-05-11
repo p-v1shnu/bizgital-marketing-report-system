@@ -1385,17 +1385,17 @@ export class BrandsService {
       );
     }
 
-    const usedInBreakdown = await this.prisma.$queryRawUnsafe<Array<{ count: bigint | number }>>(
-      'SELECT COUNT(*) AS count FROM question_evidence_related_product_breakdowns WHERE related_product_option_id = ?',
-      option.id
-    );
-    if (Number(usedInBreakdown[0]?.count ?? 0) > 0) {
-      throw new ConflictException(
-        'Cannot delete option used in question monitoring breakdown data.'
-      );
-    }
-
     await this.prisma.$transaction(async tx => {
+      const usedInBreakdown = await tx.$queryRawUnsafe<Array<{ count: bigint | number }>>(
+        'SELECT COUNT(*) AS count FROM question_evidence_related_product_breakdowns WHERE related_product_option_id = ? FOR UPDATE',
+        option.id
+      );
+      if (Number(usedInBreakdown[0]?.count ?? 0) > 0) {
+        throw new ConflictException(
+          'Cannot delete option used in question monitoring breakdown data.'
+        );
+      }
+
       await tx.brandDropdownOption.delete({
         where: {
           id: option.id
