@@ -642,6 +642,12 @@ async function runCapture(payload, runtimeContext = {}) {
     const pageId = normalizePageId(payload.pageId);
     const pageName = normalizePageName(payload.pageName);
     const captureResolution = normalizeCaptureResolution(payload.captureResolution);
+    const executionMode = normalizeExecutionMode(payload.executionMode);
+    const foregroundStabilityMode = shouldUseForegroundCaptureMode(
+      captureResolution,
+      executionMode,
+      payload.clientDeviceMemoryGb
+    );
     const returnDataUrl = Boolean(payload.returnDataUrl);
     const totalPosts = Math.max(1, Number(payload.totalPosts || 1));
     const currentPost = Math.max(1, Number(payload.currentPost || 1));
@@ -664,8 +670,12 @@ async function runCapture(payload, runtimeContext = {}) {
     if (automationTarget.reused) {
       steps.push(`Reusing existing automation window/tab (${workerKey}).`);
     }
+    if (foregroundStabilityMode) {
+      await ensureAutomationTabForeground(windowId, tabId, steps);
+      await emitProgress('running', 'Foreground stability mode enabled for low-spec reliability.', 10);
+    }
 
-    await chrome.tabs.update(tabId, { url: postUrl, active: false });
+    await chrome.tabs.update(tabId, { url: postUrl, active: foregroundStabilityMode });
     await waitForTabComplete(tabId);
     await delay(automationTarget.reused ? 900 : 1400);
     steps.push(`Opened post URL in automation window (${workerKey}): ${postUrl}`);
@@ -717,10 +727,12 @@ async function runCapture(payload, runtimeContext = {}) {
 
       const fallbackSwitch = await attemptFallbackPageSwitchViaProfile(
         tabId,
+        windowId,
         postUrl,
         pageId,
         pageName,
-        steps
+        steps,
+        foregroundStabilityMode
       );
     await emitProgress('running', 'Switching to target page profile...', 45);
     if (fallbackSwitch?.checkpointRequired) {
@@ -804,8 +816,34 @@ async function runCapture(payload, runtimeContext = {}) {
     await delay(1400);
 
     await emitProgress('running', 'Insights opened. Waiting for charts to render...', 84);
-    const renderWait = await waitForInsightsRenderReady(tabId, 22000);
+    let renderWait = await waitForInsightsRenderReady(tabId, 22000, {
+      stablePassesRequired: foregroundStabilityMode ? 2 : 1
+    });
     steps.push(`Insights render status: ${renderWait.status}`);
+    if (!renderWait.ready) {
+      if (foregroundStabilityMode) {
+        steps.push('Render not fully ready. Retrying with focused tab and extended wait.');
+        await ensureAutomationTabForeground(windowId, tabId, steps);
+      }
+      await delay(1800);
+      renderWait = await waitForInsightsRenderReady(tabId, 18000, {
+        stablePassesRequired: 2
+      });
+      steps.push(`Insights render retry status: ${renderWait.status}`);
+      if (!renderWait.ready) {
+        return {
+          success: false,
+          errorCode: 'CAPTURE_FAILED',
+          error:
+            'Insights panel did not finish rendering in time on this device. Keep the Facebook window visible, then retry.',
+          steps
+        };
+      }
+    }
+
+    if (foregroundStabilityMode) {
+      await ensureAutomationTabForeground(windowId, tabId, steps);
+    }
 
     const dataUrl = await captureInsightsSingleShot(
       tabId,
@@ -853,11 +891,22 @@ async function runCapture(payload, runtimeContext = {}) {
   }
 }
 
-async function attemptFallbackPageSwitchViaProfile(tabId, postUrl, pageId, pageName, steps) {
+async function attemptFallbackPageSwitchViaProfile(
+  tabId,
+  windowId,
+  postUrl,
+  pageId,
+  pageName,
+  steps,
+  foregroundStabilityMode = false
+) {
   const profileUrl = `https://www.facebook.com/profile.php?id=${encodeURIComponent(pageId)}`;
   steps.push(`Trying direct switch via page profile ${profileUrl}`);
 
-  await chrome.tabs.update(tabId, { url: profileUrl, active: false });
+  if (foregroundStabilityMode) {
+    await ensureAutomationTabForeground(windowId, tabId, steps);
+  }
+  await chrome.tabs.update(tabId, { url: profileUrl, active: foregroundStabilityMode });
   await waitForTabComplete(tabId);
   await delay(2200);
 
@@ -886,7 +935,7 @@ async function attemptFallbackPageSwitchViaProfile(tabId, postUrl, pageId, pageN
     steps.push('Fallback switch action not found on page profile.');
   }
 
-  await chrome.tabs.update(tabId, { url: postUrl, active: false });
+  await chrome.tabs.update(tabId, { url: postUrl, active: foregroundStabilityMode });
   await waitForTabComplete(tabId);
   await delay(1500);
   steps.push('Returned to target post URL after fallback switch attempt.');
@@ -971,17 +1020,57 @@ function normalizeCaptureResolution(raw) {
   return 'standard';
 }
 
-async function waitForInsightsRenderReady(tabId, timeoutMs = 20000) {
+function normalizeExecutionMode(raw) {
+  const value = String(raw || '').trim().toLowerCase();
+  if (value === 'sequential' || value === 'stable') {
+    return 'sequential';
+  }
+  if (value === 'parallel5' || value === 'turbo') {
+    return 'parallel5';
+  }
+  return 'unknown';
+}
+
+function shouldUseForegroundCaptureMode(captureResolution, executionMode, clientDeviceMemoryGb) {
+  const memory = Number(clientDeviceMemoryGb);
+  const isLowMemory = Number.isFinite(memory) && memory > 0 && memory <= 8;
+  return (
+    captureResolution === 'auto_hq' &&
+    (executionMode === 'sequential' || isLowMemory)
+  );
+}
+
+async function ensureAutomationTabForeground(windowId, tabId, steps) {
+  await chrome.windows
+    .update(windowId, {
+      state: 'normal',
+      focused: true,
+      ...AUTOMATION_WINDOW_BOUNDS
+    })
+    .catch(() => undefined);
+  await chrome.tabs.update(tabId, { active: true }).catch(() => undefined);
+  await delay(280);
+  steps.push('Foreground stability mode: focused automation window and active tab.');
+}
+
+async function waitForInsightsRenderReady(tabId, timeoutMs = 20000, options = {}) {
   const start = Date.now();
   let lastStatus = 'waiting';
+  const stablePassesRequired = Math.max(1, Number(options.stablePassesRequired || 1));
+  let stablePassCount = 0;
 
   while (Date.now() - start < timeoutMs) {
     const state = await executeInTab(tabId, inspectInsightsRenderStateInPage);
     if (state?.ready) {
-      return {
-        ready: true,
-        status: state.status || 'ready'
-      };
+      stablePassCount += 1;
+      if (stablePassCount >= stablePassesRequired) {
+        return {
+          ready: true,
+          status: state.status || 'ready'
+        };
+      }
+    } else {
+      stablePassCount = 0;
     }
 
     lastStatus = state?.status || lastStatus;

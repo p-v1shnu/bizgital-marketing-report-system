@@ -533,6 +533,7 @@ export function InsightCaptureWorkspaceClient() {
         workerKey,
         windowGroupKey,
         captureResolution,
+        executionMode: effectiveExecutionMode,
         clientDeviceMemoryGb: deviceMemoryGb,
         returnDataUrl: true,
         totalPosts: total,
