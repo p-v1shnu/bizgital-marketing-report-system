@@ -219,7 +219,7 @@ export function DashboardTopPostsSection({ overview }: DashboardTopPostsSectionP
                           </div>
                           <div
                             className={cn(
-                              'mt-1 font-bold leading-none tracking-tight text-slate-900',
+                              'mt-1 font-bold leading-[1.08] tracking-tight text-slate-900',
                               metricValueClass
                             )}
                           >
@@ -255,7 +255,7 @@ export function DashboardTopPostsSection({ overview }: DashboardTopPostsSectionP
                           </div>
                           <div
                             className={cn(
-                              'mt-1 font-bold leading-none tracking-tight text-slate-900',
+                              'mt-1 font-bold leading-[1.08] tracking-tight text-slate-900',
                               normalMetricValueClass
                             )}
                           >

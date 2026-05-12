@@ -1242,7 +1242,7 @@ export default async function DashboardPage({
           <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
             {brandDisplayName}
           </div>
-          <h1 className="font-serif text-4xl leading-none tracking-[-0.05em]">
+          <h1 className="font-serif text-4xl leading-[1.06] tracking-[-0.05em]">
             Dashboard
           </h1>
           <p className="text-sm text-muted-foreground">
@@ -1890,40 +1890,40 @@ export default async function DashboardPage({
                           className="grid w-full grid-cols-2 gap-4 aspect-[204/25] min-h-[235px]"
                           id="dashboard-content-monthly-summary-kpi-canvas"
                         >
-                          <article className={cn(contentSurfaceCardClassName, 'flex h-full min-h-0 min-w-0 flex-col justify-between overflow-hidden rounded-md px-6 py-5')}>
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0 truncate pr-2 text-[clamp(1.05rem,1.3vw,3.45rem)] font-semibold uppercase tracking-[0.1em] text-slate-500">
+                          <article className={cn(contentSurfaceCardClassName, 'flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-md px-6 py-5')}>
+                            <div className="flex min-h-[4.75rem] items-start justify-between gap-3">
+                              <div className="min-w-0 truncate pr-2 text-[clamp(1.05rem,1.3vw,2.05rem)] font-semibold uppercase tracking-[0.1em] text-slate-500">
                                 Page Visits
                               </div>
-                              <span className="shrink-0 rounded-full bg-sky-100 p-3 text-sky-700">
-                                <Eye className="h-14 w-14" />
+                              <span className="shrink-0 rounded-full bg-sky-100 p-2.5 text-sky-700">
+                                <Eye className="h-11 w-11" />
                               </span>
                             </div>
-                            <div className="mt-2 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-[4.45rem] font-semibold leading-none text-slate-900">
+                            <div className="mt-2 min-w-0 whitespace-nowrap text-[clamp(2.9rem,4.1vw,4.1rem)] font-semibold leading-[1.08] text-slate-900">
                               {formatValue(currentPageVisit)}
                             </div>
                             <div
-                              className={`mt-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap rounded-md text-[2.5rem] font-semibold leading-tight ${getChangeToneClassName(pageVisitChangePercent)}`}
+                              className={`mt-1 min-w-0 max-w-full whitespace-normal break-words rounded-md text-[clamp(1.9rem,2.2vw,2.5rem)] font-semibold leading-[1.15] ${getChangeToneClassName(pageVisitChangePercent)}`}
                             >
                               Change: {formatChangePercent(pageVisitChangePercent)} (
                               {formatSignedDelta(currentPageVisit, previousPageVisit)})
                             </div>
                           </article>
 
-                          <article className={cn(contentSurfaceCardClassName, 'flex h-full min-h-0 min-w-0 flex-col justify-between overflow-hidden rounded-md px-6 py-5')}>
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0 truncate pr-2 text-[clamp(1.05rem,1.3vw,3.45rem)] font-semibold uppercase tracking-[0.1em] text-slate-500">
+                          <article className={cn(contentSurfaceCardClassName, 'flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-md px-6 py-5')}>
+                            <div className="flex min-h-[4.75rem] items-start justify-between gap-3">
+                              <div className="min-w-0 truncate pr-2 text-[clamp(1.05rem,1.3vw,2.05rem)] font-semibold uppercase tracking-[0.1em] text-slate-500">
                                 Page Followers
                               </div>
-                              <span className="shrink-0 rounded-full bg-indigo-100 p-3 text-indigo-700">
-                                <Users className="h-14 w-14" />
+                              <span className="shrink-0 rounded-full bg-indigo-100 p-2.5 text-indigo-700">
+                                <Users className="h-11 w-11" />
                               </span>
                             </div>
-                            <div className="mt-2 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-[4.45rem] font-semibold leading-none text-slate-900">
+                            <div className="mt-2 min-w-0 whitespace-nowrap text-[clamp(2.9rem,4.1vw,4.1rem)] font-semibold leading-[1.08] text-slate-900">
                               {formatValue(ownBrandFollowerCount)}
                             </div>
                             <div
-                              className={`mt-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap rounded-md text-[2.5rem] font-semibold leading-tight ${getChangeToneClassName(pageFollowersChangePercent)}`}
+                              className={`mt-1 min-w-0 max-w-full whitespace-normal break-words rounded-md text-[clamp(1.9rem,2.2vw,2.5rem)] font-semibold leading-[1.15] ${getChangeToneClassName(pageFollowersChangePercent)}`}
                             >
                               Change: {formatChangePercent(pageFollowersChangePercent)} (
                               {formatSignedDelta(ownBrandFollowerCount, previousPageFollowers)})
@@ -1941,7 +1941,7 @@ export default async function DashboardPage({
                               </span>
                             </div>
                             <div className="mt-2 flex flex-wrap items-end justify-between gap-2">
-                              <div className="text-3xl font-semibold leading-none text-slate-900">
+                              <div className="text-3xl font-semibold leading-[1.08] text-slate-900">
                                 {formatValue(selectedMonthlyContentTotal)}
                               </div>
                               <div className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">

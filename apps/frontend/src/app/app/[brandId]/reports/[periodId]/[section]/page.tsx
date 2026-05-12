@@ -62,7 +62,7 @@ export default async function WorkspaceSectionPage({
       <div className="space-y-6">
         <div className="space-y-3">
           <Badge variant="outline">{sectionMeta?.label ?? section}</Badge>
-        <h1 className="font-serif text-5xl leading-none tracking-[-0.06em]">
+        <h1 className="font-serif text-5xl leading-[1.06] tracking-[-0.06em]">
           {detail.period.monthLabel}
         </h1>
         <p className="max-w-3xl text-base leading-7 text-muted-foreground">
