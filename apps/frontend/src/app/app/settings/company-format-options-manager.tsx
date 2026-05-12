@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { ArrowDown, ArrowUp } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { ConfirmActionModal } from '@/components/ui/confirm-action-modal';
@@ -256,6 +257,59 @@ export function CompanyFormatOptionsManager({
     }
   }
 
+  async function moveActiveOption(optionId: string, direction: 'up' | 'down') {
+    if (pendingKey !== null) {
+      return;
+    }
+
+    const currentIndex = activeOptions.findIndex(option => option.id === optionId);
+    if (currentIndex < 0) {
+      return;
+    }
+
+    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    if (targetIndex < 0 || targetIndex >= activeOptions.length) {
+      return;
+    }
+
+    const optionIds = activeOptions.map(option => option.id);
+    [optionIds[currentIndex], optionIds[targetIndex]] = [
+      optionIds[targetIndex],
+      optionIds[currentIndex]
+    ];
+
+    setPendingKey(`move-${optionId}-${direction}`);
+    setStatusError(null);
+    setStatusMessage(null);
+
+    try {
+      const response = await fetch(`${endpointBase}/reorder`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          fieldKey,
+          optionIds
+        })
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        setStatusError(parseErrorMessage(payload, 'Failed to update option order.'));
+        return;
+      }
+
+      const movedLabel = activeOptions[currentIndex]?.label ?? 'option';
+      setStatusMessage(`Moved "${movedLabel}" ${direction === 'up' ? 'up' : 'down'}.`);
+      router.refresh();
+    } catch (error) {
+      setStatusError(error instanceof Error ? error.message : 'Failed to update option order.');
+    } finally {
+      setPendingKey(null);
+    }
+  }
+
   async function deleteOption() {
     if (!editingOptionId || modalMode !== 'edit' || !canDeleteOption) {
       return;
@@ -343,6 +397,30 @@ export function CompanyFormatOptionsManager({
                   {option.isSystemOption ? ' • Locked default for broad/overall product posts' : ''}
                 </div>
               </div>
+              <Button
+                disabled={pendingKey !== null || index === 0}
+                onClick={() => {
+                  void moveActiveOption(option.id, 'up');
+                }}
+                size="sm"
+                title="Move up"
+                type="button"
+                variant="outline"
+              >
+                <ArrowUp />
+              </Button>
+              <Button
+                disabled={pendingKey !== null || index === activeOptions.length - 1}
+                onClick={() => {
+                  void moveActiveOption(option.id, 'down');
+                }}
+                size="sm"
+                title="Move down"
+                type="button"
+                variant="outline"
+              >
+                <ArrowDown />
+              </Button>
               <Button onClick={() => openEditModal(option)} size="sm" type="button" variant="outline">
                 Edit
               </Button>
@@ -443,7 +521,7 @@ export function CompanyFormatOptionsManager({
             </div>
             <div className="md:col-span-2">
               <label className="mb-2 block text-sm font-medium text-foreground">
-                Active position
+                Position
               </label>
               <Select
                 disabled={draft.status !== 'active'}

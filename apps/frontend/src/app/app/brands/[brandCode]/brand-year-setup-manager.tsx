@@ -99,6 +99,7 @@ export function BrandYearSetupManager({
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const setupWorkspaceRef = useRef<HTMLDivElement | null>(null);
 
   function replaceWorkbenchUrl(nextTab: EditorTab, year = selectedYear) {
     if (typeof window === 'undefined') {
@@ -114,6 +115,28 @@ export function BrandYearSetupManager({
   function selectEditorTab(nextTab: EditorTab) {
     setEditorTab(nextTab);
     replaceWorkbenchUrl(nextTab);
+  }
+
+  function jumpToEditorTab(nextTab: EditorTab) {
+    selectEditorTab(nextTab);
+    window.requestAnimationFrame(() => {
+      setupWorkspaceRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start'
+      });
+    });
+  }
+
+  function readinessTargetHref(checkKey: ReportingYearSetupStatus['checks'][number]['key']) {
+    if (checkKey === 'question_assignments') {
+      return `/app/brands/${brandCode}?tab=questions`;
+    }
+
+    if (checkKey === 'related_product_options') {
+      return `/app/brands/${brandCode}?tab=columns`;
+    }
+
+    return null;
   }
 
   const appliedDefaultYearRef = useRef(false);
@@ -560,7 +583,7 @@ export function BrandYearSetupManager({
         </div>
       </div>
 
-      <div className="rounded-[24px] border border-border/60 bg-background/60 p-4">
+      <div className="rounded-[24px] border border-border/60 bg-background/60 p-4" ref={setupWorkspaceRef}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="text-base font-semibold text-foreground">Setup workbench</div>
           <Badge variant="outline">Year {selectedYear}</Badge>
@@ -655,6 +678,33 @@ export function BrandYearSetupManager({
                   <Badge variant="outline">{check.required ? 'Required' : 'Optional'}</Badge>
                 </div>
                 <div className="text-xs text-muted-foreground">{check.detail}</div>
+              </div>
+              <div className="pt-0.5">
+                {check.key === 'kpi_plan' ? (
+                  <Button
+                    onClick={() => jumpToEditorTab('kpi')}
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
+                    Go to section
+                  </Button>
+                ) : check.key === 'competitor_assignments' ? (
+                  <Button
+                    onClick={() => jumpToEditorTab('competitors')}
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
+                    Go to section
+                  </Button>
+                ) : readinessTargetHref(check.key) ? (
+                  <Button asChild size="sm" variant="outline">
+                    <Link href={readinessTargetHref(check.key) ?? '#'}>
+                      Go to section
+                    </Link>
+                  </Button>
+                ) : null}
               </div>
             </div>
           ))}

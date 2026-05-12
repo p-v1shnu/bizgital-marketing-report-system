@@ -284,6 +284,7 @@ export function QuestionCatalogManager({ initialCatalog }: Props) {
           error={statusError}
           message={statusMessage}
           onClose={closeModal}
+          showCloseButton={false}
           title={modalMode === 'create' ? 'Add question category' : 'Edit question category'}
         >
           <div className="space-y-4">

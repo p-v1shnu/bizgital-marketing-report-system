@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus } from 'lucide-react';
+import { ArrowDown, ArrowUp, Plus } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -38,7 +38,7 @@ function createEmptyDraft(): Draft {
     kpiCatalogId: '',
     targetValue: '',
     note: '',
-    sortOrder: '1'
+    sortOrder: 'end'
   };
 }
 
@@ -128,7 +128,7 @@ export function BrandKpiPlanManager({
       kpiCatalogId: '',
       targetValue: '',
       note: '',
-      sortOrder: String(draftItems.length + 1)
+      sortOrder: 'end'
     });
     setStatusError(null);
   }
@@ -234,6 +234,36 @@ export function BrandKpiPlanManager({
     } finally {
       setPendingKey(null);
     }
+  }
+
+  async function moveDraftItem(itemId: string, direction: 'up' | 'down') {
+    if (pendingKey !== null) {
+      return;
+    }
+
+    const ordered = sortItems(draftItems);
+    const currentIndex = ordered.findIndex(item => item.id === itemId);
+    if (currentIndex < 0) {
+      return;
+    }
+
+    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    if (targetIndex < 0 || targetIndex >= ordered.length) {
+      return;
+    }
+
+    const next = [...ordered];
+    [next[currentIndex], next[targetIndex]] = [next[targetIndex], next[currentIndex]];
+    const normalized = next.map((item, index) => ({
+      ...item,
+      sortOrder: index + 1
+    }));
+    const movedLabel = ordered[currentIndex]?.kpi.label ?? 'KPI';
+
+    await persist(
+      normalized,
+      `Moved "${movedLabel}" ${direction === 'up' ? 'up' : 'down'}.`
+    );
   }
 
   async function saveDraftItem() {
@@ -407,6 +437,26 @@ export function BrandKpiPlanManager({
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Button
+                      disabled={pendingKey !== null || index === 0}
+                      onClick={() => void moveDraftItem(item.id, 'up')}
+                      size="sm"
+                      title="Move up"
+                      type="button"
+                      variant="outline"
+                    >
+                      <ArrowUp />
+                    </Button>
+                    <Button
+                      disabled={pendingKey !== null || index === draftItems.length - 1}
+                      onClick={() => void moveDraftItem(item.id, 'down')}
+                      size="sm"
+                      title="Move down"
+                      type="button"
+                      variant="outline"
+                    >
+                      <ArrowDown />
+                    </Button>
+                    <Button
                       disabled={pendingKey !== null}
                       onClick={() => openEditModal(item)}
                       size="sm"
@@ -483,18 +533,29 @@ export function BrandKpiPlanManager({
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium" htmlFor="brand-kpi-sort-order-input">
-                Display order
+              <label className="text-sm font-medium" htmlFor="brand-kpi-position-select">
+                Position
               </label>
-              <Input
-                id="brand-kpi-sort-order-input"
+              <Select
+                id="brand-kpi-position-select"
                 onChange={event => {
                   const value = event.currentTarget.value;
                   setDraft(current => ({ ...current, sortOrder: value }));
                 }}
-                placeholder="Order"
                 value={draft.sortOrder}
-              />
+              >
+                <option value="end">Place at end</option>
+                {Array.from({
+                  length: Math.max(
+                    1,
+                    modalMode === 'create' ? draftItems.length + 1 : draftItems.length
+                  )
+                }).map((_, index) => (
+                  <option key={index + 1} value={String(index + 1)}>
+                    Position {index + 1}
+                  </option>
+                ))}
+              </Select>
             </div>
             <div className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm text-muted-foreground">
               Source:{' '}

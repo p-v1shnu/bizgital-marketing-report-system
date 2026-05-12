@@ -75,7 +75,9 @@ export function ModalShell({
             {message}
           </div>
         ) : null}
-        {children}
+        <div className="[&_label]:text-xs [&_label]:font-medium [&_label]:uppercase [&_label]:tracking-[0.16em] [&_label]:text-muted-foreground">
+          {children}
+        </div>
       </div>
     </div>,
     document.body
