@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "BIZGITAL Insight Capture Bridge",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Bridge between BIZGITAL UI and browser-native Facebook insight capture.",
   "homepage_url": "https://report.bizgital.com/",
   "permissions": [
