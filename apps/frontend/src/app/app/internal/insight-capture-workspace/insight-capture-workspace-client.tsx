@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { AlertCircle, CheckCircle2, LoaderCircle, Sparkles, StopCircle } from 'lucide-react';
+import { AlertCircle, CheckCircle2, ExternalLink, LoaderCircle, Sparkles, StopCircle } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -75,6 +75,8 @@ type CaptureBridgeResponse = {
 
 const UI_BRIDGE_SOURCE = 'bizgital-insight-ui';
 const EXTENSION_BRIDGE_SOURCE = 'bizgital-insight-extension';
+const CHROME_WEB_STORE_URL =
+  'https://chromewebstore.google.com/detail/bizgital-insight-capture/olpbdaennmbicjfbmabmmpnmfcfapcli';
 const FOLDER_DB_NAME = 'bizgital-insight-capture-folder-db';
 const FOLDER_STORE_NAME = 'kv';
 const FOLDER_HANDLE_KEY = 'selected-output-folder-handle';
@@ -944,24 +946,32 @@ export function InsightCaptureWorkspaceClient() {
             Batch capture Facebook post insights from Import queue via browser extension only.
           </p>
         </div>
-        <div className="flex items-center gap-2 rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs text-sky-100">
-          <span className="rounded-full border border-sky-400/40 bg-sky-900/40 px-2.5 py-1 font-medium">
-            Extension:{' '}
-            {extensionReady === null
-              ? 'Checking...'
-              : extensionReady
-                ? 'Connected'
-                : 'Not connected'}
-          </span>
-          <Button
-            className="h-7 px-3 text-xs"
-            onClick={() => void checkExtensionReady()}
-            size="sm"
-            type="button"
-            variant="outline"
-          >
-            Re-check
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button asChild className="h-8 px-3 text-xs" size="sm" variant="secondary">
+            <a href={CHROME_WEB_STORE_URL} rel="noreferrer" target="_blank">
+              Install extension
+              <ExternalLink className="size-3.5" />
+            </a>
           </Button>
+          <div className="flex items-center gap-2 rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs text-sky-100">
+            <span className="rounded-full border border-sky-400/40 bg-sky-900/40 px-2.5 py-1 font-medium">
+              Extension:{' '}
+              {extensionReady === null
+                ? 'Checking...'
+                : extensionReady
+                  ? 'Connected'
+                  : 'Not connected'}
+            </span>
+            <Button
+              className="h-7 px-3 text-xs"
+              onClick={() => void checkExtensionReady()}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              Re-check
+            </Button>
+          </div>
         </div>
       </div>
 
