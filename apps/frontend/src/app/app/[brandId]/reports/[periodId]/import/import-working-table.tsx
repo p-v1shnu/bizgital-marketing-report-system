@@ -943,6 +943,11 @@ export function ImportWorkingTable({
       const merged: Record<RowKey, Partial<Record<ManualKey, string>>> = { ...fallback };
 
       if (isManualRowsStoragePayload(parsed)) {
+        const hydratedRowNumbers = buildManualRowNumbersMap(
+          parsed.manualRowIds ?? [],
+          parsed.manualRowNumbers ?? {},
+          sourcePreview.totalRows
+        );
         for (const [rowKey, values] of Object.entries(parsed.manualValues ?? {})) {
           merged[rowKey] = normalizeCampaignFields({
             ...buildDefaultManualRowValues(),
@@ -952,17 +957,20 @@ export function ImportWorkingTable({
         }
         setManualValues(merged);
         setManualRowIds(parsed.manualRowIds ?? []);
-        setManualRowNumbers(
-          buildManualRowNumbersMap(
-            parsed.manualRowIds ?? [],
-            parsed.manualRowNumbers ?? {},
-            sourcePreview.totalRows
-          )
-        );
+        setManualRowNumbers(hydratedRowNumbers);
         setManualSourceValues(parsed.manualSourceValues ?? {});
         setManualFormulaValues(parsed.manualFormulaValues ?? {});
+        persistedManualRowNumbersRef.current = Object.values(hydratedRowNumbers).filter(
+          (rowNumber) => Number.isInteger(rowNumber) && rowNumber > 0
+        );
         legacyManualRowNumbersToClearRef.current = [];
       } else if (isManualRowsStoragePayloadV2(parsed)) {
+        const rowIds = parsed.manualRowIds ?? [];
+        const hydratedRowNumbers = buildManualRowNumbersMap(
+          rowIds,
+          null,
+          sourcePreview.totalRows
+        );
         for (const [rowKey, values] of Object.entries(parsed.manualValues ?? {})) {
           merged[rowKey] = normalizeCampaignFields({
             ...buildDefaultManualRowValues(),
@@ -970,12 +978,14 @@ export function ImportWorkingTable({
             ...values
           });
         }
-        const rowIds = parsed.manualRowIds ?? [];
         setManualValues(merged);
         setManualRowIds(rowIds);
-        setManualRowNumbers(buildManualRowNumbersMap(rowIds, null, sourcePreview.totalRows));
+        setManualRowNumbers(hydratedRowNumbers);
         setManualSourceValues(parsed.manualSourceValues ?? {});
         setManualFormulaValues(parsed.manualFormulaValues ?? {});
+        persistedManualRowNumbersRef.current = Object.values(hydratedRowNumbers).filter(
+          (rowNumber) => Number.isInteger(rowNumber) && rowNumber > 0
+        );
         legacyManualRowNumbersToClearRef.current =
           sourcePreview.totalRows > sourcePreview.rows.length
             ? rowIds.map((_, index) => sourcePreview.rows.length + index + 1)
@@ -994,6 +1004,7 @@ export function ImportWorkingTable({
         setManualRowNumbers({});
         setManualSourceValues({});
         setManualFormulaValues({});
+        persistedManualRowNumbersRef.current = [];
         legacyManualRowNumbersToClearRef.current = [];
       }
     } catch {

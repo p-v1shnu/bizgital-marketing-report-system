@@ -461,10 +461,8 @@ export class DatasetService {
     }
 
     const hasRowUpdates = input.rows.length > 0;
-    const hasManualSourceRowsUpdate =
-      Array.isArray(input.manualSourceRows) && input.manualSourceRows.length > 0;
-    const hasManualFormulaRowsUpdate =
-      Array.isArray(input.manualFormulaRows) && input.manualFormulaRows.length > 0;
+    const hasManualSourceRowsUpdate = Array.isArray(input.manualSourceRows);
+    const hasManualFormulaRowsUpdate = Array.isArray(input.manualFormulaRows);
     const hasManualHeaderUpdate = input.manualHeader !== undefined;
     const hasMetricCommentaryUpdate = input.metricCommentary !== undefined;
 
