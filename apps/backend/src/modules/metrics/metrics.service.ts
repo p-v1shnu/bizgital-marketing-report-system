@@ -513,8 +513,18 @@ export class MetricsService {
     // When canonical Engagement is not mapped from CSV, dataset Engagement values are usually
     // manual-only overrides. Blend them with formula-derived CSV engagement.
     if (engagementDatasetActual.sourceColumnName === null) {
+      let manualDatasetSupplement = engagementDatasetActual.value ?? 0;
+      if (manualDatasetSupplement !== 0) {
+        const duplicatedManualFormulaContribution =
+          await this.getEngagementValueFromRowsWithSystemFormulaOverrides({
+            reportVersionId,
+            systemEngagementFormulaIds,
+            manualFormulaRowsByRowNumber
+          });
+        manualDatasetSupplement -= duplicatedManualFormulaContribution;
+      }
       values.engagement =
-        resolvedFormulaEngagementValue + (engagementDatasetActual.value ?? 0);
+        resolvedFormulaEngagementValue + manualDatasetSupplement;
       return values;
     }
 
@@ -2006,6 +2016,52 @@ export class MetricsService {
         .map(([rowNumber, values]) => [Number(rowNumber), values] as const)
         .filter(([rowNumber]) => Number.isInteger(rowNumber) && rowNumber > 0)
     );
+  }
+
+  private async getEngagementValueFromRowsWithSystemFormulaOverrides(input: {
+    reportVersionId: string;
+    systemEngagementFormulaIds: Set<string>;
+    manualFormulaRowsByRowNumber: Map<number, Record<string, string>>;
+  }) {
+    if (input.systemEngagementFormulaIds.size === 0) {
+      return 0;
+    }
+
+    const rowNumbersWithManualFormulaOverride = Array.from(
+      input.manualFormulaRowsByRowNumber.entries()
+    )
+      .filter(([, values]) =>
+        Object.entries(values).some(
+          ([formulaId, rawValue]) =>
+            input.systemEngagementFormulaIds.has(formulaId) &&
+            this.toNumber(rawValue) !== null
+        )
+      )
+      .map(([rowNumber]) => rowNumber);
+
+    if (rowNumbersWithManualFormulaOverride.length === 0) {
+      return 0;
+    }
+
+    const engagementCells = await this.prisma.datasetCell.findMany({
+      where: {
+        targetField: MappingTargetField.engagement,
+        datasetRow: {
+          reportVersionId: input.reportVersionId,
+          sourceRowNumber: {
+            in: rowNumbersWithManualFormulaOverride
+          }
+        }
+      },
+      include: {
+        override: true
+      }
+    });
+
+    return engagementCells.reduce((sum, cell) => {
+      const value = this.toNumber(cell.override?.overrideValue ?? cell.value);
+      return value === null ? sum : sum + value;
+    }, 0);
   }
 
   private async getSystemEngagementFormulaIds() {

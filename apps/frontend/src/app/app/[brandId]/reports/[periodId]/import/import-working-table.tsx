@@ -156,6 +156,15 @@ const MANUAL_SOURCE_LABEL_BY_KEY: Partial<Record<ManualKey, string>> = {
   campaign_base: MANUAL_CAMPAIGN_BASE_SOURCE_LABEL,
   campaign_name: MANUAL_CAMPAIGN_NAME_SOURCE_LABEL
 };
+const MANUAL_EXTENDED_TARGET_FIELDS = [
+  'page_id',
+  'views',
+  'viewers',
+  'engagement',
+  'video_views_3s',
+  'content_url',
+  'published_at'
+] as const;
 const sourcePreviewPopoverPadding = 12;
 const sourcePreviewPopoverWidth = 480;
 const sourcePreviewPopoverHeight = 680;
@@ -1361,6 +1370,18 @@ export function ImportWorkingTable({
 
     return map;
   }, [sourcePreview.columns]);
+  const manualClearTargetFields = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...manualTargetFields,
+          ...MANUAL_EXTENDED_TARGET_FIELDS,
+          ...Array.from(sourceMetricTargetFieldByKey.values()),
+          ...Array.from(formulaTargetFieldById.values())
+        ])
+      ),
+    [formulaTargetFieldById, manualTargetFields, sourceMetricTargetFieldByKey]
+  );
   const captureQueueBuildResult = useMemo<CaptureQueueBuildResult>(() => {
     const permalinkColumn =
       sourcePreview.columns.find((column) => {
@@ -1991,7 +2012,7 @@ export function ImportWorkingTable({
       ...rows,
       ...rowNumbersToClear.map((rowNumber) => ({
         rowNumber,
-        values: Object.fromEntries(manualTargetFields.map((field) => [field, null])) as Record<
+        values: Object.fromEntries(manualClearTargetFields.map((field) => [field, null])) as Record<
           string,
           string | null
         >
