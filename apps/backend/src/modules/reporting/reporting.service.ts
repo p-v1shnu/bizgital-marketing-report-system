@@ -2727,7 +2727,7 @@ export class ReportingService implements OnModuleInit {
         : [];
 
       for (const metric of supplementalMetrics) {
-        if (!mergedItemsByKey.has(metric.key) && metric.value !== null) {
+        if (metric.value !== null) {
           mergedItemsByKey.set(metric.key, asMetricItem(metric.key, metric.value));
         }
       }

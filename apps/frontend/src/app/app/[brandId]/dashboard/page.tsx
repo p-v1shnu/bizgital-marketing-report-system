@@ -688,20 +688,20 @@ export default async function DashboardPage({
 
       const values: DashboardMetricValues = {
         views: metricsOverview
-          ? getMetricsActualValue(metricsOverview.items, 'views') ??
-            metricsOverview.dashboardValues.views
+          ? metricsOverview.dashboardValues.views ??
+            getMetricsActualValue(metricsOverview.items, 'views')
           : null,
         engagement: metricsOverview
-          ? getMetricsActualValue(metricsOverview.items, 'engagement')
-            ?? metricsOverview.dashboardValues.engagement
+          ? metricsOverview.dashboardValues.engagement ??
+            getMetricsActualValue(metricsOverview.items, 'engagement')
           : null,
         video_views_3s: metricsOverview
-          ? getMetricsActualValue(metricsOverview.items, 'video_views_3s')
-            ?? metricsOverview.dashboardValues.video_views_3s
+          ? metricsOverview.dashboardValues.video_views_3s ??
+            getMetricsActualValue(metricsOverview.items, 'video_views_3s')
           : null,
         page_followers: metricsOverview
-          ? getMetricsActualValue(metricsOverview.items, 'page_followers')
-            ?? metricsOverview.dashboardValues.page_followers
+          ? metricsOverview.dashboardValues.page_followers ??
+            getMetricsActualValue(metricsOverview.items, 'page_followers')
           : null
       };
 
