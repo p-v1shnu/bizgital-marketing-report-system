@@ -762,7 +762,6 @@ export default async function DashboardPage({
         : getApprovedSnapshotMetric(item, 'video_views_3s');
     const engagementValue = engagement ?? 0;
     const videoViews3sValue = videoViews3s ?? 0;
-    const total = engagementValue + videoViews3sValue;
 
     return {
       id: item.id,
@@ -774,7 +773,6 @@ export default async function DashboardPage({
       videoViews3sValue,
       engagementMissing: engagement === null,
       videoViews3sMissing: videoViews3s === null,
-      total,
       statusLabel: sourceState === 'submitted_preview' ? 'Submitted (Preview)' : 'Approved'
     };
   });

@@ -25,7 +25,6 @@ export type EngagementVideoChartPoint = {
   videoViews3sValue: number;
   engagementMissing?: boolean;
   videoViews3sMissing?: boolean;
-  total: number;
   statusLabel?: string;
 };
 
@@ -93,18 +92,14 @@ function CustomTooltip({
           </div>
         </div>
       </div>
-      <div className="mt-3 border-t border-border/60 pt-2 text-xs">
-        <div className="flex items-center justify-between gap-4">
-          <span className="text-muted-foreground">Total</span>
-          <span className="font-semibold text-foreground">{formatFullNumber(point.total)}</span>
-        </div>
-        {point.statusLabel ? (
-          <div className="mt-2 flex items-center justify-between gap-4 border-t border-border/60 pt-2">
+      {point.statusLabel ? (
+        <div className="mt-3 border-t border-border/60 pt-2 text-xs">
+          <div className="flex items-center justify-between gap-4">
             <span className="text-muted-foreground">Status</span>
             <span className="font-medium text-foreground">{point.statusLabel}</span>
           </div>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -245,7 +240,7 @@ export function EngagementVideoChart({
       >
         {showValueLabels ? (
           <LabelList
-            dataKey="total"
+            dataKey="videoViews3sValue"
             fill="#334155"
             fontSize={valueLabelFontSize}
             fontWeight={700}
