@@ -177,46 +177,55 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   const shouldLoadQuestionCatalog = activeTab === 'questions';
   const shouldLoadAuditLog = activeTab === 'audit-log';
 
-  const brandsResult = shouldLoadBrands
-    ? await getBrands()
+  const brandsResultPromise = shouldLoadBrands
+    ? getBrands()
         .then(data => ({ data, error: null as string | null }))
         .catch(error => ({
           data: [] as BrandSummary[],
           error: error instanceof Error ? error.message : 'Failed to load brands.'
         }))
-    : { data: [] as BrandSummary[], error: null as string | null };
-  const usersResult = shouldLoadUsers
-    ? await getUsers()
+    : Promise.resolve({
+        data: [] as BrandSummary[],
+        error: null as string | null
+      });
+  const usersResultPromise = shouldLoadUsers
+    ? getUsers()
         .then(data => ({ data, error: null as string | null }))
         .catch(error => ({
           data: [] as UserSummary[],
           error: error instanceof Error ? error.message : 'Failed to load users.'
         }))
-    : { data: [] as UserSummary[], error: null as string | null };
-  const companyFormatOptionsResult = shouldLoadColumns
-    ? await getGlobalCompanyFormatOptions({ includeDeprecated: true })
+    : Promise.resolve({
+        data: [] as UserSummary[],
+        error: null as string | null
+      });
+  const companyFormatOptionsResultPromise = shouldLoadColumns
+    ? getGlobalCompanyFormatOptions({ includeDeprecated: true })
         .then(data => ({ data, error: null as string | null }))
         .catch(error => ({
-          data: null,
+          data: null as GlobalCompanyFormatOptionsResponse | null,
           error:
             error instanceof Error
               ? error.message
               : 'Failed to load global internal options.'
         }))
-    : { data: null as GlobalCompanyFormatOptionsResponse | null, error: null as string | null };
-  const formulasResult = shouldLoadFormulas
-    ? await getComputedFormulas()
+    : Promise.resolve({
+        data: null as GlobalCompanyFormatOptionsResponse | null,
+        error: null as string | null
+      });
+  const formulasResultPromise = shouldLoadFormulas
+    ? getComputedFormulas()
         .then(data => ({ data, error: null as string | null }))
         .catch(error => ({
           data: { items: [] } as ComputedFormulaListResponse,
           error: error instanceof Error ? error.message : 'Failed to load computed formulas.'
         }))
-    : {
+    : Promise.resolve({
         data: { items: [] } as ComputedFormulaListResponse,
         error: null as string | null
-      };
-  const kpiCatalogResult = shouldLoadKpis
-    ? await getKpiCatalog({ includeInactive: true })
+      });
+  const kpiCatalogResultPromise = shouldLoadKpis
+    ? getKpiCatalog({ includeInactive: true })
         .then(data => ({ data, error: null as string | null }))
         .catch(error => ({
           data: {
@@ -225,26 +234,26 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           } as KpiCatalogListResponse,
           error: error instanceof Error ? error.message : 'Failed to load KPI catalog.'
         }))
-    : {
+    : Promise.resolve({
         data: {
           items: [],
           newBrandDefaultKpiCatalogIds: []
         } as KpiCatalogListResponse,
         error: null as string | null
-      };
-  const metaColumnsResult = shouldLoadFormulas || shouldLoadColumns
-    ? await getMetaColumnCatalog({ limit: 150 })
+      });
+  const metaColumnsResultPromise = shouldLoadFormulas || shouldLoadColumns
+    ? getMetaColumnCatalog({ limit: 150 })
         .then(data => ({ data, error: null as string | null }))
         .catch(error => ({
           data: { columns: [] },
           error: error instanceof Error ? error.message : 'Failed to load Meta columns.'
         }))
-    : {
+    : Promise.resolve({
         data: { columns: [] },
         error: null as string | null
-      };
-  const importLayoutResult = shouldLoadColumns
-    ? await getImportTableLayout()
+      });
+  const importLayoutResultPromise = shouldLoadColumns
+    ? getImportTableLayout()
         .then(data => ({ data, error: null as string | null }))
         .catch(error => ({
           data: { visibleSourceColumnLabels: [] },
@@ -253,68 +262,68 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
               ? error.message
               : 'Failed to load import table layout settings.'
         }))
-    : {
+    : Promise.resolve({
         data: { visibleSourceColumnLabels: [] },
         error: null as string | null
-      };
-  const importMappingConfigResult = shouldLoadImportMapping
-    ? await getImportColumnMappingConfig()
+      });
+  const importMappingConfigResultPromise = shouldLoadImportMapping
+    ? getImportColumnMappingConfig()
         .then(data => ({ data, error: null as string | null }))
         .catch(error => ({
-          data: null,
+          data: null as Awaited<ReturnType<typeof getImportColumnMappingConfig>> | null,
           error:
             error instanceof Error
               ? error.message
               : 'Failed to load import mapping settings.'
         }))
-    : {
+    : Promise.resolve({
         data: null as Awaited<ReturnType<typeof getImportColumnMappingConfig>> | null,
         error: null as string | null
-      };
-  const contentCountPolicyResult = shouldLoadContentPolicy
-    ? await getContentCountPolicy()
+      });
+  const contentCountPolicyResultPromise = shouldLoadContentPolicy
+    ? getContentCountPolicy()
         .then(data => ({ data, error: null as string | null }))
         .catch(error => ({
-          data: null,
+          data: null as Awaited<ReturnType<typeof getContentCountPolicy>> | null,
           error:
             error instanceof Error
               ? error.message
               : 'Failed to load Content count policy.'
         }))
-    : {
+    : Promise.resolve({
         data: null as Awaited<ReturnType<typeof getContentCountPolicy>> | null,
         error: null as string | null
-      };
-  const topContentPolicyResult = shouldLoadContentPolicy
-    ? await getTopContentDataSourcePolicy()
+      });
+  const topContentPolicyResultPromise = shouldLoadContentPolicy
+    ? getTopContentDataSourcePolicy()
         .then(data => ({ data, error: null as string | null }))
         .catch(error => ({
-          data: null,
+          data: null as Awaited<ReturnType<typeof getTopContentDataSourcePolicy>> | null,
           error:
             error instanceof Error
               ? error.message
               : 'Failed to load Top Content data source policy.'
         }))
-    : {
+    : Promise.resolve({
         data: null as Awaited<ReturnType<typeof getTopContentDataSourcePolicy>> | null,
         error: null as string | null
-      };
-  const questionCatalogResult = shouldLoadQuestionCatalog
-    ? await getQuestionCatalog()
+      });
+  const questionCatalogResultPromise = shouldLoadQuestionCatalog
+    ? getQuestionCatalog()
         .then(data => ({ data, error: null as string | null }))
         .catch(error => ({
-          data: null,
+          data: null as Awaited<ReturnType<typeof getQuestionCatalog>> | null,
           error:
             error instanceof Error
               ? error.message
               : 'Failed to load question catalog.'
         }))
-    : {
+    : Promise.resolve({
         data: null as Awaited<ReturnType<typeof getQuestionCatalog>> | null,
         error: null as string | null
-      };
-  const auditLogResult = shouldLoadAuditLog
-    ? await getAdminAuditLogs({
+      });
+  const auditLogResultPromise = shouldLoadAuditLog
+    ? getAdminAuditLogs({
         actorEmail: adminContext.user.email,
         q: auditQuery,
         page: auditPage,
@@ -336,7 +345,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
               ? error.message
               : 'Failed to load admin audit logs.'
         }))
-    : {
+    : Promise.resolve({
         data: {
           items: [],
           pagination: {
@@ -347,7 +356,34 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           }
         } as AdminAuditLogListResponse,
         error: null as string | null
-      };
+      });
+  const [
+    brandsResult,
+    usersResult,
+    companyFormatOptionsResult,
+    formulasResult,
+    kpiCatalogResult,
+    metaColumnsResult,
+    importLayoutResult,
+    importMappingConfigResult,
+    contentCountPolicyResult,
+    topContentPolicyResult,
+    questionCatalogResult,
+    auditLogResult
+  ] = await Promise.all([
+    brandsResultPromise,
+    usersResultPromise,
+    companyFormatOptionsResultPromise,
+    formulasResultPromise,
+    kpiCatalogResultPromise,
+    metaColumnsResultPromise,
+    importLayoutResultPromise,
+    importMappingConfigResultPromise,
+    contentCountPolicyResultPromise,
+    topContentPolicyResultPromise,
+    questionCatalogResultPromise,
+    auditLogResultPromise
+  ]);
 
   const users = usersResult.data;
   const adminCount = users.filter(user =>

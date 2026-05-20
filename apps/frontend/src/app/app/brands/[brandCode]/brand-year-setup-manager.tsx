@@ -73,6 +73,25 @@ function competitorModeLabel(mode: CompetitorReportingMode) {
   return mode === 'with_competitors' ? 'With Competitors' : 'Without Competitors';
 }
 
+const DEFAULT_COMPETITOR_MODE: ReportingYearSetupStatus['competitorMode'] = {
+  mode: 'with_competitors',
+  label: 'With Competitors'
+};
+
+function normalizeSetupStatus(
+  setup: ReportingYearSetupStatus | null | undefined,
+  fallbackYear: number
+): ReportingYearSetupStatus {
+  return {
+    year: setup?.year ?? fallbackYear,
+    canCreateReport: setup?.canCreateReport ?? false,
+    summary:
+      setup?.summary ?? 'Complete year setup before creating reports.',
+    checks: setup?.checks ?? [],
+    competitorMode: setup?.competitorMode ?? DEFAULT_COMPETITOR_MODE
+  };
+}
+
 export function BrandYearSetupManager({
   brandCode,
   initialYear,
@@ -88,8 +107,10 @@ export function BrandYearSetupManager({
   const currentYear = new Date().getUTCFullYear();
 
   const [selectedYear, setSelectedYear] = useState(initialYear);
-  const [yearOptions, setYearOptions] = useState(initialYearOptions);
-  const [setup, setSetup] = useState(initialSetup);
+  const [yearOptions, setYearOptions] = useState(initialYearOptions ?? []);
+  const [setup, setSetup] = useState<ReportingYearSetupStatus>(
+    normalizeSetupStatus(initialSetup, initialYear)
+  );
   const [kpiPlan, setKpiPlan] = useState(initialKpiPlan);
   const [competitorSetup, setCompetitorSetup] = useState(initialCompetitorSetup);
   const [editorTab, setEditorTab] = useState<EditorTab>(initialEditorTab);
@@ -273,8 +294,13 @@ export function BrandYearSetupManager({
     loadedCompetitorSetup: CompetitorYearSetupResponse;
   }) {
     setSelectedYear(bundle.reportingYear.year);
-    setYearOptions(bundle.reportingYear.yearOptions);
-    setSetup(bundle.reportingYear.selectedYearSetup);
+    setYearOptions(bundle.reportingYear.yearOptions ?? []);
+    setSetup(
+      normalizeSetupStatus(
+        bundle.reportingYear.selectedYearSetup,
+        bundle.reportingYear.year
+      )
+    );
     setKpiPlan(bundle.loadedKpiPlan);
     setCompetitorSetup(bundle.loadedCompetitorSetup);
     replaceWorkbenchUrl(editorTab, bundle.reportingYear.year);
@@ -305,9 +331,9 @@ export function BrandYearSetupManager({
   async function refreshSetupStatusForYear(year: number) {
     try {
       const refreshed = await fetchReportingYearSetup(year);
-      setYearOptions(refreshed.yearOptions);
+      setYearOptions(refreshed.yearOptions ?? []);
       if (year === selectedYear) {
-        setSetup(refreshed.selectedYearSetup);
+        setSetup(normalizeSetupStatus(refreshed.selectedYearSetup, refreshed.year));
       }
     } catch {
       // Ignore silent refresh failures from background sync hooks.
@@ -427,8 +453,8 @@ export function BrandYearSetupManager({
       const updatedCompetitorSetup = payload as CompetitorYearSetupResponse;
       const refreshed = await fetchReportingYearSetup(selectedYear);
       setCompetitorSetup(updatedCompetitorSetup);
-      setYearOptions(refreshed.yearOptions);
-      setSetup(refreshed.selectedYearSetup);
+      setYearOptions(refreshed.yearOptions ?? []);
+      setSetup(normalizeSetupStatus(refreshed.selectedYearSetup, refreshed.year));
       setStatusMessage(
         `Competitor mode updated to ${competitorModeLabel(mode)} for ${selectedYear}.`
       );
@@ -460,14 +486,14 @@ export function BrandYearSetupManager({
       if (copyMode === 'kpi') {
         const count = await copyKpi(selectedYear, copyTargetYear);
         const refreshed = await fetchReportingYearSetup(selectedYear);
-        setYearOptions(refreshed.yearOptions);
-        setSetup(refreshed.selectedYearSetup);
+        setYearOptions(refreshed.yearOptions ?? []);
+        setSetup(normalizeSetupStatus(refreshed.selectedYearSetup, refreshed.year));
         setStatusMessage(`Copied ${count} KPI items to ${copyTargetYear}.`);
       } else if (copyMode === 'competitors') {
         const count = await copyCompetitors(selectedYear, copyTargetYear);
         const refreshed = await fetchReportingYearSetup(selectedYear);
-        setYearOptions(refreshed.yearOptions);
-        setSetup(refreshed.selectedYearSetup);
+        setYearOptions(refreshed.yearOptions ?? []);
+        setSetup(normalizeSetupStatus(refreshed.selectedYearSetup, refreshed.year));
         setStatusMessage(`Copied ${count} competitors to ${copyTargetYear}.`);
       } else {
         const [kpiCount, competitorCount] = await Promise.all([

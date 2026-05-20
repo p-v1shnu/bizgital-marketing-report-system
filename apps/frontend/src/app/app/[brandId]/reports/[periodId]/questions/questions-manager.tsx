@@ -80,7 +80,7 @@ function toDraft(item: QuestionOverviewResponse['items'][number]): DraftEntry {
   return {
     mode: defaultMode,
     questionCount: defaultQuestionCount,
-    relatedProductBreakdown: item.entry.relatedProductBreakdown.map(entry => ({
+    relatedProductBreakdown: (item.entry.relatedProductBreakdown ?? []).map(entry => ({
       relatedProductOptionId: entry.relatedProductOptionId,
       questionCount: String(entry.questionCount)
     }))
@@ -272,7 +272,7 @@ export function QuestionsManager({
     Record<string, boolean>
   >({});
   const [relatedProductOptions, setRelatedProductOptions] = useState(
-    initialOverview.relatedProductOptions
+    initialOverview.relatedProductOptions ?? []
   );
   const activeRelatedProductOptions = useMemo(
     () => relatedProductOptions.filter(option => option.status === 'active'),
@@ -291,7 +291,7 @@ export function QuestionsManager({
   }, [items]);
 
   useEffect(() => {
-    setRelatedProductOptions(initialOverview.relatedProductOptions);
+    setRelatedProductOptions(initialOverview.relatedProductOptions ?? []);
   }, [initialOverview.relatedProductOptions]);
 
   useEffect(() => {

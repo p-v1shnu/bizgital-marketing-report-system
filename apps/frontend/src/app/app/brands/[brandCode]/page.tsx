@@ -359,11 +359,19 @@ export default async function BrandAdminDetailPage({
                 initialEditorTab={
                   resolvedSearchParams.tab === 'competitors' ? 'competitors' : 'kpi'
                 }
-                initialKpiCatalog={yearSetupResult.data.kpiCatalog.items}
+                initialKpiCatalog={yearSetupResult.data.kpiCatalog.items ?? []}
                 initialKpiPlan={yearSetupResult.data.kpiPlan}
-                initialSetup={yearSetupResult.data.reportingYear.selectedYearSetup}
+                initialSetup={{
+                  ...yearSetupResult.data.reportingYear.selectedYearSetup,
+                  checks: yearSetupResult.data.reportingYear.selectedYearSetup.checks ?? [],
+                  competitorMode:
+                    yearSetupResult.data.reportingYear.selectedYearSetup.competitorMode ?? {
+                      mode: 'with_competitors',
+                      label: 'With Competitors'
+                    }
+                }}
                 initialYear={yearSetupResult.data.reportingYear.year}
-                initialYearOptions={yearSetupResult.data.reportingYear.yearOptions}
+                initialYearOptions={yearSetupResult.data.reportingYear.yearOptions ?? []}
               />
             )}
           </CardContent>

@@ -1,4 +1,5 @@
 import {
+  getBrandCompanyFormatOptions,
   getMetricsKpiPreview,
   getQuestionOverview,
   getReportingPeriodDetail,
@@ -29,9 +30,10 @@ export default async function QuestionsPage({ params }: QuestionsPageProps) {
   let questions: QuestionOverviewResponse | null = null;
   let loadError: string | null = null;
 
-  const [detailResult, questionsResult] = await Promise.allSettled([
+  const [detailResult, questionsResult, relatedProductsResult] = await Promise.allSettled([
     getReportingPeriodDetail(brandId, periodId),
-    getQuestionOverview(brandId, periodId)
+    getQuestionOverview(brandId, periodId),
+    getBrandCompanyFormatOptions(brandId, { includeDeprecated: true })
   ]);
 
   if (detailResult.status === 'fulfilled') {
@@ -49,6 +51,27 @@ export default async function QuestionsPage({ params }: QuestionsPageProps) {
 
   if (questionsResult.status === 'fulfilled') {
     questions = questionsResult.value;
+    if (
+      (!questions.relatedProductOptions || questions.relatedProductOptions.length === 0) &&
+      relatedProductsResult.status === 'fulfilled'
+    ) {
+      const relatedProductField =
+        relatedProductsResult.value.fields.find((field) => field.key === 'related_product') ?? null;
+      if (relatedProductField) {
+        questions = {
+          ...questions,
+          relatedProductOptions: relatedProductField.options
+            .filter((option) => option.valueKey !== 'all')
+            .map((option) => ({
+              id: option.id,
+              valueKey: option.valueKey,
+              label: option.label,
+              sortOrder: option.sortOrder,
+              status: option.status
+            }))
+        };
+      }
+    }
   } else {
     loadError =
       questionsResult.reason instanceof Error

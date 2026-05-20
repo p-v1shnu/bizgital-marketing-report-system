@@ -499,10 +499,14 @@ export default async function DashboardPage({
   }> = [];
 
   try {
-    const reportingData = await getReportingPeriods(brandId);
+    const [reportingData, initialBrandDetails] = await Promise.all([
+      getReportingPeriods(brandId),
+      getBrand(brandId).catch(() => null)
+    ]);
     brandDisplayName = reportingData.brand.name;
     brandCode = reportingData.brand.code;
-    const brandDetails = await getBrand(reportingData.brand.code).catch(() => null);
+    const brandDetails =
+      initialBrandDetails ?? (await getBrand(reportingData.brand.code).catch(() => null));
     brandLogoUrl = brandDetails?.logoUrl ?? null;
     items = reportingData.items;
   } catch (error) {
@@ -629,8 +633,39 @@ export default async function DashboardPage({
     view: 'content',
     selectedPeriodId: selectedContentPeriod?.id ?? null
   });
+  const prefetchPreviousVisiblePeriod =
+    dashboardView === 'content' && selectedContentPeriod
+      ? (() => {
+          const previousCalendarYear =
+            selectedContentPeriod.month === 1
+              ? selectedContentPeriod.year - 1
+              : selectedContentPeriod.year;
+          const previousCalendarMonth =
+            selectedContentPeriod.month === 1 ? 12 : selectedContentPeriod.month - 1;
+          const previousCalendarPeriod =
+            items.find(
+              (item) =>
+                item.year === previousCalendarYear && item.month === previousCalendarMonth
+            ) ?? null;
+          return previousCalendarPeriod &&
+            getDashboardSourceState(previousCalendarPeriod, includeSubmittedPreview) !== null
+            ? previousCalendarPeriod
+            : null;
+        })()
+      : null;
+  const enhancementPeriods =
+    dashboardView === 'charts'
+      ? dashboardItemsForChart
+      : dashboardView === 'content'
+        ? [selectedContentPeriod, prefetchPreviousVisiblePeriod].filter(
+            (item): item is ReportingListItem => !!item
+          )
+        : [];
+  const uniqueEnhancementPeriods = Array.from(
+    new Map(enhancementPeriods.map((item) => [item.id, item])).values()
+  );
   const periodEnhancements = await Promise.all(
-    dashboardItemsForChart.map(async (item) => {
+    uniqueEnhancementPeriods.map(async (item) => {
       const [datasetOverview, competitorOverview] = await Promise.all([
         getDatasetOverview(brandId, item.id).catch(() => null),
         getCompetitorOverview(brandId, item.id).catch(() => null)
@@ -682,8 +717,15 @@ export default async function DashboardPage({
     periodEnhancements.map((entry) => [entry.periodId, entry] as const)
   );
 
+  const submittedPreviewPeriods =
+    dashboardView === 'charts'
+      ? submittedPreviewItems
+      : uniqueEnhancementPeriods.filter(
+          (item) =>
+            getDashboardSourceState(item, includeSubmittedPreview) === 'submitted_preview'
+        );
   const submittedMetricValues = await Promise.all(
-    submittedPreviewItems.map(async (item) => {
+    submittedPreviewPeriods.map(async (item) => {
       const metricsOverview = await getMetricsOverview(brandId, item.id).catch(() => null);
 
       const values: DashboardMetricValues = {
