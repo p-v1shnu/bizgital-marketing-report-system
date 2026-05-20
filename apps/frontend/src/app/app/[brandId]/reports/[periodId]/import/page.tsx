@@ -17,6 +17,7 @@ import {
   getImportJobs,
   getLatestImportPreview,
   getMappingOverview,
+  getMetricsKpiPreview,
   getReportingPeriodDetail,
   getTopContentDataSourcePolicy,
   type GlobalCompanyFormatOptionsResponse,
@@ -160,6 +161,7 @@ function mergeCompanyFormatFields(
 
 export default async function ImportPage({ params, searchParams }: ImportPageProps) {
   const { brandId, periodId } = await params;
+  const metricsPreviewPromise = getMetricsKpiPreview(brandId, periodId).catch(() => null);
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const authContext = await getAuthContext();
   const currentBrandMembership =
@@ -172,12 +174,17 @@ export default async function ImportPage({ params, searchParams }: ImportPagePro
   let importJobs: ImportJobListResponse | null = null;
   let loadError: string | null = null;
 
-  try {
-    detail = await getReportingPeriodDetail(brandId, periodId);
-  } catch (error) {
+  const [detailResult, importJobsResult] = await Promise.allSettled([
+    getReportingPeriodDetail(brandId, periodId),
+    getImportJobs(brandId, periodId)
+  ]);
+
+  if (detailResult.status === 'fulfilled') {
+    detail = detailResult.value;
+  } else {
     loadError =
-      error instanceof Error
-        ? error.message
+      detailResult.reason instanceof Error
+        ? detailResult.reason.message
         : `Failed to load reporting period ${periodId}.`;
   }
 
@@ -190,12 +197,12 @@ export default async function ImportPage({ params, searchParams }: ImportPagePro
     );
   }
 
-  try {
-    importJobs = await getImportJobs(brandId, periodId);
-  } catch (error) {
+  if (importJobsResult.status === 'fulfilled') {
+    importJobs = importJobsResult.value;
+  } else {
     loadError =
-      error instanceof Error
-        ? error.message
+      importJobsResult.reason instanceof Error
+        ? importJobsResult.reason.message
         : `Failed to load import jobs for period ${periodId}.`;
   }
 
@@ -206,6 +213,7 @@ export default async function ImportPage({ params, searchParams }: ImportPagePro
         brandId={brandId}
         detail={detail}
         layout="canvas"
+        metricsPreviewPromise={metricsPreviewPromise}
         periodId={periodId}
       >
         <WorkspaceUnavailableCard
@@ -339,6 +347,7 @@ export default async function ImportPage({ params, searchParams }: ImportPagePro
       brandId={brandId}
       detail={detail}
       layout="canvas"
+      metricsPreviewPromise={metricsPreviewPromise}
       periodId={periodId}
     >
       <div className="space-y-6">

@@ -15,6 +15,7 @@ import { requireAnyAdmin } from '@/lib/auth';
 import {
   getImportColumnMappingConfig,
   getMappingOverview,
+  getMetricsKpiPreview,
   getReportingPeriodDetail,
   type ImportColumnMappingConfigResponse,
   type MappingOverviewResponse,
@@ -42,6 +43,7 @@ export default async function MappingPage({
   searchParams
 }: MappingPageProps) {
   const { brandId, periodId } = await params;
+  const metricsPreviewPromise = getMetricsKpiPreview(brandId, periodId).catch(() => null);
   await requireAnyAdmin(`/app/${brandId}/reports/${periodId}/import`);
   const resolvedSearchParams = searchParams ? await searchParams : {};
   let detail: ReportingDetailResponse | null = null;
@@ -49,12 +51,18 @@ export default async function MappingPage({
   let mappingConfig: ImportColumnMappingConfigResponse | null = null;
   let loadError: string | null = null;
 
-  try {
-    detail = await getReportingPeriodDetail(brandId, periodId);
-  } catch (error) {
+  const [detailResult, overviewResult, mappingConfigResult] = await Promise.allSettled([
+    getReportingPeriodDetail(brandId, periodId),
+    getMappingOverview(brandId, periodId),
+    getImportColumnMappingConfig()
+  ]);
+
+  if (detailResult.status === 'fulfilled') {
+    detail = detailResult.value;
+  } else {
     loadError =
-      error instanceof Error
-        ? error.message
+      detailResult.reason instanceof Error
+        ? detailResult.reason.message
         : `Failed to load reporting period ${periodId}.`;
   }
 
@@ -67,18 +75,18 @@ export default async function MappingPage({
     );
   }
 
-  try {
-    overview = await getMappingOverview(brandId, periodId);
-  } catch (error) {
+  if (overviewResult.status === 'fulfilled') {
+    overview = overviewResult.value;
+  } else {
     loadError =
-      error instanceof Error
-        ? error.message
+      overviewResult.reason instanceof Error
+        ? overviewResult.reason.message
         : `Failed to load mapping overview for period ${periodId}.`;
   }
 
-  try {
-    mappingConfig = await getImportColumnMappingConfig();
-  } catch {
+  if (mappingConfigResult.status === 'fulfilled') {
+    mappingConfig = mappingConfigResult.value;
+  } else {
     mappingConfig = null;
   }
 
@@ -88,6 +96,7 @@ export default async function MappingPage({
         activeSection="mapping"
         brandId={brandId}
         detail={detail}
+        metricsPreviewPromise={metricsPreviewPromise}
         periodId={periodId}
       >
         <WorkspaceUnavailableCard
@@ -155,6 +164,7 @@ export default async function MappingPage({
       activeSection="mapping"
       brandId={brandId}
       detail={detail}
+      metricsPreviewPromise={metricsPreviewPromise}
       periodId={periodId}
     >
       <div className="space-y-6">

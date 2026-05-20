@@ -1,6 +1,7 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { getMembershipReportAccess, requireBrandAccess } from '@/lib/auth';
 import {
+  getMetricsKpiPreview,
   getReportingPeriodDetail,
   getTopContentOverview,
   type ReportingDetailResponse,
@@ -27,6 +28,7 @@ export default async function TopContentPage({
   searchParams
 }: TopContentPageProps) {
   const { brandId, periodId } = await params;
+  const metricsPreviewPromise = getMetricsKpiPreview(brandId, periodId).catch(() => null);
   const auth = await requireBrandAccess(
     brandId,
     `/app/${brandId}/reports/${periodId}/top-content`
@@ -36,21 +38,26 @@ export default async function TopContentPage({
   let detail: ReportingDetailResponse | null = null;
   let loadError: string | null = null;
 
-  try {
-    topContent = await getTopContentOverview(brandId, periodId);
-  } catch (error) {
+  const [topContentResult, detailResult] = await Promise.allSettled([
+    getTopContentOverview(brandId, periodId),
+    getReportingPeriodDetail(brandId, periodId)
+  ]);
+
+  if (topContentResult.status === 'fulfilled') {
+    topContent = topContentResult.value;
+  } else {
     loadError =
-      error instanceof Error
-        ? error.message
+      topContentResult.reason instanceof Error
+        ? topContentResult.reason.message
         : `Failed to load top content overview for period ${periodId}.`;
   }
 
-  try {
-    detail = await getReportingPeriodDetail(brandId, periodId);
-  } catch (error) {
+  if (detailResult.status === 'fulfilled') {
+    detail = detailResult.value;
+  } else {
     loadError =
-      error instanceof Error
-        ? error.message
+      detailResult.reason instanceof Error
+        ? detailResult.reason.message
         : `Failed to load reporting period ${periodId}.`;
   }
 
@@ -69,6 +76,7 @@ export default async function TopContentPage({
         activeSection="top-content"
         brandId={brandId}
         detail={detail}
+        metricsPreviewPromise={metricsPreviewPromise}
         periodId={periodId}
       >
         <WorkspaceUnavailableCard
@@ -96,6 +104,7 @@ export default async function TopContentPage({
       activeSection="top-content"
       brandId={brandId}
       detail={detail}
+      metricsPreviewPromise={metricsPreviewPromise}
       periodId={periodId}
     >
       <div className="space-y-6">

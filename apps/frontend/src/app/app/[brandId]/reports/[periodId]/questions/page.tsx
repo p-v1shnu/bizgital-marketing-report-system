@@ -1,4 +1,5 @@
 import {
+  getMetricsKpiPreview,
   getQuestionOverview,
   getReportingPeriodDetail,
   type QuestionOverviewResponse,
@@ -19,6 +20,7 @@ type QuestionsPageProps = {
 
 export default async function QuestionsPage({ params }: QuestionsPageProps) {
   const { brandId, periodId } = await params;
+  const metricsPreviewPromise = getMetricsKpiPreview(brandId, periodId).catch(() => null);
   const authContext = await getAuthContext();
   const currentMembership =
     authContext.user?.memberships.find((membership) => membership.brandCode === brandId) ?? null;
@@ -27,12 +29,17 @@ export default async function QuestionsPage({ params }: QuestionsPageProps) {
   let questions: QuestionOverviewResponse | null = null;
   let loadError: string | null = null;
 
-  try {
-    detail = await getReportingPeriodDetail(brandId, periodId);
-  } catch (error) {
+  const [detailResult, questionsResult] = await Promise.allSettled([
+    getReportingPeriodDetail(brandId, periodId),
+    getQuestionOverview(brandId, periodId)
+  ]);
+
+  if (detailResult.status === 'fulfilled') {
+    detail = detailResult.value;
+  } else {
     loadError =
-      error instanceof Error
-        ? error.message
+      detailResult.reason instanceof Error
+        ? detailResult.reason.message
         : `Failed to load reporting period ${periodId}.`;
   }
 
@@ -40,12 +47,12 @@ export default async function QuestionsPage({ params }: QuestionsPageProps) {
     return <WorkspaceUnavailableCard message={loadError ?? 'Unknown error.'} title="Questions workspace unavailable" />;
   }
 
-  try {
-    questions = await getQuestionOverview(brandId, periodId);
-  } catch (error) {
+  if (questionsResult.status === 'fulfilled') {
+    questions = questionsResult.value;
+  } else {
     loadError =
-      error instanceof Error
-        ? error.message
+      questionsResult.reason instanceof Error
+        ? questionsResult.reason.message
         : `Failed to load question overview for period ${periodId}.`;
   }
 
@@ -55,6 +62,7 @@ export default async function QuestionsPage({ params }: QuestionsPageProps) {
         activeSection="questions"
         brandId={brandId}
         detail={detail}
+        metricsPreviewPromise={metricsPreviewPromise}
         periodId={periodId}
       >
         <WorkspaceUnavailableCard
@@ -70,6 +78,7 @@ export default async function QuestionsPage({ params }: QuestionsPageProps) {
       activeSection="questions"
       brandId={brandId}
       detail={detail}
+      metricsPreviewPromise={metricsPreviewPromise}
       periodId={periodId}
     >
       <QuestionsManager

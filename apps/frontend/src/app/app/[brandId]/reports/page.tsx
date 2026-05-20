@@ -374,16 +374,17 @@ export default async function ReportsPage({
     suggestedCreateMonth = reportingData.suggestedNextPeriod.month;
     suggestedCreateLabel = reportingData.suggestedNextPeriod.label;
 
-    try {
-      const recycleBinData = await getReportingRecycleBin(brandId, selectedYear);
-      recycleBinItems = recycleBinData.items;
-      recycleRetentionDays = recycleBinData.retentionDays;
-    } catch (error) {
-      recycleLoadError =
-        error instanceof Error
-          ? error.message
-          : 'Failed to load recycle bin data from the backend.';
-    }
+    const recycleBinPromise = getReportingRecycleBin(brandId, selectedYear)
+      .then((recycleBinData) => {
+        recycleBinItems = recycleBinData.items;
+        recycleRetentionDays = recycleBinData.retentionDays;
+      })
+      .catch((error) => {
+        recycleLoadError =
+          error instanceof Error
+            ? error.message
+            : 'Failed to load recycle bin data from the backend.';
+      });
 
     const detailResults = await Promise.all(
       reportingData.items.map(async (item) => {
@@ -400,6 +401,7 @@ export default async function ReportsPage({
         .filter((detail): detail is PeriodDetail => detail !== null)
         .map((detail) => [detail.period.id, detail])
     );
+    await recycleBinPromise;
   } catch (error) {
     loadError =
       error instanceof Error

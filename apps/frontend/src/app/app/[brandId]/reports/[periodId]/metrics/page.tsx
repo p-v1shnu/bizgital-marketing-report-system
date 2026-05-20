@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
+  getMetricsKpiPreview,
   getMetricsOverview,
   getReportingPeriodDetail,
   type MetricsOverviewResponse,
@@ -121,6 +122,7 @@ export default async function MetricsPage({
   searchParams
 }: MetricsPageProps) {
   const { brandId, periodId } = await params;
+  const metricsPreviewPromise = getMetricsKpiPreview(brandId, periodId).catch(() => null);
   const authContext = await getAuthContext();
   const currentMembership =
     authContext.user?.memberships.find((membership) => membership.brandCode === brandId) ?? null;
@@ -131,12 +133,17 @@ export default async function MetricsPage({
   let metrics: MetricsOverviewResponse | null = null;
   let loadError: string | null = null;
 
-  try {
-    detail = await getReportingPeriodDetail(brandId, periodId);
-  } catch (error) {
+  const [detailResult, metricsResult] = await Promise.allSettled([
+    getReportingPeriodDetail(brandId, periodId),
+    getMetricsOverview(brandId, periodId)
+  ]);
+
+  if (detailResult.status === 'fulfilled') {
+    detail = detailResult.value;
+  } else {
     loadError =
-      error instanceof Error
-        ? error.message
+      detailResult.reason instanceof Error
+        ? detailResult.reason.message
         : `Failed to load reporting period ${periodId}.`;
   }
 
@@ -149,12 +156,12 @@ export default async function MetricsPage({
     );
   }
 
-  try {
-    metrics = await getMetricsOverview(brandId, periodId);
-  } catch (error) {
+  if (metricsResult.status === 'fulfilled') {
+    metrics = metricsResult.value;
+  } else {
     loadError =
-      error instanceof Error
-        ? error.message
+      metricsResult.reason instanceof Error
+        ? metricsResult.reason.message
         : `Failed to load metrics overview for period ${periodId}.`;
   }
 
@@ -164,6 +171,7 @@ export default async function MetricsPage({
         activeSection="metrics"
         brandId={brandId}
         detail={detail}
+        metricsPreviewPromise={metricsPreviewPromise}
         periodId={periodId}
       >
         <WorkspaceUnavailableCard
@@ -181,6 +189,7 @@ export default async function MetricsPage({
       activeSection="metrics"
       brandId={brandId}
       detail={detail}
+      metricsPreviewPromise={metricsPreviewPromise}
       periodId={periodId}
     >
       <div className="space-y-6">

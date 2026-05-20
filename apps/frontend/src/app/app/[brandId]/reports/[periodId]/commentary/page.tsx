@@ -4,7 +4,11 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { getAuthContext, getMembershipReportAccess } from '@/lib/auth';
 import type { DatasetOverviewResponse, ReportingDetailResponse } from '@/lib/reporting-api';
-import { getDatasetOverview, getReportingPeriodDetail } from '@/lib/reporting-api';
+import {
+  getDatasetOverview,
+  getMetricsKpiPreview,
+  getReportingPeriodDetail
+} from '@/lib/reporting-api';
 
 import { ReportWorkspaceShell } from '../workspace-shell';
 import { WorkspaceUnavailableCard } from '../workspace-unavailable-card';
@@ -20,6 +24,7 @@ type CommentaryPageProps = {
 
 export default async function CommentaryPage({ params }: CommentaryPageProps) {
   const { brandId, periodId } = await params;
+  const metricsPreviewPromise = getMetricsKpiPreview(brandId, periodId).catch(() => null);
   const authContext = await getAuthContext();
   const currentMembership =
     authContext.user?.memberships.find((membership) => membership.brandCode === brandId) ?? null;
@@ -31,13 +36,26 @@ export default async function CommentaryPage({ params }: CommentaryPageProps) {
   let dataset: DatasetOverviewResponse | null = null;
   let loadError: string | null = null;
 
-  try {
-    detail = await getReportingPeriodDetail(brandId, periodId);
-    dataset = await getDatasetOverview(brandId, periodId);
-  } catch (error) {
+  const [detailResult, datasetResult] = await Promise.allSettled([
+    getReportingPeriodDetail(brandId, periodId),
+    getDatasetOverview(brandId, periodId)
+  ]);
+
+  if (detailResult.status === 'fulfilled') {
+    detail = detailResult.value;
+  } else {
     loadError =
-      error instanceof Error
-        ? error.message
+      detailResult.reason instanceof Error
+        ? detailResult.reason.message
+        : `Failed to load commentary workspace for period ${periodId}.`;
+  }
+
+  if (datasetResult.status === 'fulfilled') {
+    dataset = datasetResult.value;
+  } else if (!loadError) {
+    loadError =
+      datasetResult.reason instanceof Error
+        ? datasetResult.reason.message
         : `Failed to load commentary workspace for period ${periodId}.`;
   }
 
@@ -87,6 +105,7 @@ export default async function CommentaryPage({ params }: CommentaryPageProps) {
       activeSection="commentary"
       brandId={brandId}
       detail={detail}
+      metricsPreviewPromise={metricsPreviewPromise}
       periodId={periodId}
     >
       <div className="space-y-6">

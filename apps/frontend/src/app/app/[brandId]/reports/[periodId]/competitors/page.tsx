@@ -1,5 +1,6 @@
 import {
   getCompetitorOverview,
+  getMetricsKpiPreview,
   getReportingPeriodDetail,
   type CompetitorOverviewResponse,
   type ReportingDetailResponse
@@ -21,6 +22,7 @@ type CompetitorsPageProps = {
 
 export default async function CompetitorsPage({ params }: CompetitorsPageProps) {
   const { brandId, periodId } = await params;
+  const metricsPreviewPromise = getMetricsKpiPreview(brandId, periodId).catch(() => null);
   const authContext = await getAuthContext();
   const currentMembership =
     authContext.user?.memberships.find((membership) => membership.brandCode === brandId) ?? null;
@@ -29,12 +31,17 @@ export default async function CompetitorsPage({ params }: CompetitorsPageProps) 
   let competitors: CompetitorOverviewResponse | null = null;
   let loadError: string | null = null;
 
-  try {
-    detail = await getReportingPeriodDetail(brandId, periodId);
-  } catch (error) {
+  const [detailResult, competitorsResult] = await Promise.allSettled([
+    getReportingPeriodDetail(brandId, periodId),
+    getCompetitorOverview(brandId, periodId)
+  ]);
+
+  if (detailResult.status === 'fulfilled') {
+    detail = detailResult.value;
+  } else {
     loadError =
-      error instanceof Error
-        ? error.message
+      detailResult.reason instanceof Error
+        ? detailResult.reason.message
         : `Failed to load reporting period ${periodId}.`;
   }
 
@@ -47,12 +54,12 @@ export default async function CompetitorsPage({ params }: CompetitorsPageProps) 
     );
   }
 
-  try {
-    competitors = await getCompetitorOverview(brandId, periodId);
-  } catch (error) {
+  if (competitorsResult.status === 'fulfilled') {
+    competitors = competitorsResult.value;
+  } else {
     loadError =
-      error instanceof Error
-        ? error.message
+      competitorsResult.reason instanceof Error
+        ? competitorsResult.reason.message
         : `Failed to load competitor overview for period ${periodId}.`;
   }
 
@@ -62,6 +69,7 @@ export default async function CompetitorsPage({ params }: CompetitorsPageProps) 
         activeSection="competitors"
         brandId={brandId}
         detail={detail}
+        metricsPreviewPromise={metricsPreviewPromise}
         periodId={periodId}
       >
         <WorkspaceUnavailableCard
@@ -78,6 +86,7 @@ export default async function CompetitorsPage({ params }: CompetitorsPageProps) 
         activeSection="competitors"
         brandId={brandId}
         detail={detail}
+        metricsPreviewPromise={metricsPreviewPromise}
         periodId={periodId}
       >
         <Card>
@@ -103,6 +112,7 @@ export default async function CompetitorsPage({ params }: CompetitorsPageProps) 
       activeSection="competitors"
       brandId={brandId}
       detail={detail}
+      metricsPreviewPromise={metricsPreviewPromise}
       periodId={periodId}
     >
       <CompetitorMonitoringWorkspace

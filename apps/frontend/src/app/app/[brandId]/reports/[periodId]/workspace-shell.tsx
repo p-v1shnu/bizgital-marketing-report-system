@@ -48,6 +48,7 @@ type ReportWorkspaceShellProps = {
   detail: ReportingDetailResponse;
   children: ReactNode;
   layout?: 'default' | 'canvas';
+  metricsPreviewPromise?: Promise<MetricsKpiPreviewResponse | null>;
 };
 
 type KpiPreview = {
@@ -134,9 +135,12 @@ export async function ReportWorkspaceShell({
   activeSection,
   detail,
   children,
-  layout = 'default'
+  layout = 'default',
+  metricsPreviewPromise
 }: ReportWorkspaceShellProps) {
-  const metricsPreview = await getMetricsKpiPreview(brandId, periodId).catch(() => null);
+  const metricsPreview = metricsPreviewPromise
+    ? await metricsPreviewPromise
+    : await getMetricsKpiPreview(brandId, periodId).catch(() => null);
   const kpiPreview = buildKpiPreview(metricsPreview);
   const kpiHref = `/app/${brandId}/reports/${periodId}/metrics`;
   const progress = workflowProgress(detail);

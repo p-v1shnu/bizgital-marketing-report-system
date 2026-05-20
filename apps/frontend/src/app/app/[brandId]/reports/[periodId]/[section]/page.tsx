@@ -3,7 +3,7 @@ import { AlertCircle, FileText, Wrench } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { ReportingDetailResponse } from '@/lib/reporting-api';
-import { getReportingPeriodDetail } from '@/lib/reporting-api';
+import { getMetricsKpiPreview, getReportingPeriodDetail } from '@/lib/reporting-api';
 import { sectionStatusLabel } from '@/lib/reporting-ui';
 
 import { ReportWorkspaceShell } from '../workspace-shell';
@@ -31,6 +31,7 @@ export default async function WorkspaceSectionPage({
   params
 }: WorkspaceSectionPageProps) {
   const { brandId, periodId, section } = await params;
+  const metricsPreviewPromise = getMetricsKpiPreview(brandId, periodId).catch(() => null);
 
   let detail: ReportingDetailResponse | null = null;
   let loadError: string | null = null;
@@ -57,6 +58,7 @@ export default async function WorkspaceSectionPage({
       activeSection={section}
       brandId={brandId}
       detail={detail}
+      metricsPreviewPromise={metricsPreviewPromise}
       periodId={periodId}
     >
       <div className="space-y-6">

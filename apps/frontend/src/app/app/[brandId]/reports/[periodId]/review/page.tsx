@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { getAuthContext, getMembershipReportAccess } from '@/lib/auth';
 import {
+  getMetricsKpiPreview,
   getReportingPeriodDetail,
   type ReportingDetailResponse
 } from '@/lib/reporting-api';
@@ -49,6 +50,7 @@ const checklistSectionHref: Record<string, string | null> = {
 
 export default async function ReviewPage({ params }: ReviewPageProps) {
   const { brandId, periodId } = await params;
+  const metricsPreviewPromise = getMetricsKpiPreview(brandId, periodId).catch(() => null);
   const authContext = await getAuthContext();
   const currentMembership =
     authContext.user?.memberships.find((membership) => membership.brandCode === brandId) ?? null;
@@ -104,6 +106,7 @@ export default async function ReviewPage({ params }: ReviewPageProps) {
       activeSection="review"
       brandId={brandId}
       detail={detail}
+      metricsPreviewPromise={metricsPreviewPromise}
       periodId={periodId}
     >
       <div className="space-y-6">
